@@ -1,6 +1,7 @@
 """Project files, recent list, and the file-association declarations."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import zipfile
@@ -69,7 +70,14 @@ def test_project_round_trip_preserves_unknown_fields(tmp_path: Path) -> None:
     )
     loaded = load_project(path)
     assert loaded.manifest["editor_note"] == "keep me"
-    assert loaded.manifest["format_version"] == 1
+    assert loaded.manifest["format_version"] == "1.0"
+    assert loaded.manifest["created"] == first.manifest["created"]
+    assert loaded.manifest["created_by"]["app"] == "Voxprint AI Clarity"
+    assert loaded.manifest["generator"]["version"] == "0.1.0"
+    assert loaded.manifest["source"]["format"] == "mkv"
+    assert loaded.manifest["source"]["filename"] == "in.mkv"
+    video = loaded.manifest["x_clarity"]["video"]
+    assert video["head_sha256"]
     assert loaded.settings_raw["custom"] == {"keep": True}
     assert loaded.settings.mode == "clean"
     assert loaded.settings.copy_audio is True
@@ -79,8 +87,13 @@ def test_project_round_trip_preserves_unknown_fields(tmp_path: Path) -> None:
     assert loaded.source == source.resolve()
     assert loaded.destination == destination
     found = fingerprint(source, project=path)
-    assert found["head_sha256"] == loaded.manifest["source"]["head_sha256"]
+    assert found["head_sha256"] == video["head_sha256"]
     assert found["sha256"] == ""
+    with zipfile.ZipFile(path) as archive:
+        recorded = loaded.manifest["files"]["settings.json"]
+        payload = archive.read("settings.json")
+        assert recorded["size"] == len(payload)
+        assert recorded["sha256"] == hashlib.sha256(payload).hexdigest()
 
 
 def test_fast_match_ignores_the_middle_of_a_long_file(tmp_path: Path) -> None:
@@ -88,7 +101,7 @@ def test_fast_match_ignores_the_middle_of_a_long_file(tmp_path: Path) -> None:
     source = _video(tmp_path / "long.mkv", payload)
     project = tmp_path / "job.vxclarity"
     save_project(project, source=source, settings=Settings(), destination=tmp_path / "out.mkv")
-    recorded = load_project(project).manifest["source"]
+    recorded = load_project(project).manifest["x_clarity"]["video"]
     moved = tmp_path / "elsewhere.mkv"
     body = bytearray(payload)
     body[1024 * 1024 + 1] = ord("Q")
@@ -103,7 +116,7 @@ def test_higher_major_version_is_rejected(tmp_path: Path) -> None:
     with zipfile.ZipFile(path) as archive:
         manifest = json.loads(archive.read("manifest.json"))
         others = {name: archive.read(name) for name in archive.namelist() if name != "manifest.json"}
-    manifest["format_version"] = 2
+    manifest["format_version"] = "2.0"
     rewritten = tmp_path / "newer.vxclarity"
     with zipfile.ZipFile(rewritten, "w") as archive:
         archive.writestr("mimetype", MIME)
@@ -113,6 +126,81 @@ def test_higher_major_version_is_rejected(tmp_path: Path) -> None:
                 archive.writestr(name, payload)
     with pytest.raises(ProjectFormatError, match="format version"):
         load_project(rewritten)
+    manifest["format_version"] = "1.4"
+    minor = tmp_path / "minor.vxclarity"
+    with zipfile.ZipFile(minor, "w") as archive:
+        archive.writestr("mimetype", MIME)
+        archive.writestr("manifest.json", json.dumps(manifest))
+        for name, payload in others.items():
+            if name != "mimetype":
+                archive.writestr(name, payload)
+    assert load_project(minor).manifest["format_version"] == "1.4"
+
+
+def test_unlisted_entry_is_ignored(tmp_path: Path) -> None:
+    source = _video(tmp_path / "in.mkv")
+    path = tmp_path / "job.vxclarity"
+    save_project(path, source=source, settings=Settings(), destination=tmp_path / "out.mkv")
+    with zipfile.ZipFile(path) as archive:
+        entries = [(info, archive.read(info.filename)) for info in archive.infolist()]
+    extra = tmp_path / "extra.vxclarity"
+    with zipfile.ZipFile(extra, "w") as archive:
+        for info, payload in entries:
+            archive.writestr(info, payload)
+        archive.writestr("notes/aside.md", b"ignored\n")
+    loaded = load_project(extra)
+    assert "notes/aside.md" not in loaded.extras
+    assert loaded.manifest["format_version"] == "1.0"
+
+
+def test_oversized_expansion_is_rejected(tmp_path: Path) -> None:
+    source = _video(tmp_path / "in.mkv")
+    path = tmp_path / "job.vxclarity"
+    save_project(path, source=source, settings=Settings(), destination=tmp_path / "out.mkv")
+    with zipfile.ZipFile(path) as archive:
+        entries = [(info, archive.read(info.filename)) for info in archive.infolist()]
+    bomb = tmp_path / "bomb.vxclarity"
+    with zipfile.ZipFile(bomb, "w") as archive:
+        for info, payload in entries:
+            archive.writestr(info, payload)
+        padded = zipfile.ZipInfo("notes/pad.txt")
+        padded.compress_type = zipfile.ZIP_DEFLATED
+        archive.writestr(padded, b"\0" * 200_000)
+    with pytest.raises(ProjectFormatError, match="expands"):
+        load_project(bomb)
+
+
+def test_symlink_entry_is_rejected(tmp_path: Path) -> None:
+    source = _video(tmp_path / "in.mkv")
+    path = tmp_path / "job.vxclarity"
+    save_project(path, source=source, settings=Settings(), destination=tmp_path / "out.mkv")
+    with zipfile.ZipFile(path) as archive:
+        entries = [(info, archive.read(info.filename)) for info in archive.infolist()]
+    linked = tmp_path / "linked.vxclarity"
+    with zipfile.ZipFile(linked, "w") as archive:
+        for info, payload in entries:
+            archive.writestr(info, payload)
+        link = zipfile.ZipInfo("escape")
+        link.compress_type = zipfile.ZIP_STORED
+        link.external_attr = 0o120777 << 16
+        archive.writestr(link, b"target")
+    with pytest.raises(ProjectFormatError, match="not a regular file"):
+        load_project(linked)
+
+
+def test_checksum_mismatch_is_rejected(tmp_path: Path) -> None:
+    source = _video(tmp_path / "in.mkv")
+    path = tmp_path / "job.vxclarity"
+    save_project(path, source=source, settings=Settings(), destination=tmp_path / "out.mkv")
+    with zipfile.ZipFile(path) as archive:
+        others = {name: archive.read(name) for name in archive.namelist()}
+    others["settings.json"] = b"{}\n"
+    broken = tmp_path / "broken.vxclarity"
+    with zipfile.ZipFile(broken, "w") as archive:
+        for name, payload in others.items():
+            archive.writestr(name, payload)
+    with pytest.raises(ProjectFormatError, match="checksum"):
+        load_project(broken)
 
 
 def test_recent_files_keep_the_newest_first(tmp_path: Path) -> None:

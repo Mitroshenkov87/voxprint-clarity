@@ -1,8 +1,12 @@
 # Benchmark
 
-`python -m clarity.bench` is the one-command timing run for a rented RTX 4090
+`python -m clarity.bench` is the timing run for a rented RTX 4090
 (or any RTX 40 series or newer GPU). `scripts/bench.sh` and `scripts/bench.ps1`
-call it. The script downloads the clip and the three weights, exports ONNX,
+call it. `scripts/test-gpu.ps1` is the full VM script: it installs the stack,
+runs this benchmark, restores a sample of the clip, and packs one archive.
+See [TESTING-GPU.md](TESTING-GPU.md).
+
+The benchmark downloads the clip and the three weights, exports ONNX,
 times both backends, and writes PNG crops. It exits 2 when the GPU, ffmpeg,
 a weight, the export, or TensorRT EP is missing, and it does not invent a
 frames-per-second number for a backend it did not run.

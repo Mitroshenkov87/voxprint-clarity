@@ -38,6 +38,7 @@ from clarity.project import (
     remember_recent,
     save_project,
     sync_resume,
+    video_fingerprint,
     work_dir_for as project_work_dir,
 )
 from clarity.ui.acrylic import enable_acrylic
@@ -452,8 +453,9 @@ class MainWindow(QMainWindow):
     def _apply_project(self, project: Project) -> None:
         if project.source is not None:
             self.source.setText(str(project.source))
-        elif isinstance(project.manifest.get("source"), dict):
-            self.source.setText(str(project.manifest["source"].get("absolute") or ""))
+        else:
+            video = video_fingerprint(project.manifest)
+            self.source.setText(str(video.get("absolute") or ""))
         if project.destination is not None:
             self.output.setText(str(project.destination))
         settings = project.settings

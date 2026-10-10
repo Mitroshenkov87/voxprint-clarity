@@ -116,13 +116,15 @@ python -m clarity.bench
 downloads a short Creative Commons Attribution clip (Elephants Dream) and the
 three weights, exports ONNX, times PyTorch fp16 against ONNX Runtime TensorRT
 EP fp16, and writes before/after PNG crops. See
-[docs/BENCHMARK.md](docs/BENCHMARK.md).
+[docs/BENCHMARK.md](docs/BENCHMARK.md). A rented Windows GPU VM uses
+[scripts/test-gpu.ps1](scripts/test-gpu.ps1) ([docs/TESTING-GPU.md](docs/TESTING-GPU.md)).
 
 ## Documentation
 
 - [docs/INSTALL.md](docs/INSTALL.md) — platforms, runtime, ffmpeg
 - [docs/ENGINE-INTERFACE.md](docs/ENGINE-INTERFACE.md) — what Clarity needs from Enlarge
 - [docs/BENCHMARK.md](docs/BENCHMARK.md) — how to time the models
+- [docs/TESTING-GPU.md](docs/TESTING-GPU.md) — the rented RTX 4090 script
 - [docs/formats/VXCLARITY.md](docs/formats/VXCLARITY.md) — the `.vxclarity` project file
 - [docs/DECISIONS.md](docs/DECISIONS.md) — product decisions
 - [docs/RESEARCH.md](docs/RESEARCH.md) — model and pipeline notes
