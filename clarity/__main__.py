@@ -52,14 +52,19 @@ def _selftest() -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="clarity", description=APP_NAME)
+    parser.add_argument("project", nargs="?", type=Path, help="Open a .vxclarity project")
     parser.add_argument("--version", action="store_true")
     parser.add_argument("--selftest", action="store_true")
     parser.add_argument("--register-models-user", action="store_true")
     parser.add_argument("--unregister-models-user", action="store_true")
     parser.add_argument("--out", type=Path, default=None)
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
     if args.version:
         print(version_label())
         return 0
@@ -90,6 +95,8 @@ def main(argv: list[str] | None = None) -> int:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen" if not sys.stdout.isatty() else "")
     application = QApplication.instance() or QApplication(sys.argv)
     window = MainWindow()
+    if args.project is not None:
+        window.open_project(args.project)
     window.show()
     return int(application.exec())
 

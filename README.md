@@ -62,9 +62,11 @@ python -m pytest
 
 The desktop window is PySide6, English with a Russian translation, in the
 suite dark theme. Start runs one job on a worker thread: NVDEC decode,
-restore, then AV1 encode with audio stream-copy, under the suite GPU lock,
-with progress and cancel. The Start menu group is **Voxprint**, shared with
-the other suite apps.
+scene-cut chunks, restore, then a lossless join and AV1 encode with audio
+stream-copy, under the suite GPU lock, with progress and cancel. Open project
+and Save project read and write a `.vxclarity` file. A double-click on that
+file starts Clarity and opens it. The Start menu group is **Voxprint**, shared
+with the other suite apps.
 
 Windows installer: `installer/VoxprintClarity.iss` (Inno Setup 6). It downloads
 Python 3.14 and the CUDA torch wheel. `/RUNTIME=skip` installs the files
@@ -74,14 +76,19 @@ appimagetool runs, an AppImage.
 
 ## What the pipeline does
 
-NVDEC decode, scene-cut chunks, a temporal window per chunk, then NVENC.
-Default output is AV1 in an MKV (`av1_nvenc`, or SVT-AV1 only when that
-encoder is already in the LGPL ffmpeg). MP4 is optional. H.265 is
+NVDEC decode, scene-cut chunks, a temporal window per chunk, then one encode
+per chunk. Default output is AV1 in an MKV (`av1_nvenc`, or SVT-AV1 only when
+that encoder is already in the LGPL ffmpeg). MP4 is optional. H.265 is
 `hevc_nvenc` only, and only when you ask for it. H.264 output is refused.
-Audio, subtitles, chapters, and metadata are stream-copied. Opus is used
-only when the audio cannot be copied. HDR and Dolby Vision are refused in
-this version (SDR only). The running job writes a `.partial` file and
-publishes it only after the encode exits cleanly. Cancel deletes that file.
+Finished chunks stay as Matroska. The final ffmpeg copies those video streams
+and stream-copies audio, subtitles, chapters, and metadata from the source.
+Opus is used only when the audio cannot be copied. HDR and Dolby Vision are
+refused in this version (SDR only). Cancel, or a crash, keeps every finished
+chunk and its journal. Starting the same destination again, or opening the
+`.vxclarity` project, continues from the last finished chunk. The final file
+is written as a `.partial` and replaces the destination only after that copy
+exits cleanly. Cancel deletes the unfinished final file and the in-progress
+chunk. The project format is [docs/formats/VXCLARITY.md](docs/formats/VXCLARITY.md).
 
 GPU lock, VRAM budget, thermal pauses, the model store, and the ONNX session
 come from `voxprint_engine`. Clarity does not keep a second copy of those.
@@ -94,18 +101,22 @@ the patch under [docs/engine-patches](docs/engine-patches).
 On a machine with an NVIDIA GPU:
 
 ```bash
+python -m pip install -r requirements.txt -r requirements-bench.txt
 python -m clarity.bench
 ```
 
 `scripts/bench.sh` and `scripts/bench.ps1` call the same module. The script
-downloads a short Creative Commons Attribution clip (Elephants Dream) and
-writes markdown and JSON. See [docs/BENCHMARK.md](docs/BENCHMARK.md).
+downloads a short Creative Commons Attribution clip (Elephants Dream) and the
+three weights, exports ONNX, times PyTorch fp16 against ONNX Runtime TensorRT
+EP fp16, and writes before/after PNG crops. See
+[docs/BENCHMARK.md](docs/BENCHMARK.md).
 
 ## Documentation
 
 - [docs/INSTALL.md](docs/INSTALL.md) — platforms, runtime, ffmpeg
 - [docs/ENGINE-INTERFACE.md](docs/ENGINE-INTERFACE.md) — what Clarity needs from Enlarge
 - [docs/BENCHMARK.md](docs/BENCHMARK.md) — how to time the models
+- [docs/formats/VXCLARITY.md](docs/formats/VXCLARITY.md) — the `.vxclarity` project file
 - [docs/DECISIONS.md](docs/DECISIONS.md) — product decisions
 - [docs/RESEARCH.md](docs/RESEARCH.md) — model and pipeline notes
 

@@ -91,6 +91,13 @@ Source: "..\build_info.json"; DestDir: "{app}"; Flags: ignoreversion skipifsourc
 Name: "{group}\{#AppDisplayName}"; Filename: "{#PyW}"; Parameters: """{app}\main.py"""; WorkingDir: "{app}"; IconFilename: "{app}\branding\clarity.ico"
 Name: "{group}\{cm:UninstallProgram,{#AppDisplayName}}"; Filename: "{uninstallexe}"
 
+[Registry]
+; Per-user association. Uninstall deletes the ProgID and the extension entry.
+Root: HKCU; Subkey: "Software\Classes\.vxclarity"; ValueType: string; ValueName: ""; ValueData: "Voxprint.Clarity.Project"; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKCU; Subkey: "Software\Classes\Voxprint.Clarity.Project"; ValueType: string; ValueName: ""; ValueData: "Voxprint AI Clarity project"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\Voxprint.Clarity.Project\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\branding\clarity.ico"
+Root: HKCU; Subkey: "Software\Classes\Voxprint.Clarity.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{#PyW}"" ""{app}\main.py"" ""%1"""
+
 [Run]
 Filename: "{#Py}"; Parameters: """{app}\main.py"" --register-models-user"; WorkingDir: "{app}"; StatusMsg: "Registering the shared models folder..."; Flags: runhidden; Check: RuntimeInstalled
 

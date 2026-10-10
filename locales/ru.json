@@ -32,5 +32,11 @@
   "status.cancelled": "Отменено",
   "status.cancelling": "Остановка",
   "error.no_source": "Сначала выберите видео.",
-  "error.missing_source": "Этот видеофайл не найден."
+  "error.missing_source": "Этот видеофайл не найден.",
+  "project.open": "Открыть проект",
+  "project.save": "Сохранить проект",
+  "project.recent": "Недавние",
+  "project.filter": "Проект Clarity (*.vxclarity);;Все файлы (*.*)",
+  "status.resumed": "Продолжение с последнего готового фрагмента",
+  "status.saved": "Проект сохранён"
 }

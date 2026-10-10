@@ -7,10 +7,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from clarity.bench import Sample, render_report, write_report
+from clarity.bench import Sample, main as bench_main, render_report, save_crops, tensorrt_providers, write_report
+from clarity.bench import conditioned_nchw
 from clarity.engine_shim import Gate, call_assess, video_module
 from clarity.i18n import tr
-from clarity.models import CATALOG, licence_allowed
+from clarity.models import CATALOG, get_model, licence_allowed
 from clarity.pipeline.colour import grey_world
 from clarity.pipeline.condition import deblock_level, sigma_level
 from clarity.pipeline.encode import (
@@ -27,7 +28,7 @@ from clarity.pipeline.job import Hooks, Settings, commands_for, process_frames, 
 from clarity.pipeline.probe import parse_probe, require_sdr
 from clarity.pipeline.resume import append_journal, chunk_path, load_done, pending, publish_chunk, write_plan
 from clarity.pipeline.resume import ChunkRecord
-from clarity.pipeline.scenes import plan_chunks
+from clarity.pipeline.scenes import parse_scene_cuts, plan_chunks
 from clarity.pipeline.sharpen import sharpen_frames
 from clarity.platform_gate import assess_platform, linux_supported, windows_supported
 from clarity.ui import theme
@@ -169,6 +170,9 @@ def test_hdr_is_refused() -> None:
 def test_scene_chunks_reset_at_cuts() -> None:
     assert plan_chunks(10, [4], max_frames=100) == [(0, 4), (4, 10)]
     assert plan_chunks(2500, [], max_frames=1000) == [(0, 1000), (1000, 2000), (2000, 2500)]
+    text = "frame:0    pts:0    pts_time:0\nlavfi.scene_score=0.2\nframe:1    pts:24    pts_time:1.0\nlavfi.scene_score=0.9\n"
+    assert parse_scene_cuts(text, 24.0) == [24]
+    assert parse_scene_cuts(text, 0.0) == []
 
 
 def test_colour_is_constant_across_the_chunk() -> None:
@@ -380,3 +384,39 @@ def test_bench_report_mentions_fps(tmp_path: Path) -> None:
     assert payload["clip_sha256"]
     md_path, json_path = write_report(tmp_path, "gpu", [], "clip.mp4")
     assert md_path.is_file() and json_path.is_file()
+
+
+def test_tensorrt_providers_are_fp16_without_cpu(tmp_path: Path) -> None:
+    providers = tensorrt_providers(tmp_path)
+    name, options = providers[0]
+    assert name == "TensorrtExecutionProvider"
+    assert options["trt_fp16_enable"] is True
+    assert options["trt_engine_cache_enable"] is True
+    assert options["trt_engine_cache_path"] == str(tmp_path)
+    assert providers[1] == "CUDAExecutionProvider"
+    joined = " ".join(item if isinstance(item, str) else item[0] for item in providers)
+    assert "CPUExecutionProvider" not in joined
+
+
+def test_save_crops_writes_pngs(tmp_path: Path) -> None:
+    before = np.zeros((8, 8, 3), dtype=np.float32)
+    after = np.ones((8, 8, 3), dtype=np.float32)
+    left, right = save_crops(before, after, tmp_path, "demo")
+    assert left.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    assert right.is_file()
+    assert right.stat().st_size > 8
+
+
+def test_conditioned_preview_adds_the_deblock_channel() -> None:
+    model = get_model("drunet-deblocking-color")
+    nchw = conditioned_nchw(model, np.zeros((4, 4, 3), dtype=np.float32))
+    assert nchw.shape == (1, 4, 4, 4)
+    assert nchw[0, 3, 0, 0] == pytest.approx(deblock_level(40))
+
+
+def test_bench_refuses_without_a_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom() -> str:
+        raise RuntimeError("no gpu")
+
+    monkeypatch.setattr("clarity.bench.require_gpu", boom)
+    assert bench_main(["--frames", "1"]) == 2

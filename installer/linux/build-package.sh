@@ -4,7 +4,7 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 stage="$root/dist/VoxprintClarity.AppDir"
 rm -rf "$stage"
-mkdir -p "$stage/usr/bin" "$stage/usr/share/applications" "$stage/usr/share/icons/hicolor/256x256/apps"
+mkdir -p "$stage/usr/bin" "$stage/usr/share/applications" "$stage/usr/share/icons/hicolor/256x256/apps" "$stage/usr/share/mime/packages"
 cp -a "$root/clarity" "$root/locales" "$root/docs" "$stage/usr/bin/"
 cp "$root/main.py" "$root/LICENSE" "$root/NOTICE" "$root/requirements.txt" "$root/requirements-gpu.txt" "$root/pyproject.toml" "$root/BUILD.json" "$stage/usr/bin/"
 cp "$root/branding/clarity-256.png" "$stage/usr/share/icons/hicolor/256x256/apps/voxprint-clarity.png"
@@ -13,6 +13,16 @@ cp "$root/branding/clarity-256.png" "$stage/voxprint-clarity.png"
 cp "$root/branding/clarity-256.png" "$stage/.DirIcon"
 cp "$root/installer/linux/voxprint-clarity.desktop" "$stage/usr/share/applications/voxprint-clarity.desktop"
 cp "$root/installer/linux/voxprint-clarity.desktop" "$stage/voxprint-clarity.desktop"
+cp "$root/installer/linux/voxprint-clarity.xml" "$stage/usr/share/mime/packages/voxprint-clarity.xml"
+cp "$root/installer/linux/uninstall.sh" "$stage/usr/bin/voxprint-clarity-uninstall"
+chmod 755 "$stage/usr/bin/voxprint-clarity-uninstall"
+cat > "$stage/usr/bin/voxprint-clarity" << 'EOF'
+#!/bin/sh
+here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+export PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 "$here/main.py" "$@"
+EOF
+chmod 755 "$stage/usr/bin/voxprint-clarity"
 cat > "$stage/AppRun" << 'EOF'
 #!/bin/sh
 here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)

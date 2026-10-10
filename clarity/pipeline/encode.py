@@ -129,6 +129,134 @@ def encode_command(
     return command
 
 
+def decode_range_command(
+    ffmpeg: str,
+    source: str,
+    start: int,
+    stop: int,
+    *,
+    deinterlace: bool,
+) -> list[str]:
+    """NVDEC to raw rgb24 for the half-open frame range ``[start, stop)``."""
+    if stop <= start:
+        raise ClarityError("a chunk must contain at least one frame")
+    filters: list[str] = []
+    if deinterlace:
+        filters.append("bwdif")
+    filters.append(f"select='between(n,{int(start)},{int(stop) - 1})'")
+    filters.append("setpts=N/FRAME_RATE/TB")
+    return [
+        ffmpeg,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-hwaccel",
+        "cuda",
+        "-i",
+        source,
+        "-vf",
+        ",".join(filters),
+        "-frames:v",
+        str(int(stop) - int(start)),
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "pipe:1",
+    ]
+
+
+def encode_chunk_command(
+    ffmpeg: str,
+    *,
+    encoder: str,
+    destination: str,
+    width: int,
+    height: int,
+    fps: float,
+) -> list[str]:
+    """One restored chunk, video only. Audio is copied once when the chunks are joined."""
+    rate = f"{fps:.6f}" if fps > 0 else "24000/1001"
+    return [
+        ffmpeg,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "-s",
+        f"{width}x{height}",
+        "-r",
+        rate,
+        "-i",
+        "pipe:0",
+        *video_args(encoder),
+        "-an",
+        "-f",
+        "matroska",
+        destination,
+    ]
+
+
+def concat_list(paths: list[str]) -> str:
+    """The concat demuxer list. Paths are escaped for a single-quoted ffmpeg line."""
+    lines: list[str] = []
+    for path in paths:
+        escaped = path.replace("'", "'\\''")
+        lines.append(f"file '{escaped}'")
+    return "\n".join(lines) + "\n"
+
+
+def concat_command(
+    ffmpeg: str,
+    list_file: str,
+    source_for_audio: str,
+    *,
+    container: Container,
+    destination: str,
+    copy_audio: bool,
+) -> list[str]:
+    """Join finished chunks with ``-c copy``. Video is not encoded a second time."""
+    suffix = "matroska" if container is Container.MKV else "mp4"
+    command = [
+        ffmpeg,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        list_file,
+        "-i",
+        source_for_audio,
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a?",
+        "-map",
+        "1:s?",
+        "-map_chapters",
+        "1",
+        "-map_metadata",
+        "1",
+        "-c",
+        "copy",
+        *audio_args(copy=copy_audio),
+        "-c:s",
+        "copy",
+        "-f",
+        suffix,
+        destination,
+    ]
+    return command
+
+
 def parse_encoder_list(text: str) -> set[str]:
     """Names from ``ffmpeg -encoders``."""
     names: set[str] = set()

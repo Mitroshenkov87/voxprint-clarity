@@ -30,6 +30,16 @@ from clarity.i18n import current_language, languages, tr
 from clarity.pipeline.encode import Container, VideoCodec
 from clarity.pipeline.job import Settings
 from clarity.pipeline.runner import CancelToken, JobSpec, run_job
+from clarity.project import (
+    Project,
+    ProjectFormatError,
+    load_project,
+    load_recent,
+    remember_recent,
+    save_project,
+    sync_resume,
+    work_dir_for as project_work_dir,
+)
 from clarity.ui.acrylic import enable_acrylic
 from clarity.ui.theme import build_style
 
@@ -44,11 +54,18 @@ class _JobSignals(QObject):
 class _JobThread(QThread):
     """Runs ``run_job`` off the UI thread. Cancel kills ffmpeg through the token."""
 
-    def __init__(self, spec: JobSpec, token: CancelToken, runner: Runner) -> None:
+    def __init__(
+        self,
+        spec: JobSpec,
+        token: CancelToken,
+        runner: Runner,
+        on_chunk: Callable[[Path], None] | None = None,
+    ) -> None:
         super().__init__()
         self._spec = spec
         self._token = token
         self._runner = runner
+        self._on_chunk = on_chunk
         self.signals = _JobSignals()
 
     def run(self) -> None:
@@ -56,7 +73,7 @@ class _JobThread(QThread):
             self.signals.progressed.emit(fraction, text)
 
         try:
-            self._runner(self._spec, token=self._token, progress=report)
+            self._runner(self._spec, token=self._token, progress=report, on_chunk=self._on_chunk)
         except Cancelled:
             self.signals.finished.emit(False, "cancelled")
         except Exception as exc:
@@ -72,6 +89,8 @@ class MainWindow(QMainWindow):
         self._thread: _JobThread | None = None
         self._token: CancelToken | None = None
         self._closing = False
+        self._project_path: Path | None = None
+        self._project: Project | None = None
         self.setWindowTitle(APP_NAME)
         self.resize(880, 640)
         self.setStyleSheet(build_style())
@@ -159,6 +178,20 @@ class MainWindow(QMainWindow):
         self.status.setObjectName("subtitle")
         layout.addWidget(self.status)
 
+        project_row = QHBoxLayout()
+        self.open_project_button = QPushButton(tr("project.open"))
+        self.open_project_button.clicked.connect(self._browse_project)
+        self.save_project_button = QPushButton(tr("project.save"))
+        self.save_project_button.clicked.connect(self._browse_save)
+        self.recent = QComboBox()
+        self.recent.setObjectName("recent")
+        self.recent.activated.connect(self._recent_chosen)
+        project_row.addWidget(self.open_project_button)
+        project_row.addWidget(self.save_project_button)
+        project_row.addWidget(self.recent, 1)
+        layout.addLayout(project_row)
+        self._reload_recent()
+
         button_row = QHBoxLayout()
         button_row.addStretch(1)
         self.start = QPushButton(tr("start"))
@@ -181,6 +214,9 @@ class MainWindow(QMainWindow):
             self.upscale,
             self.colour,
             self.sharpen,
+            self.open_project_button,
+            self.save_project_button,
+            self.recent,
         )
 
     def showEvent(self, event: object) -> None:  # noqa: N802 - Qt override
@@ -286,9 +322,14 @@ class MainWindow(QMainWindow):
             return
         destination = self._destination(source)
         self.output.setText(str(destination))
-        spec = JobSpec(source=source, destination=destination, settings=self._settings())
+        spec = JobSpec(
+            source=source,
+            destination=destination,
+            settings=self._settings(),
+            work=self._work_for(destination),
+        )
         token = CancelToken()
-        job = _JobThread(spec, token, self._runner)
+        job = _JobThread(spec, token, self._runner, on_chunk=self._on_chunk)
         job.signals.progressed.connect(self._on_progress)
         job.signals.finished.connect(self._on_finished)
         self._thread = job
@@ -314,10 +355,118 @@ class MainWindow(QMainWindow):
             return
         if ok:
             self.progress.setValue(100)
+            self._sync_project(self._work_for(Path(self.output.text().strip() or "out.mkv")))
             self.status.setText(tr("status.done"))
             return
         if message == "cancelled":
+            self._sync_project(self._work_for(Path(self.output.text().strip() or "out.mkv")))
             self.status.setText(tr("status.cancelled"))
             return
         self.status.setText(message)
         QMessageBox.warning(self, APP_NAME, message)
+
+    def _work_for(self, destination: Path) -> Path:
+        if self._project_path is not None:
+            resume = self._project.resume if self._project is not None else {}
+            return project_work_dir(self._project_path, resume)
+        return destination.with_name(destination.name + ".work")
+
+    def _on_chunk(self, work: Path) -> None:
+        self._sync_project(work)
+
+    def _sync_project(self, work: Path) -> None:
+        path = self._project_path
+        if path is None or not path.is_file() or not work.is_dir():
+            return
+        try:
+            self._project = sync_resume(path, work)
+        except (OSError, ProjectFormatError, ClarityError):
+            return
+
+    def _reload_recent(self) -> None:
+        self.recent.blockSignals(True)
+        self.recent.clear()
+        self.recent.addItem(tr("project.recent"), "")
+        for item in load_recent():
+            self.recent.addItem(Path(item).name, item)
+        self.recent.blockSignals(False)
+
+    def _remember(self, path: Path) -> None:
+        remember_recent(path)
+        self._reload_recent()
+
+    def _browse_project(self) -> None:
+        path, _selected = QFileDialog.getOpenFileName(self, tr("project.open"), "", tr("project.filter"))
+        if path:
+            self.open_project(Path(path))
+
+    def _browse_save(self) -> None:
+        suggested = str(self._project_path or "")
+        path, _selected = QFileDialog.getSaveFileName(self, tr("project.save"), suggested, tr("project.filter"))
+        if path:
+            self.save_project(Path(path))
+
+    def _recent_chosen(self, index: int) -> None:
+        value = self.recent.itemData(index)
+        if isinstance(value, str) and value:
+            self.open_project(Path(value))
+
+    def open_project(self, path: Path) -> None:
+        try:
+            project = load_project(path)
+        except ProjectFormatError as exc:
+            QMessageBox.warning(self, APP_NAME, str(exc))
+            return
+        self._project = project
+        self._project_path = project.path
+        self._apply_project(project)
+        self._remember(project.path)
+        if project.resume.get("journal"):
+            self.status.setText(tr("status.resumed"))
+
+    def save_project(self, path: Path) -> None:
+        source_text = self.source.text().strip()
+        if not source_text or not Path(source_text).is_file():
+            QMessageBox.warning(self, APP_NAME, tr("error.missing_source"))
+            return
+        source = Path(source_text)
+        destination = self._destination(source)
+        self.output.setText(str(destination))
+        try:
+            project = save_project(
+                path,
+                source=source,
+                settings=self._settings(),
+                destination=destination,
+                resume=self._project.resume if self._project is not None else {},
+                previous=self._project,
+            )
+        except ProjectFormatError as exc:
+            QMessageBox.warning(self, APP_NAME, str(exc))
+            return
+        self._project = project
+        self._project_path = project.path
+        self._remember(project.path)
+        self.status.setText(tr("status.saved"))
+
+    def _apply_project(self, project: Project) -> None:
+        if project.source is not None:
+            self.source.setText(str(project.source))
+        elif isinstance(project.manifest.get("source"), dict):
+            self.source.setText(str(project.manifest["source"].get("absolute") or ""))
+        if project.destination is not None:
+            self.output.setText(str(project.destination))
+        settings = project.settings
+        self._select(self.mode, settings.mode)
+        self._select(self.container, settings.container.value)
+        self._select(self.codec, settings.codec.value)
+        self.upscale.setChecked(settings.upscale)
+        self.anime.setChecked(settings.anime)
+        self.colour.setChecked(settings.white_balance or settings.levels)
+        self.sharpen.setValue(int(round(settings.sharpen * 100)))
+
+    def _select(self, box: QComboBox, value: str) -> None:
+        for index in range(box.count()):
+            if box.itemData(index) == value:
+                box.setCurrentIndex(index)
+                return

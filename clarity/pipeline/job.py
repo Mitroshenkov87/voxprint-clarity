@@ -75,6 +75,8 @@ class Settings:
             "container": self.container.value,
             "codec": self.codec.value,
             "copy_audio": self.copy_audio,
+            "overlap": self.overlap,
+            "max_frames": self.max_frames,
         }
 
 

@@ -32,5 +32,11 @@
   "status.cancelled": "Cancelled",
   "status.cancelling": "Stopping",
   "error.no_source": "Choose a video first.",
-  "error.missing_source": "That video file was not found."
+  "error.missing_source": "That video file was not found.",
+  "project.open": "Open project",
+  "project.save": "Save project",
+  "project.recent": "Recent",
+  "project.filter": "Clarity project (*.vxclarity);;All files (*.*)",
+  "status.resumed": "Resuming from the last finished chunk",
+  "status.saved": "Project saved"
 }

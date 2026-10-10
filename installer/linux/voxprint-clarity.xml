@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/vnd.voxprint.clarity+zip">
+    <comment>Voxprint AI Clarity project</comment>
+    <glob pattern="*.vxclarity"/>
+    <icon name="voxprint-clarity"/>
+    <magic priority="80">
+      <match type="string" offset="0" value="PK\x03\x04">
+        <match type="string" offset="30" value="mimetypeapplication/vnd.voxprint.clarity+zip"/>
+      </match>
+    </magic>
+  </mime-type>
+</mime-info>

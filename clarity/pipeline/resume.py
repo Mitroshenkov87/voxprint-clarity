@@ -90,3 +90,41 @@ def publish_chunk(partial: Path, final: Path) -> None:
     """Publish a finished chunk. Callers write ``partial`` first."""
     final.parent.mkdir(parents=True, exist_ok=True)
     os.replace(partial, final)
+
+
+def file_sha256(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        while True:
+            block = handle.read(1024 * 1024)
+            if not block:
+                break
+            hasher.update(block)
+    return hasher.hexdigest()
+
+
+def load_plan(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def plan_matches(plan: dict[str, Any], *, digest: str, source: str, ranges: list[tuple[int, int]]) -> bool:
+    stored = plan.get("ranges")
+    expected = [list(pair) for pair in ranges]
+    return plan.get("settings_sha256") == digest and plan.get("source") == source and stored == expected
+
+
+def reset_chunks(folder: Path) -> None:
+    """Drop a stale journal and chunk files. The work folder itself stays."""
+    (folder / "journal.jsonl").unlink(missing_ok=True)
+    chunks = folder / "chunks"
+    if not chunks.is_dir():
+        return
+    for path in chunks.iterdir():
+        if path.is_file() and (path.suffix == ".mkv" or path.name.endswith(".partial")):
+            path.unlink()

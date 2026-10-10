@@ -112,7 +112,6 @@ def _control(
     lock: _Lock,
     spawned: list[list[str]],
     frames: bytes,
-    partial: Path,
 ) -> tuple[Control, _Bytes, list[_Proc]]:
     encoded = _Bytes()
     procs: list[_Proc] = []
@@ -120,17 +119,24 @@ def _control(
     def run_text(argv: list[str]) -> str:
         if argv[0] == "ffprobe":
             return json.dumps(_PROBE)
+        if any("gt(scene" in part for part in argv):
+            return "frame:0    pts:1    pts_time:1\nlavfi.scene_score=0.8\n"
         return _ENCODERS
 
     def spawn(argv: list[str]) -> _Proc:
         assert lock.held
         lock.spawned_while_held += 1
-        spawned.append(argv)
+        spawned.append(list(argv))
         if "pipe:1" in argv:
-            proc = _Proc(stdout=_Bytes(frames))
-        else:
-            partial.write_bytes(b"mkv-partial")
+            proc = _Proc(stdout=_Bytes(frames[: 4 * 4 * 3]))
+        elif "pipe:0" in argv:
+            Path(argv[-1]).parent.mkdir(parents=True, exist_ok=True)
+            Path(argv[-1]).write_bytes(b"chunk")
             proc = _Proc(stdin=encoded)
+        else:
+            Path(argv[-1]).parent.mkdir(parents=True, exist_ok=True)
+            Path(argv[-1]).write_bytes(b"joined")
+            proc = _Proc()
         procs.append(proc)
         return proc
 
@@ -159,61 +165,89 @@ def _settings(**overrides: object) -> Settings:
     return settings
 
 
+def _job(tmp_path: Path) -> tuple[Path, Path, Path]:
+    source = tmp_path / "in.mkv"
+    source.write_bytes(b"video")
+    destination = tmp_path / "out.mkv"
+    work = destination.with_name(destination.name + ".work")
+    return source, destination, work
+
+
 def test_run_job_decodes_restores_and_encodes_av1(tmp_path: Path) -> None:
-    source = tmp_path / "in.mkv"
-    source.write_bytes(b"video")
-    destination = tmp_path / "out.mkv"
-    partial = destination.with_suffix(destination.suffix + ".partial")
+    source, destination, work = _job(tmp_path)
     frames = bytes(4 * 4 * 3 * 2)
     lock = _Lock()
     spawned: list[list[str]] = []
-    control, encoded, procs = _control(lock, spawned, frames, partial)
+    control, encoded, _procs = _control(lock, spawned, frames)
     run_job(JobSpec(source, destination, _settings()), control)
-    assert procs[0].killed is False
-    assert procs[1].killed is False
-    decode, encode = spawned
-    assert "cuda" in decode
-    assert "pipe:1" in decode
-    assert "av1_nvenc" in encode
-    assert encode[encode.index("-c:a") + 1] == "copy"
-    assert not any("264" in part for part in encode)
+    decodes = [argv for argv in spawned if "pipe:1" in argv]
+    encodes = [argv for argv in spawned if "pipe:0" in argv]
+    joins = [argv for argv in spawned if "concat" in argv]
+    assert len(decodes) == 2
+    assert "cuda" in decodes[0]
+    assert "between(n,0,0)" in " ".join(decodes[0])
+    assert "between(n,1,1)" in " ".join(decodes[1])
+    assert all("av1_nvenc" in argv and "-an" in argv for argv in encodes)
+    assert len(joins) == 1
+    joined = joins[0]
+    assert joined[joined.index("-c:a") + 1] == "copy"
+    assert "av1_nvenc" not in joined
+    assert "-c" in joined and "copy" in joined
+    assert str(source) in joined
+    assert not any("264" in part for argv in spawned for part in argv)
     assert lock.name == "clarity:restore"
-    assert lock.spawned_while_held == 2
     assert lock.held is False
-    assert bytes(encoded.written) == frames
-    assert destination.read_bytes() == b"mkv-partial"
-    assert not partial.exists()
+    assert len(encoded.written) == len(frames)
+    assert destination.read_bytes() == b"joined"
+    assert (work / "chunks" / "00000.mkv").is_file()
+    assert (work / "chunks" / "00001.mkv").is_file()
+    assert (work / "journal.jsonl").is_file()
 
 
-def test_run_job_cancel_stops_before_the_next_chunk(tmp_path: Path) -> None:
-    source = tmp_path / "in.mkv"
-    source.write_bytes(b"video")
-    destination = tmp_path / "out.mkv"
-    partial = destination.with_suffix(destination.suffix + ".partial")
+def test_run_job_cancel_resumes_from_the_last_finished_chunk(tmp_path: Path) -> None:
+    source, destination, work = _job(tmp_path)
     frames = bytes(4 * 4 * 3 * 2)
     lock = _Lock()
     spawned: list[list[str]] = []
-    control, encoded, procs = _control(lock, spawned, frames, partial)
+    control, encoded, procs = _control(lock, spawned, frames)
     token = CancelToken()
-    seen = {"n": 0}
 
     def progress(fraction: float, text: str) -> None:
         del fraction, text
-        seen["n"] += 1
         token.cancel()
 
     with pytest.raises(Cancelled):
-        run_job(
-            JobSpec(source, destination, _settings(max_frames=1)),
-            control,
-            token=token,
-            progress=progress,
-        )
-    assert seen["n"] == 1
-    assert len(encoded.written) == 4 * 4 * 3
-    assert not partial.exists()
+        run_job(JobSpec(source, destination, _settings()), control, token=token, progress=progress)
+    assert (work / "chunks" / "00000.mkv").is_file()
+    assert not (work / "chunks" / "00001.mkv").exists()
     assert not destination.exists()
+    assert len(encoded.written) == 4 * 4 * 3
     assert all(proc.killed for proc in procs)
+
+    lock2 = _Lock()
+    spawned2: list[list[str]] = []
+    control2, encoded2, _procs2 = _control(lock2, spawned2, frames)
+    run_job(JobSpec(source, destination, _settings()), control2)
+    decodes = [argv for argv in spawned2 if "pipe:1" in argv]
+    assert len(decodes) == 1
+    assert "between(n,1,1)" in " ".join(decodes[0])
+    assert destination.read_bytes() == b"joined"
+    assert len(encoded2.written) == 4 * 4 * 3
+
+
+def test_run_job_settings_change_restarts_chunks(tmp_path: Path) -> None:
+    source, destination, _work = _job(tmp_path)
+    frames = bytes(4 * 4 * 3)
+    lock = _Lock()
+    spawned: list[list[str]] = []
+    control, _encoded, _procs = _control(lock, spawned, frames)
+    run_job(JobSpec(source, destination, _settings()), control)
+    lock2 = _Lock()
+    spawned2: list[list[str]] = []
+    control2, _encoded2, _procs2 = _control(lock2, spawned2, frames)
+    run_job(JobSpec(source, destination, _settings(sharpen=0.2)), control2)
+    decodes = [argv for argv in spawned2 if "pipe:1" in argv]
+    assert len(decodes) == 2
 
 
 def _app() -> QApplication:
@@ -239,8 +273,8 @@ def test_start_button_runs_the_injected_job(tmp_path: Path) -> None:
     source.write_bytes(b"video")
     seen: list[JobSpec] = []
 
-    def runner(spec: JobSpec, control: object = None, *, token: CancelToken | None = None, progress: object = None) -> None:
-        del control, token
+    def runner(spec: JobSpec, control: object = None, *, token: CancelToken | None = None, progress: object = None, on_chunk: object = None) -> None:
+        del control, token, on_chunk
         seen.append(spec)
         assert callable(progress)
         progress(0.5, "1/2")
@@ -271,8 +305,8 @@ def test_start_button_cancel(tmp_path: Path) -> None:
     source.write_bytes(b"video")
     started = threading.Event()
 
-    def runner(spec: JobSpec, control: object = None, *, token: CancelToken | None = None, progress: object = None) -> None:
-        del spec, control, progress
+    def runner(spec: JobSpec, control: object = None, *, token: CancelToken | None = None, progress: object = None, on_chunk: object = None) -> None:
+        del spec, control, progress, on_chunk
         assert token is not None
         started.set()
         while not token.is_set():

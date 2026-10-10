@@ -24,6 +24,11 @@ runs `installer/install-runtime.ps1`, which:
 
 The Start menu folder is `Voxprint`. The shortcut is **Voxprint AI Clarity**.
 
+The installer registers `.vxclarity` for the current user (HKCU). The ProgID is
+`Voxprint.Clarity.Project`. The document icon is `branding\clarity.ico`. Open
+runs `pythonw main.py` with the project path. Uninstall deletes that ProgID
+and the extension entry.
+
 Silent install without the GPU runtime (CI, and any machine that should only
 receive the files):
 
@@ -55,7 +60,12 @@ bash installer/linux/build-package.sh
 ```
 
 That writes `dist/VoxprintClarity-linux.tar.gz`. An AppImage is attempted when
-appimagetool can be downloaded.
+appimagetool can be downloaded. The package includes
+`usr/share/mime/packages/voxprint-clarity.xml`, a `.desktop` file whose
+`MimeType` is `application/vnd.voxprint.clarity+zip`, and
+`usr/bin/voxprint-clarity`. After extracting onto a prefix, update the MIME
+and desktop databases. `voxprint-clarity-uninstall` removes the association,
+the desktop file, and the icon from that prefix (default `/usr`).
 
 ## Shared folders
 

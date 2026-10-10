@@ -32,9 +32,31 @@ from clarity.engine_shim import (
 )
 from clarity.errors import Cancelled, ClarityError
 from clarity.models import ClarityModel
-from clarity.pipeline.encode import parse_encoder_list
-from clarity.pipeline.job import Hooks, Settings, commands_for, models_for, process_frames, wait_for_thermal
+from clarity.pipeline.encode import (
+    concat_command,
+    concat_list,
+    decode_range_command,
+    encode_chunk_command,
+    parse_encoder_list,
+    select_encoder,
+)
+from clarity.pipeline.job import Hooks, Settings, models_for, process_frames, wait_for_thermal
 from clarity.pipeline.probe import parse_probe, probe_command, require_sdr
+from clarity.pipeline.resume import (
+    ChunkRecord,
+    append_journal,
+    chunk_path,
+    file_sha256,
+    load_done,
+    load_plan,
+    pending,
+    plan_matches,
+    publish_chunk,
+    reset_chunks,
+    settings_digest,
+    write_plan,
+)
+from clarity.pipeline.scenes import parse_scene_cuts, plan_chunks, scene_command
 
 try:
     import torch
@@ -79,6 +101,8 @@ class JobSpec:
     settings: Settings
     ffmpeg: str = "ffmpeg"
     ffprobe: str = "ffprobe"
+    work: Path | None = None
+    scene_threshold: float = 0.4
 
 
 @dataclass
@@ -214,17 +238,187 @@ def _fail_text(sink: list[str], code: int) -> str:
     return f"ffmpeg failed ({code})"
 
 
+def work_dir_for(spec: JobSpec) -> Path:
+    if spec.work is not None:
+        return spec.work
+    return spec.destination.with_name(spec.destination.name + ".work")
+
+
+def _finished_records(journal: Path, folder: Path, ranges: list[tuple[int, int]]) -> dict[int, ChunkRecord]:
+    """Journal rows whose chunk file is still on disk and hashes to the recorded digest."""
+    done = load_done(journal)
+    usable: dict[int, ChunkRecord] = {}
+    for index, (start, stop) in enumerate(ranges):
+        record = done.get(index)
+        if record is None or record.start != start or record.stop != stop or not record.sha256:
+            continue
+        path = chunk_path(folder, index)
+        if path.is_file() and file_sha256(path) == record.sha256:
+            usable[index] = record
+    return usable
+
+
+def _prepare_plan(spec: JobSpec, probe: Any, bound: Control) -> tuple[Path, list[tuple[int, int]], dict[int, ChunkRecord]]:
+    if probe.frames < 1:
+        raise ClarityError("ffprobe did not report a frame count, so the job cannot resume by chunk")
+    scene_text = bound.run_text(scene_command(spec.ffmpeg, str(spec.source), spec.scene_threshold))
+    cuts = parse_scene_cuts(scene_text, probe.fps)
+    ranges = plan_chunks(probe.frames, cuts, spec.settings.max_frames)
+    digest = settings_digest(spec.settings.digest_payload())
+    work = work_dir_for(spec)
+    chunks = work / "chunks"
+    chunks.mkdir(parents=True, exist_ok=True)
+    plan_path = work / "plan.json"
+    journal = work / "journal.jsonl"
+    source = str(spec.source.resolve())
+    existing = load_plan(plan_path)
+    if existing is None or not plan_matches(existing, digest=digest, source=source, ranges=ranges):
+        reset_chunks(work)
+        write_plan(
+            plan_path,
+            {
+                "version": 1,
+                "settings_sha256": digest,
+                "source": source,
+                "cuts": cuts,
+                "ranges": [list(pair) for pair in ranges],
+                "width": probe.width,
+                "height": probe.height,
+                "fps": probe.fps,
+            },
+        )
+        return work, ranges, {}
+    return work, ranges, _finished_records(journal, chunks, ranges)
+
+
+def _restore_range(
+    spec: JobSpec,
+    bound: Control,
+    token: CancelToken,
+    *,
+    probe: Any,
+    encoder_name: str,
+    start: int,
+    stop: int,
+    partial: Path,
+    tile: int,
+    batch: int,
+) -> tuple[int, int]:
+    """Decode one chunk, restore it, and leave the encoded bytes in ``partial``."""
+    out_h = probe.height * (2 if spec.settings.upscale else 1)
+    out_w = probe.width * (2 if spec.settings.upscale else 1)
+    frame_bytes = probe.width * probe.height * 3
+    count = stop - start
+    decoder = bound.spawn(
+        decode_range_command(
+            spec.ffmpeg,
+            str(spec.source),
+            start,
+            stop,
+            deinterlace=probe.interlaced,
+        )
+    )
+    encoder = bound.spawn(
+        encode_chunk_command(
+            spec.ffmpeg,
+            encoder=encoder_name,
+            destination=str(partial),
+            width=out_w,
+            height=out_h,
+            fps=probe.fps,
+        )
+    )
+    token.watch(decoder)
+    token.watch(encoder)
+    stderr_text: list[str] = []
+    threading.Thread(target=_drain, args=(getattr(decoder, "stderr", None), stderr_text), daemon=True).start()
+    threading.Thread(target=_drain, args=(getattr(encoder, "stderr", None), stderr_text), daemon=True).start()
+    try:
+        source_out = decoder.stdout
+        if source_out is None:
+            raise ClarityError("the decoder has no stdout")
+        frames: list[np.ndarray] = []
+        for _ in range(count):
+            if token.is_set():
+                raise Cancelled("cancelled")
+            raw = _read_exact(source_out, frame_bytes, token)
+            if token.is_set():
+                raise Cancelled("cancelled")
+            if len(raw) != frame_bytes:
+                raise ClarityError("the decoder ended in the middle of a frame")
+            frame = np.frombuffer(raw, dtype=np.uint8).reshape(probe.height, probe.width, 3).astype(np.float32)
+            frames.append(frame / 255.0)
+        if token.is_set():
+            raise Cancelled("cancelled")
+        restored = process_frames(np.stack(frames), spec.settings, bound.infer, tile=tile, batch=batch)
+        if restored.shape != (count, out_h, out_w, 3):
+            raise ClarityError(f"restored frames are {restored.shape}, expected {(count, out_h, out_w, 3)}")
+        encoder_in = encoder.stdin
+        if encoder_in is None:
+            raise ClarityError("the encoder has no stdin")
+        _write_all(encoder_in, _as_bytes(restored))
+        encoder_in.close()
+        code_decode = int(decoder.wait(timeout=120))
+        code_encode = int(encoder.wait(timeout=120))
+        if code_decode != 0 or code_encode != 0:
+            raise ClarityError(_fail_text(stderr_text, code_decode or code_encode))
+    except Cancelled:
+        _discard(decoder, encoder, partial)
+        raise
+    except Exception:
+        _discard(decoder, encoder, partial)
+        if token.is_set():
+            raise Cancelled("cancelled") from None
+        raise
+    return tile, batch
+
+
+def _device_budget(
+    spec: JobSpec,
+    bound: Control,
+    token: CancelToken,
+    *,
+    started: float,
+    paused: bool,
+    tile: int,
+    batch: int,
+    baseline: int | None,
+) -> tuple[bool, int, int, int | None]:
+    hooks = Hooks(
+        infer=bound.infer,
+        decide=thermal_decide,
+        elapsed=lambda: time.monotonic() - started,
+    )
+    paused = _wait(hooks, paused, token)
+    budget = float(getattr(measure(), "budget_gb", 0.0) or 0.0)
+    if spec.settings.tile <= 0:
+        tile = choose_tile(budget, 0, 0)
+    usage = video_module().read_shared_usage()
+    if video_module().sysmem_spill(usage, baseline):
+        empty_cuda_cache()
+        batch = note_spill(batch, True)
+        smaller = halve_tile(tile)
+        if smaller is not None:
+            tile = int(smaller)
+        baseline = usage
+    elif baseline is None:
+        baseline = usage
+    return paused, tile, batch, baseline
+
+
 def run_job(
     spec: JobSpec,
     control: Control | None = None,
     *,
     token: CancelToken | None = None,
     progress: Progress | None = None,
+    on_chunk: Callable[[Path], None] | None = None,
 ) -> None:
-    """Decode with NVDEC, restore each chunk, and encode. Audio is stream-copied.
+    """Decode each unfinished scene chunk, restore it, and join the chunks with ``-c copy``.
 
     Omitting ``control`` uses the engine shim, the suite GPU lock, and ffmpeg.
-    A set cancel token stops the job and deletes the partial file.
+    A cancel keeps finished chunks. The next run of the same work folder resumes
+    there. The final file is published only after every chunk has been joined.
     """
     if not spec.source.is_file():
         raise ClarityError("the source video was not found")
@@ -246,125 +440,94 @@ def run_job(
     if token.is_set():
         raise Cancelled("cancelled")
     encoders = parse_encoder_list(bound.run_text([spec.ffmpeg, "-hide_banner", "-encoders"]))
-    partial = spec.destination.with_suffix(spec.destination.suffix + ".partial")
-    partial.parent.mkdir(parents=True, exist_ok=True)
-    commands = commands_for(
-        probe,
-        spec.settings,
-        ffmpeg=spec.ffmpeg,
-        source=str(spec.source),
-        destination=str(partial),
-        encoders=encoders,
-    )
-    frame_bytes = probe.width * probe.height * 3
-    out_h = probe.height * (2 if spec.settings.upscale else 1)
-    out_w = probe.width * (2 if spec.settings.upscale else 1)
-    total = probe.frames if probe.frames > 0 else 0
+    encoder_name = select_encoder(spec.settings.codec, encoders)
+    work, ranges, done = _prepare_plan(spec, probe, bound)
+    chunks = work / "chunks"
+    journal = work / "journal.jsonl"
+    total = probe.frames
     eta = max(120.0, float(total or 300))
     tile = spec.settings.tile if spec.settings.tile > 0 else 512
     batch = max(1, spec.settings.batch)
     baseline: int | None = None
     paused = False
     started = time.monotonic()
-    stderr_text: list[str] = []
-    done = 0
-
-    def flush(chunk: list[np.ndarray]) -> None:
-        nonlocal tile, batch, baseline, paused, done
-        if token.is_set():
-            raise Cancelled("cancelled")
-        if bound.device:
-            hooks = Hooks(
-                infer=bound.infer,
-                decide=thermal_decide,
-                elapsed=lambda: time.monotonic() - started,
-            )
-            paused = _wait(hooks, paused, token)
-            budget = float(getattr(measure(), "budget_gb", 0.0) or 0.0)
-            if spec.settings.tile <= 0:
-                tile = choose_tile(budget, 0, 0)
-            usage = video_module().read_shared_usage()
-            if video_module().sysmem_spill(usage, baseline):
-                empty_cuda_cache()
-                batch = note_spill(batch, True)
-                smaller = halve_tile(tile)
-                if smaller is not None:
-                    tile = int(smaller)
-                baseline = usage
-            elif baseline is None:
-                baseline = usage
-        restored = process_frames(
-            np.stack(chunk),
-            spec.settings,
-            bound.infer,
-            tile=tile,
-            batch=batch,
-        )
-        if restored.shape[1] != out_h or restored.shape[2] != out_w or restored.shape[-1] != 3:
-            raise ClarityError(f"restored frames are {restored.shape}, expected {(len(chunk), out_h, out_w, 3)}")
-        current = encoder
-        if current is None or current.stdin is None:
-            raise ClarityError("the encoder has no stdin")
-        _write_all(current.stdin, _as_bytes(restored))
-        done += len(chunk)
-        denom = total if total > 0 else done
-        bound.progress(done / denom, f"{done}/{denom}")
-
-    decoder: Proc | None = None
-    encoder: Proc | None = None
+    finished_frames = sum(record.stop - record.start for record in done.values())
+    if finished_frames:
+        bound.progress(finished_frames / total, f"{finished_frames}/{total}")
+    partial = spec.destination.with_name(spec.destination.name + ".partial")
     try:
         with bound.lock("clarity:restore", eta):
-            if token.is_set():
-                raise Cancelled("cancelled")
-            decoder = bound.spawn(list(commands["decode"]))
-            encoder = bound.spawn(list(commands["encode"]))
-            token.watch(decoder)
-            token.watch(encoder)
-            threading.Thread(target=_drain, args=(getattr(decoder, "stderr", None), stderr_text), daemon=True).start()
-            threading.Thread(target=_drain, args=(getattr(encoder, "stderr", None), stderr_text), daemon=True).start()
-            source_out = decoder.stdout
-            if source_out is None:
-                raise ClarityError("the decoder has no stdout")
-            pending: list[np.ndarray] = []
-            while True:
+            for index, start, stop in pending(ranges, done):
                 if token.is_set():
                     raise Cancelled("cancelled")
-                raw = _read_exact(source_out, frame_bytes, token)
+                if bound.device:
+                    paused, tile, batch, baseline = _device_budget(
+                        spec,
+                        bound,
+                        token,
+                        started=started,
+                        paused=paused,
+                        tile=tile,
+                        batch=batch,
+                        baseline=baseline,
+                    )
+                chunk_final = chunk_path(chunks, index)
+                chunk_partial = chunk_final.with_name(chunk_final.name + ".partial")
+                _restore_range(
+                    spec,
+                    bound,
+                    token,
+                    probe=probe,
+                    encoder_name=encoder_name,
+                    start=start,
+                    stop=stop,
+                    partial=chunk_partial,
+                    tile=tile,
+                    batch=batch,
+                )
                 if token.is_set():
+                    _discard(None, None, chunk_partial)
                     raise Cancelled("cancelled")
-                if not raw:
-                    break
-                if len(raw) != frame_bytes:
-                    raise ClarityError("the decoder ended in the middle of a frame")
-                frame = np.frombuffer(raw, dtype=np.uint8).reshape(probe.height, probe.width, 3).astype(np.float32)
-                pending.append(frame / 255.0)
-                if len(pending) >= spec.settings.max_frames:
-                    flush(pending)
-                    pending = []
-            if pending:
-                flush(pending)
+                publish_chunk(chunk_partial, chunk_final)
+                append_journal(journal, ChunkRecord(index, start, stop, file_sha256(chunk_final)))
+                if on_chunk is not None:
+                    on_chunk(work)
+                finished_frames += stop - start
+                bound.progress(finished_frames / total, f"{finished_frames}/{total}")
             if token.is_set():
                 raise Cancelled("cancelled")
-            if done < 1:
+            if finished_frames < 1:
                 raise ClarityError("the decoder produced no frames")
-            encoder_in = encoder.stdin
-            if encoder_in is not None:
-                encoder_in.close()
-            code_decode = int(decoder.wait(timeout=120))
-            code_encode = int(encoder.wait(timeout=120))
-            if code_decode != 0 or code_encode != 0:
-                raise ClarityError(_fail_text(stderr_text, code_decode or code_encode))
+            list_path = work / "concat.txt"
+            ordered = [str(chunk_path(chunks, index).resolve()) for index in range(len(ranges))]
+            list_path.write_text(concat_list(ordered), encoding="utf-8")
+            partial.parent.mkdir(parents=True, exist_ok=True)
+            joiner = bound.spawn(
+                concat_command(
+                    spec.ffmpeg,
+                    str(list_path),
+                    str(spec.source),
+                    container=spec.settings.container,
+                    destination=str(partial),
+                    copy_audio=spec.settings.copy_audio,
+                )
+            )
+            token.watch(joiner)
+            stderr_text: list[str] = []
+            threading.Thread(target=_drain, args=(getattr(joiner, "stderr", None), stderr_text), daemon=True).start()
+            code = int(joiner.wait(timeout=120))
+            if token.is_set():
+                _discard(None, joiner, partial)
+                raise Cancelled("cancelled")
+            if code != 0:
+                _discard(None, joiner, partial)
+                raise ClarityError(_fail_text(stderr_text, code))
         if token.is_set():
             raise Cancelled("cancelled")
         os.replace(partial, spec.destination)
-        bound.progress(1.0, f"{done}/{done}")
+        bound.progress(1.0, f"{total}/{total}")
     except Cancelled:
-        _discard(decoder, encoder, partial)
-        raise
-    except Exception:
-        _discard(decoder, encoder, partial)
-        if token.is_set():
-            raise Cancelled("cancelled") from None
+        partial.unlink(missing_ok=True)
         raise
 
 
