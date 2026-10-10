@@ -7,6 +7,7 @@ an error line and the worker stays up; :func:`submit_restore` waits and retries.
 """
 from __future__ import annotations
 
+import importlib
 import os
 import time
 from collections.abc import Callable
@@ -30,29 +31,32 @@ class _MissingLock(TimeoutError):
     """Stand-in used only when the engine package is not installed."""
 
 
-_engine_api: Any = None
-_hardware: Any = None
-_vram: Any = None
-_Manifest: Any = None
-_LockTimeout: type[TimeoutError] = _MissingLock
-try:
-    from voxprint_engine import api as _imported_api
-    from voxprint_engine import hardware as _imported_hardware
-    from voxprint_engine import vram as _imported_vram
-    from voxprint_engine.gpu_lock import GpuLockTimeout as _imported_lock
-    from voxprint_engine.registry.schema import ModelManifest as _imported_manifest
-except ImportError:
-    _imported_api = None
-    _imported_hardware = None
-    _imported_vram = None
-    _imported_lock = None
-    _imported_manifest = None
-else:
-    _engine_api = _imported_api
-    _hardware = _imported_hardware
-    _vram = _imported_vram
-    _LockTimeout = _imported_lock
-    _Manifest = _imported_manifest
+def _load_module(name: str) -> Any:
+    """Import ``name`` through importlib. A missing module returns None.
+
+    The result stays ``Any``, so mypy accepts the missing-package branch after
+    ``voxprint_engine`` is installed and its modules are typed.
+    """
+    try:
+        return importlib.import_module(name)
+    except ImportError:
+        return None
+
+
+def _load_attr(module_name: str, attr: str) -> Any:
+    module = _load_module(module_name)
+    if module is None:
+        return None
+    return getattr(module, attr)
+
+
+_engine_api = _load_module("voxprint_engine.api")
+_hardware = _load_module("voxprint_engine.hardware")
+_vram = _load_module("voxprint_engine.vram")
+_Manifest = _load_attr("voxprint_engine.registry.schema", "ModelManifest")
+_LockTimeout = _load_attr("voxprint_engine.gpu_lock", "GpuLockTimeout")
+if _LockTimeout is None:
+    _LockTimeout = _MissingLock
 
 GpuLockTimeout = _LockTimeout
 ModelManifest = _Manifest
