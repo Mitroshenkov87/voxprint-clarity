@@ -16,11 +16,11 @@ Compile `installer/VoxprintClarity.iss` with Inno Setup 6. A normal install
 runs `installer/install-runtime.ps1`, which:
 
 1. Reads `installer/runtime_lock.json` (Python 3.14, torch 2.14.1, CUDA 13.0,
-   driver 600, compute capability 8.9).
+   Pillow 12.3.0, driver 600, compute capability 8.9).
 2. Creates a venv under `%LOCALAPPDATA%\Voxprint\runtime-<lock hash>`.
 3. Installs torch from `https://download.pytorch.org/whl/cu130`.
-4. Installs `requirements.txt` and `requirements-bench.txt` (spandrel and
-   `onnxruntime-gpu`).
+4. Installs `requirements.txt`, then Pillow at the locked version, then
+   `requirements-bench.txt` (spandrel and `onnxruntime-gpu`).
 5. Installs the public engine
    `voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0`,
    then installs `onnxruntime-gpu` again so the engine's CPU wheel does not

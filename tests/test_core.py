@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from importlib.metadata import version
 from pathlib import Path
 
 import numpy as np
@@ -383,6 +384,20 @@ def test_tensorrt_providers_are_fp16_without_cpu(tmp_path: Path) -> None:
     assert providers[1] == "CUDAExecutionProvider"
     joined = " ".join(item if isinstance(item, str) else item[0] for item in providers)
     assert "CPUExecutionProvider" not in joined
+
+
+def test_pillow_pin_includes_the_pcf_bomb_fix() -> None:
+    """Pillow 12.3.0 checks PCF fonts for decompression bombs (CVE-2026-54059)."""
+    root = Path(__file__).resolve().parents[1]
+    requirement = "Pillow>=12.3.0,<13"
+    assert requirement in (root / "requirements.txt").read_text(encoding="utf-8")
+    assert requirement in (root / "pyproject.toml").read_text(encoding="utf-8")
+    lock = json.loads((root / "installer" / "runtime_lock.json").read_text(encoding="utf-8"))
+    assert lock["pillow"] == "12.3.0"
+    script = (root / "installer" / "install-runtime.ps1").read_text(encoding="utf-8")
+    assert "Pillow==$pillow" in script
+    installed = tuple(int(part) for part in version("pillow").split(".")[:3])
+    assert installed >= (12, 3, 0)
 
 
 def test_save_crops_writes_pngs(tmp_path: Path) -> None:

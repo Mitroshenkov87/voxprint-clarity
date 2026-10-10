@@ -2,6 +2,7 @@
   "python": "3.14",
   "torch": "2.14.1",
   "cuda": "cu130",
+  "pillow": "12.3.0",
   "index": "https://download.pytorch.org/whl/cu130",
   "driver_major_min": 600,
   "compute_capability_min": "8.9"
