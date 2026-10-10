@@ -75,7 +75,13 @@ def assess_platform(
     if host == "win32":
         build = win_build
         if build is None:
-            build = int(sys.getwindowsversion().build)  # type: ignore[attr-defined]
+            reader = getattr(sys, "getwindowsversion", None)
+            if not callable(reader):
+                return PlatformGate(
+                    False,
+                    "Clarity needs Windows 11 24H2 or newer, and this Python cannot read the Windows build.",
+                )
+            build = int(getattr(reader(), "build"))
         if windows_supported(build):
             return PlatformGate(True, "")
         return PlatformGate(
