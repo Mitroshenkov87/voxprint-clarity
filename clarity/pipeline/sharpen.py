@@ -24,6 +24,15 @@ def unsharp(frame: np.ndarray, amount: float) -> np.ndarray:
 
 
 def sharpen_frames(frames: np.ndarray, amount: float) -> np.ndarray:
+    """Run the unsharp mask on every frame.
+
+    Args:
+        frames: NHWC float RGB in 0..1.
+        amount: Strength from 0 to 2. ``0`` returns the frames unchanged.
+
+    Returns:
+        NHWC float RGB in 0..1.
+    """
     if amount <= 0:
         return frames.astype(np.float32, copy=False)
     return np.stack([unsharp(frame, amount) for frame in frames], axis=0)

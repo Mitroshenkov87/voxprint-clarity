@@ -35,7 +35,13 @@ line-length = 120
 src = ["clarity", "main.py", "tests"]
 
 [tool.ruff.lint]
-select = ["F", "E9"]
+select = ["F", "E9", "D100", "D101", "D102", "D103", "D104", "D107"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
 
 [tool.mypy]
 python_version = "3.14"

@@ -19,10 +19,20 @@ def _catalog(language: str) -> dict[str, str]:
 
 
 def languages() -> tuple[str, ...]:
+    """Return the catalogue languages.
+
+    Returns:
+        ``en`` then ``ru``. English is the source catalogue.
+    """
     return ("en", "ru")
 
 
 def current_language() -> str:
+    """Read ``VOXPRINT_LANG``.
+
+    Returns:
+        ``ru`` when the variable starts with ``ru``, otherwise ``en``.
+    """
     value = os.environ.get("VOXPRINT_LANG", "en").strip().lower()
     if value.startswith("ru"):
         return "ru"
@@ -41,4 +51,5 @@ def tr(key: str, language: str | None = None) -> str:
 
 
 def clear_cache() -> None:
+    """Drop cached catalogues so the next ``tr`` rereads the JSON files."""
     _catalog.cache_clear()

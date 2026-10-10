@@ -75,20 +75,28 @@ class CancelToken:
     """Set from the UI thread. ``cancel`` also kills ffmpeg so a blocked read returns."""
 
     def __init__(self) -> None:
+        """Start unset, with no ffmpeg processes to kill."""
         self._flag = threading.Event()
         self._procs: list[Proc] = []
         self._guard = threading.Lock()
 
     def is_set(self) -> bool:
+        """Return whether ``cancel`` has been called."""
         return self._flag.is_set()
 
     def watch(self, proc: Proc) -> None:
+        """Remember an ffmpeg process so a later cancel can kill it.
+
+        Args:
+            proc: A process with ``kill``. Already-cancelled tokens kill it now.
+        """
         with self._guard:
             self._procs.append(proc)
         if self._flag.is_set():
             _kill(proc)
 
     def cancel(self) -> None:
+        """Set the flag and kill every watched ffmpeg process."""
         self._flag.set()
         with self._guard:
             procs = list(self._procs)
@@ -98,6 +106,8 @@ class CancelToken:
 
 @dataclass
 class JobSpec:
+    """One restore: source, destination, settings, and the ffmpeg binaries."""
+
     source: Path
     destination: Path
     settings: Settings
@@ -109,6 +119,8 @@ class JobSpec:
 
 @dataclass
 class Control:
+    """The side effects a job needs. Tests substitute every field."""
+
     infer: Callable[[ClarityModel, np.ndarray], np.ndarray]
     lock: Callable[[str, float], AbstractContextManager[None]]
     spawn: Callable[[list[str]], Proc]
@@ -248,6 +260,14 @@ def _fail_text(sink: list[str], code: int) -> str:
 
 
 def work_dir_for(spec: JobSpec) -> Path:
+    """Return the folder that holds ``plan.json``, the journal, and chunk files.
+
+    Args:
+        spec: Job whose ``work`` override or destination name is used.
+
+    Returns:
+        ``spec.work`` when set, otherwise ``destination`` with a ``.work`` suffix.
+    """
     if spec.work is not None:
         return spec.work
     return spec.destination.with_name(spec.destination.name + ".work")

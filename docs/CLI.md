@@ -7,6 +7,11 @@ A positional `.vxclarity` path opens that project in the window.
 Headless commands are for other suite apps. They share the restore plan and
 `run_job` with the Start button.
 
+The flag list is generated from those argparse parsers when the documentation
+site is built, so the reference cannot drift from the program. See the
+[command reference](reference/cli.md). That page is written at build time and
+is not stored in the repository. The sections below are the narrative.
+
 ```text
 python -m clarity restore --input CLIP --output OUT --mode clean --format mkv --dry-run --json
 python -m clarity project open clip.vxclarity --json

@@ -64,7 +64,7 @@ def foreign_names(used: dict[str, list[str]], reserved: dict[str, str], app: str
 
 
 def check(root: Path | None = None) -> str:
-    """Return this app's codename, or raise :class:`CodenameError`."""
+    """Return this app's codename, or raise ``CodenameError``."""
     base = repo_root() if root is None else root
     data = json.loads((base / "BUILD.json").read_text(encoding="utf-8"))
     if not isinstance(data, dict):
@@ -88,6 +88,11 @@ def check(root: Path | None = None) -> str:
 
 
 def main() -> int:
+    """Check this checkout's codename and print the result.
+
+    Returns:
+        ``0`` when the name is free for Clarity, ``1`` when the check fails.
+    """
     try:
         name = check()
     except (CodenameError, OSError, ValueError) as exc:

@@ -10,11 +10,21 @@ WIN_MIN_BUILD = 26100
 
 @dataclass(frozen=True)
 class PlatformGate:
+    """Whether this operating system may launch Clarity."""
+
     ok: bool
     message: str
 
 
 def windows_supported(build: int) -> bool:
+    """Return whether a Windows build is 11 24H2 or newer.
+
+    Args:
+        build: ``sys.getwindowsversion().build``.
+
+    Returns:
+        True when ``build`` is at least 26100.
+    """
     return int(build) >= WIN_MIN_BUILD
 
 

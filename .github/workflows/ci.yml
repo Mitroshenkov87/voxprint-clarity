@@ -29,7 +29,7 @@ jobs:
           python -c "import voxprint_engine"
       - name: Lint
         run: |
-          ruff check clarity main.py tests
+          ruff check clarity main.py tests scripts
           mypy
       - name: Codename is unique in the suite registry
         run: python -m clarity.codenames

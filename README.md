@@ -71,6 +71,9 @@ What is next, what can wait, and what Clarity will not add: [ROADMAP.md](ROADMAP
 
 ## Documentation
 
+The documentation site is published from `main`:
+<https://mitroshenkov87.github.io/voxprint-clarity/>.
+
 - [docs/USER-GUIDE.md](docs/USER-GUIDE.md) — install, first run, restore, resume
 - [docs/INSTALL.md](docs/INSTALL.md) — platforms, runtime, ffmpeg
 - [docs/ENGINE-INTERFACE.md](docs/ENGINE-INTERFACE.md) — the public Enlarge engine
@@ -78,6 +81,7 @@ What is next, what can wait, and what Clarity will not add: [ROADMAP.md](ROADMAP
 - [docs/TESTING-GPU.md](docs/TESTING-GPU.md) — the rented RTX 4090 script
 - [docs/formats/VXCLARITY.md](docs/formats/VXCLARITY.md) — the `.vxclarity` project file
 - [docs/CLI.md](docs/CLI.md) — headless `python -m clarity` / `voxprint-clarity`
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — components, data flow, and the GPU rules
 - [docs/RELEASES-CODENAMES.md](docs/RELEASES-CODENAMES.md) — suite codenames
 - [ROADMAP.md](ROADMAP.md) — next version, later work, and what is not planned
 - [docs/DECISIONS.md](docs/DECISIONS.md) — product decisions

@@ -148,7 +148,7 @@ project ships or asks for.
 ## Model licences
 
 The application is Apache-2.0. Third-party weights and libraries are listed in
-[NOTICE](../NOTICE).
+[NOTICE](https://github.com/Mitroshenkov87/voxprint-clarity/blob/main/NOTICE).
 
 | Model | Role | Licence |
 |---|---|---|

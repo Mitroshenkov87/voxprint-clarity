@@ -51,16 +51,40 @@ class _Parser(argparse.ArgumentParser):
 
 
 class Console:
+    """Stdout for one command. JSON lines when ``json_mode`` is set, otherwise plain text."""
+
     def __init__(self, json_mode: bool) -> None:
+        """Remember whether results and progress are JSON.
+
+        Args:
+            json_mode: Write result and progress lines to stdout.
+        """
         self.json_mode = json_mode
 
     def fail(self, message: str, code: ExitCode) -> int:
+        """Print a failure and return its process status.
+
+        Args:
+            message: Shown on stderr, and as the JSON ``error`` field.
+            code: Process status to return.
+
+        Returns:
+            The integer value of ``code``.
+        """
         if self.json_mode:
             print(json.dumps({"type": "result", "ok": False, "error": message}), flush=True)
         print(message, file=sys.stderr)
         return int(code)
 
     def ok(self, payload: dict[str, Any]) -> int:
+        """Print a successful result and return 0.
+
+        Args:
+            payload: Fields merged into the result object.
+
+        Returns:
+            ``ExitCode.OK``.
+        """
         body = {"type": "result", "ok": True, **payload}
         if self.json_mode:
             print(json.dumps(body), flush=True)
@@ -69,6 +93,12 @@ class Console:
         return int(ExitCode.OK)
 
     def progress(self, fraction: float, message: str) -> None:
+        """Report job progress. JSON goes to stdout; plain text goes to stderr.
+
+        Args:
+            fraction: Completion from 0 to 1.
+            message: Short status, such as a chunk count.
+        """
         if self.json_mode:
             print(json.dumps({"type": "progress", "fraction": fraction, "message": message}), flush=True)
         else:
@@ -127,11 +157,15 @@ def build_parser() -> argparse.ArgumentParser:
     """The window launcher. A positional ``.vxclarity`` opens that project."""
     parser = _Parser(prog="clarity", description=APP_NAME)
     parser.add_argument("project", nargs="?", type=Path, help="Open a .vxclarity project")
-    parser.add_argument("--version", action="store_true")
-    parser.add_argument("--selftest", action="store_true")
-    parser.add_argument("--register-models-user", action="store_true")
-    parser.add_argument("--unregister-models-user", action="store_true")
-    parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument("--version", action="store_true", help="Print the version from BUILD.json and exit")
+    parser.add_argument("--selftest", action="store_true", help="Open the window offscreen and exit")
+    parser.add_argument("--register-models-user", action="store_true", help="Register Clarity in the shared models folder")
+    parser.add_argument(
+        "--unregister-models-user",
+        action="store_true",
+        help="Remove Clarity from the shared models folder",
+    )
+    parser.add_argument("--out", type=Path, default=None, help="Write the models-folder report here")
     parser.epilog = "Headless commands: restore, project, info, version, models, selftest. See docs/CLI.md."
     return parser
 
@@ -148,29 +182,29 @@ def _command_parser() -> argparse.ArgumentParser:
     parser = _Parser(prog="clarity", description=APP_NAME)
     sub = parser.add_subparsers(dest="command", required=True)
     restore = sub.add_parser("restore", parents=[common], help="Restore one video")
-    restore.add_argument("--input", required=True, type=Path)
-    restore.add_argument("--output", required=True, type=Path)
-    restore.add_argument("--mode", choices=("clean", "strong"), default="clean")
-    restore.add_argument("--upscale", action="store_true")
+    restore.add_argument("--input", required=True, type=Path, help="Source video")
+    restore.add_argument("--output", required=True, type=Path, help="Destination video")
+    restore.add_argument("--mode", choices=("clean", "strong"), default="clean", help="clean or strong")
+    restore.add_argument("--upscale", action="store_true", help="Optional 2x. Off unless this flag is set")
     restore.add_argument("--format", default="mkv", help="mkv, mp4, av1, or hevc")
-    restore.add_argument("--codec", choices=("av1", "hevc"), default=None)
-    restore.add_argument("--ffmpeg", default="ffmpeg")
-    restore.add_argument("--ffprobe", default="ffprobe")
+    restore.add_argument("--codec", choices=("av1", "hevc"), default=None, help="av1 or hevc, when set separately from --format")
+    restore.add_argument("--ffmpeg", default="ffmpeg", help="ffmpeg binary")
+    restore.add_argument("--ffprobe", default="ffprobe", help="ffprobe binary")
     project = sub.add_parser("project", help="Open or resume a .vxclarity project")
     project_sub = project.add_subparsers(dest="action", required=True)
     opened = project_sub.add_parser("open", parents=[common], help="Read a project and print it")
-    opened.add_argument("path", type=Path)
+    opened.add_argument("path", type=Path, help="Path of the .vxclarity file")
     resume = project_sub.add_parser("resume", parents=[common], help="Continue a project from its journal")
-    resume.add_argument("path", type=Path)
-    resume.add_argument("--ffmpeg", default="ffmpeg")
-    resume.add_argument("--ffprobe", default="ffprobe")
+    resume.add_argument("path", type=Path, help="Path of the .vxclarity file")
+    resume.add_argument("--ffmpeg", default="ffmpeg", help="ffmpeg binary")
+    resume.add_argument("--ffprobe", default="ffprobe", help="ffprobe binary")
     sub.add_parser("info", parents=[common], help="Print the version from BUILD.json")
     sub.add_parser("version", parents=[common], help="Print the version from BUILD.json")
     models = sub.add_parser("models", help="List or fetch catalogue weights")
     models_sub = models.add_subparsers(dest="action", required=True)
     models_sub.add_parser("list", parents=[common], help="List the catalogue")
     fetch = models_sub.add_parser("fetch", parents=[common], help="Fetch weights into the shared models folder")
-    fetch.add_argument("--id", action="append", default=None, dest="ids")
+    fetch.add_argument("--id", action="append", default=None, dest="ids", help="Catalogue id to fetch. Repeat for several")
     sub.add_parser("selftest", parents=[common], help="Open the window offscreen, or describe that check")
     return parser
 
@@ -508,6 +542,17 @@ def _register(out: Path | None, *, remove: bool) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Dispatch a headless command, or open the window.
+
+    A leading ``--json`` is kept for the window launcher and moved to the end
+    of a headless command so argparse still sees the subcommand first.
+
+    Args:
+        argv: Arguments without the program name. Defaults to ``sys.argv``.
+
+    Returns:
+        A process status from ``ExitCode``.
+    """
     args = list(sys.argv[1:] if argv is None else argv)
     json_first = False
     while args and args[0] == "--json":
