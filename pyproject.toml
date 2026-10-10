@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voxprint-clarity"
+version = "1.0.0rc0"
+description = "Voxprint AI Clarity: lightweight non-generative video restoration."
+requires-python = ">=3.14,<3.15"
+readme = "README.md"
+license = "Apache-2.0"
+dependencies = [
+  "PySide6>=6.7,<7",
+  "numpy>=2,<3",
+  "Pillow>=11.3,<13",
+]
+
+[project.optional-dependencies]
+engine = ["voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0"]
+
+[project.scripts]
+voxprint-clarity = "clarity.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["clarity*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q --tb=short"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 120
+src = ["clarity", "main.py", "tests"]
+
+[tool.ruff.lint]
+select = ["F", "E9"]
+
+[tool.mypy]
+python_version = "3.14"
+files = ["clarity", "main.py"]
+ignore_missing_imports = true
+follow_imports = "silent"
+namespace_packages = true
+explicit_package_bases = true
+show_error_codes = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+check_untyped_defs = false
+disallow_untyped_defs = false
+pretty = false
+exclude = ["tests/"]

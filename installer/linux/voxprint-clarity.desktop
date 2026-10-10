@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Voxprint AI Clarity
+Comment=Lightweight non-generative video restoration
+Exec=voxprint-clarity %f
+Icon=voxprint-clarity
+Terminal=false
+MimeType=application/vnd.voxprint.clarity+zip;
+Categories=AudioVideo;Video;
+StartupWMClass=voxprint-clarity

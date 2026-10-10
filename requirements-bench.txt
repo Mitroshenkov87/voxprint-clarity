@@ -1,0 +1,5 @@
+# GPU timing extras for `python -m clarity.bench` on an RTX 4090 VM.
+# Install the app first (`requirements.txt`) so numpy, Pillow, and the package import.
+-r requirements-gpu.txt
+spandrel
+onnxruntime-gpu

@@ -1,0 +1,96 @@
+# Install
+
+## Platforms
+
+- Windows 11 24H2 or newer (build 26100). The Inno Setup script sets
+  `MinVersion=10.0.26100`.
+- Linux from 2025 onward (Ubuntu-style YY.MM at least 25.04, Debian 13,
+  Fedora 42, or a rolling Arch). The Linux package is experimental.
+
+Older Windows and older Linux builds are refused. There is no CPU runtime and
+no fallback for a GPU below compute capability 8.9 or a driver below 600.
+
+## Windows
+
+Compile `installer/VoxprintClarity.iss` with Inno Setup 6. A normal install
+runs `installer/install-runtime.ps1`, which:
+
+1. Reads `installer/runtime_lock.json` (Python 3.14, torch 2.14.1, CUDA 13.0,
+   driver 600, compute capability 8.9).
+2. Creates a venv under `%LOCALAPPDATA%\Voxprint\runtime-<lock hash>`.
+3. Installs torch from `https://download.pytorch.org/whl/cu130`.
+4. Installs `requirements.txt` and `requirements-bench.txt` (spandrel and
+   `onnxruntime-gpu`).
+5. Installs the public engine
+   `voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0`,
+   then installs `onnxruntime-gpu` again so the engine's CPU wheel does not
+   replace it.
+6. Junctions that venv to `{app}\runtime`.
+
+The Start menu folder is `Voxprint`. The shortcut is **Voxprint AI Clarity**.
+
+The installer registers `.vxclarity` for the current user (HKCU). The ProgID is
+`Voxprint.Clarity.Project`. The document icon is `branding\clarity.ico`. Open
+runs `pythonw main.py` with the project path. Uninstall deletes that ProgID
+and the extension entry.
+
+Silent install without the GPU runtime (CI, and any machine that should only
+receive the files):
+
+```text
+VoxprintClarity-Setup.exe /VERYSILENT /RUNTIME=skip
+```
+
+A real install omits `/RUNTIME=skip`. After a runtime install the setup runs
+`python main.py --register-models-user`. Uninstall runs
+`--unregister-models-user`. Both use the engine package at tag
+`engine-v1.0.0`, which the runtime step installs from the public Enlarge
+repository.
+
+ffmpeg must be an LGPL build on `PATH` (NVDEC and NVENC). Clarity does not
+ship ffmpeg.
+
+## Linux
+
+```bash
+python3.14 -m pip install -r requirements.txt -r requirements-gpu.txt
+python3.14 -m pip install -e ".[engine]"
+python3.14 -m clarity
+```
+
+Experimental package:
+
+```bash
+bash installer/linux/build-package.sh
+```
+
+That writes `dist/VoxprintClarity-linux.tar.gz`. An AppImage is attempted when
+appimagetool can be downloaded. The package includes
+`usr/share/mime/packages/voxprint-clarity.xml`, a `.desktop` file whose
+`MimeType` is `application/vnd.voxprint.clarity+zip`, and
+`usr/bin/voxprint-clarity`. After extracting onto a prefix, update the MIME
+and desktop databases. `voxprint-clarity-uninstall` removes the association,
+the desktop file, and the icon from that prefix (default `/usr`).
+
+## Shared folders
+
+- Models: `%LOCALAPPDATA%\Voxprint\models` on Windows,
+  `$XDG_DATA_HOME/voxprint/models` or `~/.local/share/voxprint/models` on Linux.
+  The engine owns the path, the SHA-256 manifests, and `.users.json`.
+- GPU lock: `%TEMP%\voxprint-gpu.lock` (the system temp dir on Linux).
+
+## Tests without a GPU
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m ruff check clarity main.py tests
+python -m mypy
+python -m pytest
+QT_QPA_PLATFORM=offscreen python -m clarity --selftest
+```
+
+CI is GitHub Actions on `ubuntu-latest` and `windows-latest` (lint and unit
+tests, with the public engine installed), plus an installer job and an
+experimental Linux package job. A tag `v1.0.0-rc.999` runs
+`.github/workflows/release.yml`, which publishes the full Windows installer
+and the Linux package as a pre-release with `SHA256SUMS`.
