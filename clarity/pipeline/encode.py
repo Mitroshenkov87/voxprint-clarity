@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from enum import Enum
+from typing import Never
 
 from clarity.errors import ClarityError
 
@@ -45,6 +46,25 @@ def select_encoder(codec: VideoCodec, available: set[str]) -> str:
             "HEVC was requested, but hevc_nvenc is not in this ffmpeg. Clarity does not bundle x265."
         )
     raise ClarityError(f"unknown codec {codec!r}")
+
+
+def planned_encoder(codec: VideoCodec, available: set[str]) -> tuple[str, bool]:
+    """The encoder a job would use, and whether this ffmpeg actually has it.
+
+    A dry-run on a machine without NVENC still names ``av1_nvenc`` or
+    ``hevc_nvenc`` so the printed plan is the GPU plan. It does not run it.
+    """
+    if codec is VideoCodec.AV1:
+        preferred = "av1_nvenc"
+    elif codec is VideoCodec.HEVC:
+        preferred = "hevc_nvenc"
+    else:
+        unknown: Never = codec
+        raise ClarityError(f"unknown codec {unknown!r}")
+    try:
+        return select_encoder(codec, available), True
+    except ClarityError:
+        return preferred, False
 
 
 def video_args(encoder: str, cq: int = 20) -> list[str]:

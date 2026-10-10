@@ -401,9 +401,12 @@ def test_conditioned_preview_adds_the_deblock_channel() -> None:
     assert nchw[0, 3, 0, 0] == pytest.approx(deblock_level(40))
 
 
-def test_version_label_is_the_first_release_candidate() -> None:
-    assert version_label() == '1.0.0 RC · build 999 "Bereshit"'
-    assert release_title() == 'Voxprint AI Clarity 1.0.0 RC · build 999 "Bereshit"'
+def test_version_label_reads_build_json() -> None:
+    data = json.loads(Path("BUILD.json").read_text(encoding="utf-8"))
+    label = version_label()
+    assert f"build {data['build']}" in label
+    assert label.endswith(f'"{data["codename"]}"')
+    assert release_title() == f"Voxprint AI Clarity {label}"
 
 
 def test_bench_refuses_without_a_gpu(monkeypatch: pytest.MonkeyPatch) -> None:

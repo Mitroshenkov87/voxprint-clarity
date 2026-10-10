@@ -44,3 +44,10 @@ ffmpeg — GNU LGPL build, installed separately. Clarity does not ship ffmpeg,
 Elephants Dream — Creative Commons Attribution. Used only as the benchmark
   clip (Blender Foundation / Netherlands Media Art Institute). It is not
   bundled in this repository.
+
+Suite icons
+-----------
+
+`assets/icons/suite/` holds the shared Voxprint icons for save, save as,
+save a copy, export, and download. They are suite art (a tray and an arrow).
+They are not a floppy-disk glyph and they are not a third-party icon pack.

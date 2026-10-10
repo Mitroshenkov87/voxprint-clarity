@@ -83,11 +83,7 @@ def parse_probe(data: dict[str, object]) -> Probe:
     transfer = str(video.get("color_transfer") or "")
     hdr = transfer.lower() in _HDR_TRANSFER or any("Mastering display" in name or "Content light" in name for name in sides)
     dolby = any("DOVI" in name.upper() or "Dolby Vision" in name for name in sides)
-    frames_text = str(video.get("nb_frames") or "0")
-    try:
-        frames = int(frames_text)
-    except ValueError:
-        frames = 0
+    frames = _frame_count(video, data)
     return Probe(
         codec=str(video.get("codec_name") or ""),
         width=int(str(video.get("width") or 0)),
@@ -106,6 +102,25 @@ def parse_probe(data: dict[str, object]) -> Probe:
         dolby_vision=dolby,
         side_data=tuple(sides),
     )
+
+
+def _frame_count(video: dict[str, object], data: dict[str, object]) -> int:
+    """``nb_frames`` when the container stored it, otherwise duration times frame rate."""
+    for key in ("nb_frames", "nb_read_frames"):
+        text = str(video.get(key) or "")
+        if text.isdigit():
+            count = int(text)
+            if count > 0:
+                return count
+    fps = _float_fps(video.get("avg_frame_rate"))
+    duration = _float_fps(video.get("duration"))
+    if duration <= 0:
+        formatted = data.get("format")
+        if isinstance(formatted, dict):
+            duration = _float_fps(formatted.get("duration"))
+    if fps > 0 and duration > 0:
+        return max(1, int(round(duration * fps)))
+    return 0
 
 
 def require_sdr(probe: Probe) -> None:

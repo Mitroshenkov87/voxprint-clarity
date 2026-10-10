@@ -19,8 +19,10 @@ The longer guide is [docs/USER-GUIDE.md](docs/USER-GUIDE.md).
 
 ## Install
 
-Download the pre-release **1.0.0 RC · build 999 "Bereshit"**
-(tag `v1.0.0-rc.999`). The Windows file is `VoxprintClarity-Setup.exe`.
+Download the pre-release recorded in `BUILD.json` (published tag
+`v1.0.0-rc.999`). The version, build number, and codename in that file are
+the source of truth. A codename is a Hebrew word from the Torah or Tanakh.
+The Windows file is `VoxprintClarity-Setup.exe`.
 Check `SHA256SUMS` in that release. Setup downloads Python 3.14, the CUDA 13.0
 PyTorch wheel, the restore libraries, and the public engine. The installer is
 not code-signed.
@@ -71,6 +73,8 @@ More cases are in [docs/USER-GUIDE.md](docs/USER-GUIDE.md).
 - [docs/BENCHMARK.md](docs/BENCHMARK.md) — how to time the models
 - [docs/TESTING-GPU.md](docs/TESTING-GPU.md) — the rented RTX 4090 script
 - [docs/formats/VXCLARITY.md](docs/formats/VXCLARITY.md) — the `.vxclarity` project file
+- [docs/CLI.md](docs/CLI.md) — headless `python -m clarity` / `voxprint-clarity`
+- [docs/RELEASES-CODENAMES.md](docs/RELEASES-CODENAMES.md) — suite codenames
 - [docs/DECISIONS.md](docs/DECISIONS.md) — product decisions
 - [docs/RESEARCH.md](docs/RESEARCH.md) — model and pipeline notes
 

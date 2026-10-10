@@ -1,5 +1,6 @@
-# Tag-triggered pre-release. Push v1.0.0-rc.999 (or another tag that starts
-# with v plus APP_VERSION) after this workflow is on the default branch.
+# Tag-triggered pre-release. Push a tag that starts with v plus the version
+# in BUILD.json (the published candidate is v1.0.0-rc.999) after this
+# workflow is on the default branch.
 # The Windows asset is the full online installer. /RUNTIME=skip is only the
 # smoke test. The Linux tarball is experimental.
 name: Release
@@ -23,7 +24,7 @@ jobs:
           python-version: "3.14"
       - name: Qt libraries (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libglib2.0-0
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libglib2.0-0 ffmpeg
       - name: Install test tools
         run: python -m pip install -r requirements-dev.txt
       - name: Install the shared engine
@@ -34,14 +35,17 @@ jobs:
       - name: Check the release tag
         shell: bash
         run: |
-          python -c "import os,re,pathlib; tag=os.environ['GITHUB_REF_NAME']; text=pathlib.Path('clarity/appinfo.py').read_text(encoding='utf-8'); version=re.search(r'^APP_VERSION = \"([^\"]+)\"', text, re.M).group(1); assert re.fullmatch(r'v\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?', tag), tag; assert tag.startswith('v'+version), (tag, version); print('release tag:', tag, 'APP_VERSION', version)"
+          python -c "import json,os,re,pathlib; tag=os.environ['GITHUB_REF_NAME']; version=json.loads(pathlib.Path('BUILD.json').read_text(encoding='utf-8'))['version']; assert re.fullmatch(r'v\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?', tag), tag; assert tag.startswith('v'+version), (tag, version); print('release tag:', tag, 'version', version)"
       - name: Lint
         run: |
           ruff check clarity main.py tests
           mypy
+      - name: Codename is unique in the suite registry
+        run: python -m clarity.codenames
       - name: Unit tests
         env:
           QT_QPA_PLATFORM: offscreen
+          CLARITY_REQUIRE_FFMPEG: ${{ runner.os == 'Linux' && '1' || '0' }}
         run: python -m pytest
       - name: Window self-test
         env:
@@ -57,16 +61,19 @@ jobs:
       - name: Write the build stamp
         shell: pwsh
         run: |
-          $text = Get-Content clarity\appinfo.py -Raw
-          $build = 0
-          if ($text -match 'APP_BUILD = (\d+)') { $build = [int]$Matches[1] }
+          $meta = Get-Content -Raw -Path BUILD.json | ConvertFrom-Json
+          $build = [int]$meta.build
+          $codename = [string]$meta.codename
+          $version = [string]$meta.version
+          if (-not $codename) { throw "BUILD.json codename is empty" }
           $info = [ordered]@{
             commit = "${{ github.sha }}".Substring(0, 7)
             built = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
             run = "${{ github.run_number }}"
             ref = "${{ github.ref_name }}"
+            version = $version
             build = $build
-            codename = "Bereshit"
+            codename = $codename
             flavour = "online installer"
           }
           [IO.File]::WriteAllText("$PWD\build_info.json", ($info | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
@@ -141,7 +148,7 @@ jobs:
           done > SHA256SUMS
           echo "SHA256SUMS:"
           cat SHA256SUMS
-          notes="Pre-release. The Windows file is the full online installer: setup downloads Python 3.14, the CUDA 13.0 PyTorch wheel, the restore libraries, and the public engine. It is not code-signed. The Linux tarball is experimental. Built from commit ${GITHUB_SHA}."
+          notes="Pre-release. The codename is a Hebrew word from the Torah or Tanakh, read from BUILD.json. The Windows file is the full online installer: setup downloads Python 3.14, the CUDA 13.0 PyTorch wheel, the restore libraries, and the public engine. It is not code-signed. The Linux tarball is experimental. Built from commit ${GITHUB_SHA}."
           printf '%s\n\nInstall and first-run notes: docs/USER-GUIDE.md\n' "$notes" > ../release-notes.md
           mapfile -t files < <(find . -type f -printf '%P\n' | sort)
           gh release create "${GITHUB_REF_NAME}" \

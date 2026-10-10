@@ -107,7 +107,7 @@ Sources: Movie Dubber reply (2026-10-10), voxprint/FOR-MOVIE-DUBBER.md, movie-du
 | TensorRT | **none in the suite yet** [V Movie Dubber] | new Clarity decision: engine cache per GPU + TRT version, outside models (proposal `%LOCALAPPDATA%\Voxprint\trt-cache\<gpu>-<driver>-<trt>\`, rebuildable, not refcounted) |
 | ffmpeg | BtbN LGPL n8.1.3 (AB) [V]; suite uses stream copy only, **no NVDEC/NVENC yet** [V Movie Dubber] | Clarity is the first NVDEC/NVENC user: verify LGPL build has `hevc_nvenc`/`av1_nvenc`/cuvid on both laptops |
 | Start menu | Inno `DefaultGroupName=Voxprint` in both `.iss` [V] | same group, "Voxprint AI Clarity" + diagnostics |
-| Build numbers | `BUILD.json` offset + run number, Biblical Hebrew codename per release [V] | same scheme |
+| Build numbers | `BUILD.json` offset + run number, a Hebrew word from the Torah or Tanakh as the codename [V] | same scheme |
 
 ## 5. Recommended MVP stack
 

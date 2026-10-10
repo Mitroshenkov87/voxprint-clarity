@@ -5,7 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Never
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal
+from PySide6.QtCore import QObject, QSize, Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -25,10 +25,12 @@ from PySide6.QtWidgets import (
 )
 
 from clarity.appinfo import APP_NAME, version_label
+from clarity.engine import EngineUnavailable
 from clarity.errors import Cancelled, ClarityError
 from clarity.i18n import current_language, languages, tr
+from clarity.models import fetch_weights
 from clarity.pipeline.encode import Container, VideoCodec
-from clarity.pipeline.job import Settings
+from clarity.pipeline.job import Settings, models_for
 from clarity.pipeline.runner import CancelToken, JobSpec, run_job
 from clarity.project import (
     Project,
@@ -42,6 +44,7 @@ from clarity.project import (
     work_dir_for as project_work_dir,
 )
 from clarity.ui.acrylic import enable_acrylic
+from clarity.ui.icons import suite_icon
 from clarity.ui.theme import build_style
 
 Runner = Callable[..., None]
@@ -121,7 +124,14 @@ class MainWindow(QMainWindow):
 
         self.output = QLineEdit()
         self.output.setPlaceholderText(tr("output.placeholder"))
-        form.addRow(tr("output.label"), self.output)
+        self.export_button = QPushButton(tr("project.export"))
+        self.export_button.setIcon(suite_icon("export"))
+        self.export_button.setIconSize(QSize(22, 22))
+        self.export_button.clicked.connect(self._browse_export)
+        output_row = QHBoxLayout()
+        output_row.addWidget(self.output)
+        output_row.addWidget(self.export_button)
+        form.addRow(tr("output.label"), output_row)
 
         self.mode = QComboBox()
         self.mode.addItem(tr("mode.clean"), "clean")
@@ -183,12 +193,29 @@ class MainWindow(QMainWindow):
         self.open_project_button = QPushButton(tr("project.open"))
         self.open_project_button.clicked.connect(self._browse_project)
         self.save_project_button = QPushButton(tr("project.save"))
-        self.save_project_button.clicked.connect(self._browse_save)
+        self.save_project_button.setIcon(suite_icon("save"))
+        self.save_project_button.setIconSize(QSize(22, 22))
+        self.save_project_button.clicked.connect(self._save)
+        self.save_as_button = QPushButton(tr("project.save_as"))
+        self.save_as_button.setIcon(suite_icon("save-as"))
+        self.save_as_button.setIconSize(QSize(22, 22))
+        self.save_as_button.clicked.connect(self._browse_save)
+        self.save_copy_button = QPushButton(tr("project.save_copy"))
+        self.save_copy_button.setIcon(suite_icon("save-copy"))
+        self.save_copy_button.setIconSize(QSize(22, 22))
+        self.save_copy_button.clicked.connect(self._browse_copy)
+        self.download_button = QPushButton(tr("project.download"))
+        self.download_button.setIcon(suite_icon("download"))
+        self.download_button.setIconSize(QSize(22, 22))
+        self.download_button.clicked.connect(self._download_models)
         self.recent = QComboBox()
         self.recent.setObjectName("recent")
         self.recent.activated.connect(self._recent_chosen)
         project_row.addWidget(self.open_project_button)
         project_row.addWidget(self.save_project_button)
+        project_row.addWidget(self.save_as_button)
+        project_row.addWidget(self.save_copy_button)
+        project_row.addWidget(self.download_button)
         project_row.addWidget(self.recent, 1)
         layout.addLayout(project_row)
         self._reload_recent()
@@ -217,6 +244,10 @@ class MainWindow(QMainWindow):
             self.sharpen,
             self.open_project_button,
             self.save_project_button,
+            self.save_as_button,
+            self.save_copy_button,
+            self.download_button,
+            self.export_button,
             self.recent,
         )
 
@@ -401,11 +432,42 @@ class MainWindow(QMainWindow):
         if path:
             self.open_project(Path(path))
 
+    def _save(self) -> None:
+        if self._project_path is not None:
+            self.save_project(self._project_path)
+            return
+        self._browse_save()
+
     def _browse_save(self) -> None:
         suggested = str(self._project_path or "")
-        path, _selected = QFileDialog.getSaveFileName(self, tr("project.save"), suggested, tr("project.filter"))
+        path, _selected = QFileDialog.getSaveFileName(self, tr("project.save_as"), suggested, tr("project.filter"))
         if path:
             self.save_project(Path(path))
+
+    def _browse_copy(self) -> None:
+        suggested = str(self._project_path or "")
+        path, _selected = QFileDialog.getSaveFileName(self, tr("project.save_copy"), suggested, tr("project.filter"))
+        if path:
+            self.save_project(Path(path), retarget=False)
+
+    def _browse_export(self) -> None:
+        path, _selected = QFileDialog.getSaveFileName(
+            self,
+            tr("project.export"),
+            self.output.text().strip(),
+            tr("source.filter"),
+        )
+        if path:
+            self.output.setText(path)
+
+    def _download_models(self) -> None:
+        try:
+            ids = [model.id for model in models_for(self._settings())]
+            fetch_weights(ids, dry_run=False)
+        except (EngineUnavailable, ClarityError, KeyError, OSError) as exc:
+            QMessageBox.warning(self, APP_NAME, str(exc))
+            return
+        self.status.setText(tr("status.downloaded"))
 
     def _recent_chosen(self, index: int) -> None:
         value = self.recent.itemData(index)
@@ -425,7 +487,7 @@ class MainWindow(QMainWindow):
         if project.resume.get("journal"):
             self.status.setText(tr("status.resumed"))
 
-    def save_project(self, path: Path) -> None:
+    def save_project(self, path: Path, *, retarget: bool = True) -> None:
         source_text = self.source.text().strip()
         if not source_text or not Path(source_text).is_file():
             QMessageBox.warning(self, APP_NAME, tr("error.missing_source"))
@@ -445,8 +507,9 @@ class MainWindow(QMainWindow):
         except ProjectFormatError as exc:
             QMessageBox.warning(self, APP_NAME, str(exc))
             return
-        self._project = project
-        self._project_path = project.path
+        if retarget:
+            self._project = project
+            self._project_path = project.path
         self._remember(project.path)
         self.status.setText(tr("status.saved"))
 

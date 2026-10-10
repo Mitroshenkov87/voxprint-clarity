@@ -5,7 +5,7 @@ root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 stage="$root/dist/VoxprintClarity.AppDir"
 rm -rf "$stage"
 mkdir -p "$stage/usr/bin" "$stage/usr/share/applications" "$stage/usr/share/icons/hicolor/256x256/apps" "$stage/usr/share/mime/packages"
-cp -a "$root/clarity" "$root/locales" "$root/docs" "$stage/usr/bin/"
+cp -a "$root/clarity" "$root/locales" "$root/docs" "$root/assets" "$stage/usr/bin/"
 cp "$root/main.py" "$root/LICENSE" "$root/NOTICE" "$root/requirements.txt" "$root/requirements-gpu.txt" "$root/pyproject.toml" "$root/BUILD.json" "$stage/usr/bin/"
 cp "$root/branding/clarity-256.png" "$stage/usr/share/icons/hicolor/256x256/apps/voxprint-clarity.png"
 cp "$root/branding/clarity-256.png" "$stage/clarity.png"

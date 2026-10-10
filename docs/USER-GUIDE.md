@@ -26,8 +26,10 @@ GPU: Clarity prints the reason and exits.
 
 ### Windows
 
-Download `VoxprintClarity-Setup.exe` from the GitHub pre-release
-**1.0.0 RC · build 999 "Bereshit"** (`v1.0.0-rc.999`). Check it against
+Download `VoxprintClarity-Setup.exe` from the GitHub pre-release recorded in
+`BUILD.json` (published tag `v1.0.0-rc.999`). The version, the build number,
+and the codename all come from that file. A codename is a Hebrew word from
+the Torah or Tanakh. Check the download against
 `SHA256SUMS` in that same release. The file is not code-signed, so SmartScreen
 can warn.
 
@@ -44,6 +46,24 @@ Put an LGPL ffmpeg on `PATH` before the first restore.
 The Linux package in the same release, `VoxprintClarity-linux.tar.gz`, is
 experimental. Extract it, install Python 3.14, PyTorch for CUDA 13.0, and the
 engine line above, and put ffmpeg on `PATH`. See [INSTALL.md](INSTALL.md).
+
+### Version and codename
+
+`BUILD.json` is the only place the version, build number, and codename are
+written down. The window footer and `voxprint-clarity version` read that
+file. A codename is a Hebrew word from the Torah or Tanakh. The vendored
+table is [RELEASES-CODENAMES.md](RELEASES-CODENAMES.md). CI checks that
+Clarity's codename is not used or reserved by another app in that table.
+Before a tag, update the suite table and this copy in the same commit as
+`BUILD.json`. CI does not query the other repositories.
+
+### Command line
+
+`python -m clarity` and `voxprint-clarity` take the same commands: `restore`,
+`project open`, `project resume`, `info`, `version`, `models list`,
+`models fetch`, and `selftest`. `--dry-run` prints the ffmpeg plan and does
+not use the GPU. `--json` prints result lines on stdout. Exit codes and the
+flags are in [CLI.md](CLI.md).
 
 ## First run
 
