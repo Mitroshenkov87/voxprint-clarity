@@ -1,7 +1,6 @@
 """Tests that need the installed ``voxprint-engine`` package.
 
-CI skips this module when ``VOXPRINT_ENGINE_DEPLOY_KEY`` is absent. With the
-key, the package is installed from tag ``engine-v1.0.0`` and these tests run.
+CI always installs the public tag ``engine-v1.0.0`` before this module runs.
 """
 from __future__ import annotations
 

@@ -1,9 +1,8 @@
 # One script for a fresh rented RTX 4090 (Windows Server 2025, NVIDIA driver 600+).
-# Installs uv, CPython 3.14, the GPU stack, an LGPL ffmpeg, and the private
+# Installs uv, CPython 3.14, the GPU stack, an LGPL ffmpeg, and the public
 # engine, then runs the benchmark and one end-to-end restore. See docs/TESTING-GPU.md.
 #requires -Version 5.1
 param(
-    [string]$DeployKeyPath = "",
     [int]$SampleFrames = 48,
     [string]$ResultsDir = "",
     [switch]$AllowOtherGpu,
@@ -29,7 +28,7 @@ $Archive = Join-Path $ResultsDir "$BundleName.tar.gz"
 
 $FfmpegUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip"
 $UvUrl = "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip"
-$EngineUrl = "voxprint-engine @ git+ssh://git@github.com/Mitroshenkov87/voxprint-enlarge.git@engine-v1.0.0"
+$EngineUrl = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0"
 
 function Fail([string]$Reason) {
     Write-Host ""
@@ -170,34 +169,6 @@ function Get-Ffmpeg {
     return $local
 }
 
-function Protect-Key([string]$Path) {
-    & icacls $Path /inheritance:r /grant:r "${env:USERNAME}:(R)" | Out-Null
-    if ($LASTEXITCODE -ne 0) { Fail "Could not restrict permissions on the deploy key $Path." }
-}
-
-function Resolve-DeployKey {
-    $candidate = $DeployKeyPath
-    if (-not $candidate) { $candidate = [string]$env:VOXPRINT_ENGINE_DEPLOY_KEY }
-    if (-not $candidate) {
-        Fail "The private engine needs an SSH deploy key. Pass -DeployKeyPath or set VOXPRINT_ENGINE_DEPLOY_KEY to a key file path or to the private key text."
-    }
-    if (Test-Path -LiteralPath $candidate) {
-        $resolved = (Resolve-Path -LiteralPath $candidate).Path
-        Protect-Key $resolved
-        return $resolved
-    }
-    if ($candidate -match "PRIVATE KEY") {
-        $dir = Join-Path $Tools "keys"
-        New-Item -ItemType Directory -Force -Path $dir | Out-Null
-        $file = Join-Path $dir "enlarge-deploy"
-        $utf8 = New-Object System.Text.UTF8Encoding $false
-        [System.IO.File]::WriteAllText($file, $candidate.Trim() + "`n", $utf8)
-        Protect-Key $file
-        return $file
-    }
-    Fail "VOXPRINT_ENGINE_DEPLOY_KEY is neither an existing file nor a private key."
-}
-
 $uv = Get-Uv
 $git = Get-Git
 $ffmpeg = Get-Ffmpeg
@@ -228,28 +199,8 @@ Invoke-Native { & $uv pip install --python $python -r (Join-Path $Root "requirem
 Write-Host "installing TensorRT"
 Invoke-Native { & $uv pip install --python $python "tensorrt" } "tensorrt failed to install"
 
-$keyFile = Resolve-DeployKey
-$ssh = Get-Command ssh -ErrorAction SilentlyContinue
-$keyscan = Get-Command ssh-keyscan -ErrorAction SilentlyContinue
-if (-not $ssh -or -not $keyscan) {
-    Fail "OpenSSH Client is not installed. On Windows Server install the OpenSSH.Client capability, then run this script again."
-}
-$sshDir = Join-Path $env:USERPROFILE ".ssh"
-New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
-$known = Join-Path $sshDir "known_hosts"
-Write-Host "recording github.com in $known"
-$scanned = & ssh-keyscan -t ed25519,ecdsa,rsa github.com 2>$null
-if ($LASTEXITCODE -ne 0 -or -not $scanned) {
-    Fail "ssh-keyscan did not return a host key for github.com."
-}
-$existing = ""
-if (Test-Path -LiteralPath $known) { $existing = Get-Content -LiteralPath $known -Raw -ErrorAction SilentlyContinue }
-if ($existing -notmatch "(?m)^github\.com ") {
-    Add-Content -LiteralPath $known -Value $scanned -Encoding ascii
-}
-$env:GIT_SSH_COMMAND = "ssh -i `"$keyFile`" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=`"$known`""
 Write-Host "installing the shared engine from engine-v1.0.0"
-Invoke-Native { & $uv pip install --python $python $EngineUrl } "the engine install failed. Check the deploy key and that github.com is in known_hosts."
+Invoke-Native { & $uv pip install --python $python $EngineUrl } "the public engine install failed"
 Write-Host "putting onnxruntime-gpu back over the engine's CPU wheel"
 Invoke-Native { & $uv pip install --python $python --upgrade "onnxruntime-gpu" "tensorrt" } "onnxruntime-gpu failed to install"
 

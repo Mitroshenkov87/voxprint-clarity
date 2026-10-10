@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voxprint-clarity"
-version = "0.1.0"
+version = "1.0.0rc0"
 description = "Voxprint AI Clarity: lightweight non-generative video restoration."
 requires-python = ">=3.14,<3.15"
 readme = "README.md"

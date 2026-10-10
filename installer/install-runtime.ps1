@@ -6,6 +6,8 @@ param(
     [Parameter(Mandatory = $true)][string]$Requirements,
     [Parameter(Mandatory = $true)][string]$Lock,
     [Parameter(Mandatory = $true)][string]$Log,
+    [string]$BenchRequirements = "",
+    [string]$EngineRequirement = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0",
     [switch]$SkipRuntime
 )
 $ErrorActionPreference = "Stop"
@@ -44,6 +46,27 @@ if ($LASTEXITCODE -ne 0) { throw "torch install failed" }
 Write-Log "installing Clarity requirements"
 & $uv.FullName pip install --python $venvPython -r $Requirements
 if ($LASTEXITCODE -ne 0) { throw "requirements install failed" }
+if ($BenchRequirements) {
+    Write-Log "installing restore requirements"
+    & $uv.FullName pip install --python $venvPython -r $BenchRequirements
+    if ($LASTEXITCODE -ne 0) { throw "restore requirements install failed" }
+}
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Write-Log "downloading MinGit so the public engine can be cloned"
+    $gitZip = Join-Path $uvDir "mingit.zip"
+    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/git-for-windows/git/releases/latest" -Headers @{ "User-Agent" = "voxprint-clarity" }
+    $asset = $release.assets | Where-Object { $_.name -like "MinGit-*-64-bit.zip" } | Select-Object -First 1
+    if (-not $asset) { throw "GitHub did not list a MinGit 64-bit zip" }
+    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $gitZip
+    Expand-Archive -LiteralPath $gitZip -DestinationPath (Join-Path $uvDir "mingit") -Force
+    $env:Path = "$(Join-Path $uvDir 'mingit\cmd');$env:Path"
+}
+Write-Log "installing the shared engine"
+& $uv.FullName pip install --python $venvPython $EngineRequirement
+if ($LASTEXITCODE -ne 0) { throw "engine install failed" }
+Write-Log "installing onnxruntime-gpu over the engine CPU wheel"
+& $uv.FullName pip install --python $venvPython --upgrade "onnxruntime-gpu"
+if ($LASTEXITCODE -ne 0) { throw "onnxruntime-gpu install failed" }
 $link = Join-Path $AppDir "runtime"
 if (Test-Path $link) { cmd /c rmdir "$link" | Out-Null }
 cmd /c mklink /J "$link" "$runtime\venv" | Out-Null

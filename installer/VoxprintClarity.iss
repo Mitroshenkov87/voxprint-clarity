@@ -73,10 +73,13 @@ RuntimeFailed=The Python environment could not be installed.%n%nDetails: %1
 [Files]
 Source: "install-runtime.ps1"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "..\requirements.txt"; DestDir: "{tmp}"; Flags: dontcopy
+Source: "..\requirements-gpu.txt"; DestDir: "{tmp}"; Flags: dontcopy
+Source: "..\requirements-bench.txt"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "runtime_lock.json"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "..\main.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements-gpu.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\requirements-bench.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\pyproject.toml"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\BUILD.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\clarity\*"; DestDir: "{app}\clarity"; Excludes: "__pycache__,*.pyc"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -135,6 +138,8 @@ begin
   Result := '';
   ExtractTemporaryFile('install-runtime.ps1');
   ExtractTemporaryFile('requirements.txt');
+  ExtractTemporaryFile('requirements-gpu.txt');
+  ExtractTemporaryFile('requirements-bench.txt');
   ExtractTemporaryFile('runtime_lock.json');
   Script := ExpandConstant('{tmp}\install-runtime.ps1');
   LogFile := ExpandConstant('{%TEMP}\VoxprintClarity-setup.log');
@@ -144,6 +149,7 @@ begin
     Skip := '';
   Params := '-NoProfile -ExecutionPolicy Bypass -File "' + Script + '" -AppDir "' + ExpandConstant('{app}') +
             '" -Requirements "' + ExpandConstant('{tmp}\requirements.txt') +
+            '" -BenchRequirements "' + ExpandConstant('{tmp}\requirements-bench.txt') +
             '" -Lock "' + ExpandConstant('{tmp}\runtime_lock.json') +
             '" -Log "' + LogFile + '"' + Skip;
   if WizardSilent then Show := SW_HIDE else Show := SW_SHOWNORMAL;

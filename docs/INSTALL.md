@@ -19,8 +19,13 @@ runs `installer/install-runtime.ps1`, which:
    driver 600, compute capability 8.9).
 2. Creates a venv under `%LOCALAPPDATA%\Voxprint\runtime-<lock hash>`.
 3. Installs torch from `https://download.pytorch.org/whl/cu130`.
-4. Installs `requirements.txt`.
-5. Junctions that venv to `{app}\runtime`.
+4. Installs `requirements.txt` and `requirements-bench.txt` (spandrel and
+   `onnxruntime-gpu`).
+5. Installs the public engine
+   `voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0`,
+   then installs `onnxruntime-gpu` again so the engine's CPU wheel does not
+   replace it.
+6. Junctions that venv to `{app}\runtime`.
 
 The Start menu folder is `Voxprint`. The shortcut is **Voxprint AI Clarity**.
 
@@ -38,10 +43,9 @@ VoxprintClarity-Setup.exe /VERYSILENT /RUNTIME=skip
 
 A real install omits `/RUNTIME=skip`. After a runtime install the setup runs
 `python main.py --register-models-user`. Uninstall runs
-`--unregister-models-user`. Both need the engine package at tag
-`engine-v1.0.0`. The installer does not clone that private repository.
-Register prints a clear message when the package is missing, and the app
-files are still installed.
+`--unregister-models-user`. Both use the engine package at tag
+`engine-v1.0.0`, which the runtime step installs from the public Enlarge
+repository.
 
 ffmpeg must be an LGPL build on `PATH` (NVDEC and NVENC). Clarity does not
 ship ffmpeg.
@@ -86,4 +90,7 @@ QT_QPA_PLATFORM=offscreen python -m clarity --selftest
 ```
 
 CI is GitHub Actions on `ubuntu-latest` and `windows-latest` (lint and unit
-tests), plus an installer job and an experimental Linux package job.
+tests, with the public engine installed), plus an installer job and an
+experimental Linux package job. A tag `v1.0.0-rc.999` runs
+`.github/workflows/release.yml`, which publishes the full Windows installer
+and the Linux package as a pre-release with `SHA256SUMS`.

@@ -82,8 +82,7 @@ def _require() -> Any:
     if _engine_api is None:
         raise EngineUnavailable(
             "Clarity needs the shared voxprint-engine package from Voxprint AI Enlarge. "
-            f"Install {ENGINE_REQUIREMENT}. "
-            "CI uses the VOXPRINT_ENGINE_DEPLOY_KEY secret; fork pull requests skip that install."
+            f"Install {ENGINE_REQUIREMENT}."
         )
     return _engine_api
 

@@ -7,7 +7,7 @@ Clarity uses the shared package `voxprint_engine` (distribution name
 |---|---|
 | Tag | `engine-v1.0.0` (`26b7807`) |
 | Requirement | `voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0` |
-| CI install | `git+ssh://git@github.com/Mitroshenkov87/voxprint-enlarge.git@engine-v1.0.0` with `VOXPRINT_ENGINE_DEPLOY_KEY` |
+| CI install | the same `git+https` requirement. Enlarge is public, so there is no deploy key. |
 | Import package | `voxprint_engine` |
 | Video names | `voxprint_engine.api` |
 
@@ -53,7 +53,6 @@ otherwise writes the graph with `torch.onnx.export`.
 
 ## CI
 
-`VOXPRINT_ENGINE_DEPLOY_KEY` is a read-only deploy key. The workflow starts
-`webfactory/ssh-agent@v0.9.0` and installs the tag over SSH. When the secret is
-absent, the install step is skipped and the pure tests still run. Tests in
-`tests/test_engine.py` run only when the package imports.
+CI installs the public tag over HTTPS on every test job and imports
+`voxprint_engine` before the suite runs. `tests/test_engine.py` runs in that
+job. There is no deploy key and no skip when a secret is absent.

@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from clarity.appinfo import release_title, version_label
 from clarity.bench import Sample, main as bench_main, render_report, save_crops, tensorrt_providers, write_report
 from clarity.bench import conditioned_nchw
 from clarity.engine import assess_launch, gpu_busy_text, submit_restore
@@ -398,6 +399,11 @@ def test_conditioned_preview_adds_the_deblock_channel() -> None:
     nchw = conditioned_nchw(model, np.zeros((4, 4, 3), dtype=np.float32))
     assert nchw.shape == (1, 4, 4, 4)
     assert nchw[0, 3, 0, 0] == pytest.approx(deblock_level(40))
+
+
+def test_version_label_is_the_first_release_candidate() -> None:
+    assert version_label() == '1.0.0 RC · build 999 "Bereshit"'
+    assert release_title() == 'Voxprint AI Clarity 1.0.0 RC · build 999 "Bereshit"'
 
 
 def test_bench_refuses_without_a_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
