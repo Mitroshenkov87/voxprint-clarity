@@ -35,9 +35,14 @@
   "error.missing_source": "That video file was not found.",
   "project.open": "Open project",
   "project.save": "Save project",
+  "project.save_as": "Save as",
+  "project.save_copy": "Save a copy",
+  "project.export": "Export",
+  "project.download": "Download models",
   "project.recent": "Recent",
   "project.filter": "Clarity project (*.vxclarity);;All files (*.*)",
   "status.resumed": "Resuming from the last finished chunk",
   "status.saved": "Project saved",
+  "status.downloaded": "Models downloaded",
   "status.gpu_busy": "The GPU is busy ({detail}). Waiting, then retrying."
 }

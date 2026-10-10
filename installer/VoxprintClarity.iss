@@ -6,34 +6,41 @@
 
 #define AppName "VoxprintClarity"
 #define AppDisplayName "Voxprint AI Clarity"
-#define AppInfoFile AddBackslash(SourcePath) + "..\clarity\appinfo.py"
-#if FileExists(AppInfoFile) == 0
-  #error clarity\appinfo.py was not found
+; Version, build, and codename are one key per line in BUILD.json.
+#define BuildFile AddBackslash(SourcePath) + "..\BUILD.json"
+#if FileExists(BuildFile) == 0
+  #error BUILD.json was not found
 #endif
-#define AppInfoHandle FileOpen(AppInfoFile)
+#define BuildHandle FileOpen(BuildFile)
 #define AppVersion ""
 #define AppBuild ""
 #define AppCodename ""
-#sub ParseAppInfoLine
-  #define AppInfoLine FileRead(AppInfoHandle)
-  #if AppInfoLine != ""
-    #if Pos("APP_VERSION", AppInfoLine) == 1
-      #define public AppVersion Copy(AppInfoLine, Pos('"', AppInfoLine) + 1, Len(AppInfoLine) - Pos('"', AppInfoLine) - 1)
-    #elif Pos("APP_BUILD", AppInfoLine) == 1
-      #define public AppBuild Trim(Copy(AppInfoLine, Pos("=", AppInfoLine) + 1, 16))
-    #elif Pos("CODENAME", AppInfoLine) == 1
-      #define public AppCodename Copy(AppInfoLine, Pos('"', AppInfoLine) + 1, Len(AppInfoLine) - Pos('"', AppInfoLine) - 1)
-    #endif
+#sub ParseBuildLine
+  #define BuildLine FileRead(BuildHandle)
+  #if Pos('"version"', BuildLine) > 0
+    #define Tail Copy(BuildLine, Pos(":", BuildLine) + 1, 200)
+    #define Quoted Copy(Tail, Pos('"', Tail) + 1, 200)
+    #define public AppVersion Copy(Quoted, 1, Pos('"', Quoted) - 1)
+  #elif Pos('"build"', BuildLine) > 0
+    #define Tail Copy(BuildLine, Pos(":", BuildLine) + 1, 32)
+    #define public AppBuild Trim(StringChange(StringChange(StringChange(Tail, ",", ""), "}", ""), " ", ""))
+  #elif Pos('"codename"', BuildLine) > 0
+    #define Tail Copy(BuildLine, Pos(":", BuildLine) + 1, 200)
+    #define Quoted Copy(Tail, Pos('"', Tail) + 1, 200)
+    #define public AppCodename Copy(Quoted, 1, Pos('"', Quoted) - 1)
   #endif
 #endsub
-#define AppInfoI 0
-#for {AppInfoI = 0; AppInfoI < 40 && !FileEof(AppInfoHandle); AppInfoI++} ParseAppInfoLine
-#expr FileClose(AppInfoHandle)
+#define BuildI 0
+#for {BuildI = 0; BuildI < 40 && !FileEof(BuildHandle); BuildI++} ParseBuildLine
+#expr FileClose(BuildHandle)
 #if AppVersion == ""
-  #error APP_VERSION was not read
+  #error version was not read from BUILD.json
 #endif
 #if AppBuild == ""
-  #error APP_BUILD was not read
+  #error build was not read from BUILD.json
+#endif
+#if AppCodename == ""
+  #error codename was not read from BUILD.json
 #endif
 #define PyW "{app}\runtime\Scripts\pythonw.exe"
 #define Py "{app}\runtime\Scripts\python.exe"
@@ -82,6 +89,7 @@ Source: "..\requirements-gpu.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements-bench.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\pyproject.toml"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\BUILD.json"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\assets\icons\suite\*"; DestDir: "{app}\assets\icons\suite"; Flags: ignoreversion
 Source: "..\clarity\*"; DestDir: "{app}\clarity"; Excludes: "__pycache__,*.pyc"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\locales\*"; DestDir: "{app}\locales"; Flags: ignoreversion
 Source: "..\branding\*"; DestDir: "{app}\branding"; Flags: ignoreversion

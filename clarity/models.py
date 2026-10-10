@@ -6,7 +6,10 @@ before a download. Hashes were computed from the official release assets.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+from clarity.engine import ensure_weight
 
 ALLOWED = frozenset({"mit", "apache-2.0", "bsd-2-clause", "bsd-3-clause"})
 
@@ -214,3 +217,42 @@ def upscale_model(*, anime: bool) -> ClarityModel:
     if anime:
         return get_model("realesr-animevideov3")
     return get_model("realesr-general-x4v3")
+
+
+def catalogue_rows() -> list[dict[str, Any]]:
+    """Machine-readable catalogue. No download and no GPU."""
+    rows: list[dict[str, Any]] = []
+    for model in CATALOG:
+        rows.append(
+            {
+                "id": model.id,
+                "name": model.name,
+                "role": model.role,
+                "licence": model.licence,
+                "filename": model.filename,
+                "sha256": model.sha256,
+                "download_url": model.download_url,
+            }
+        )
+    return rows
+
+
+def fetch_weights(ids: list[str] | None = None, *, dry_run: bool = False) -> list[dict[str, Any]]:
+    """Fetch catalogue weights through the shared engine store.
+
+    ``dry_run`` lists the files that would be fetched and does not download them.
+    """
+    chosen = [get_model(model_id) for model_id in ids] if ids else list(CATALOG)
+    rows: list[dict[str, Any]] = []
+    for model in chosen:
+        row: dict[str, Any] = {
+            "id": model.id,
+            "filename": model.filename,
+            "sha256": model.sha256,
+            "download_url": model.download_url,
+        }
+        if not dry_run:
+            path: Path = ensure_weight(model.manifest())
+            row["path"] = str(path)
+        rows.append(row)
+    return rows

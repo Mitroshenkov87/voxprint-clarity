@@ -13,7 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
-from clarity.__main__ import build_parser
+from clarity.cli import build_parser
 from clarity.i18n import tr
 from clarity.pipeline.encode import VideoCodec
 from clarity.pipeline.job import Settings
@@ -240,6 +240,22 @@ def test_window_saves_and_opens_a_project(tmp_path: Path, monkeypatch: pytest.Mo
     window.close()
 
 
+def test_suite_icons_match_the_save_and_export_actions() -> None:
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow(runner=lambda *_args, **_kwargs: None)
+    window.show()
+    app.processEvents()
+    assert not window.save_project_button.icon().isNull()
+    assert not window.save_as_button.icon().isNull()
+    assert not window.save_copy_button.icon().isNull()
+    assert not window.export_button.icon().isNull()
+    assert not window.download_button.icon().isNull()
+    save = (_ROOT / "assets" / "icons" / "suite" / "save.svg").read_text(encoding="utf-8")
+    assert "floppy" not in save.lower()
+    assert "M11 2.5V11" in save
+    window.close()
+
+
 def test_launch_parser_accepts_a_project() -> None:
     args = build_parser().parse_args(["movie.vxclarity"])
     assert args.project == Path("movie.vxclarity")
@@ -250,6 +266,8 @@ def test_installers_declare_the_association() -> None:
     assert 'ValueData: "Voxprint.Clarity.Project"' in iss
     assert "Root: HKCU;" in iss
     assert "uninsdeletekey" in iss
+    assert "BUILD.json" in iss
+    assert "assets\\icons\\suite" in iss
     desktop = (_ROOT / "installer" / "linux" / "voxprint-clarity.desktop").read_text(encoding="utf-8")
     assert "MimeType=application/vnd.voxprint.clarity+zip;" in desktop
     xml = (_ROOT / "installer" / "linux" / "voxprint-clarity.xml").read_text(encoding="utf-8")

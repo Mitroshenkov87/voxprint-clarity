@@ -40,6 +40,7 @@ from clarity.pipeline.encode import (
     decode_range_command,
     encode_chunk_command,
     parse_encoder_list,
+    planned_encoder,
     select_encoder,
 )
 from clarity.pipeline.job import Hooks, Settings, models_for, process_frames, wait_for_thermal
@@ -51,7 +52,6 @@ from clarity.pipeline.resume import (
     file_sha256,
     load_done,
     load_plan,
-    pending,
     plan_matches,
     publish_chunk,
     reset_chunks,
@@ -267,7 +267,126 @@ def _finished_records(journal: Path, folder: Path, ranges: list[tuple[int, int]]
     return usable
 
 
-def _prepare_plan(spec: JobSpec, probe: Any, bound: Control) -> tuple[Path, list[tuple[int, int]], dict[int, ChunkRecord]]:
+def build_restore_plan(
+    spec: JobSpec,
+    probe: Any,
+    *,
+    encoder: str,
+    cuts: list[int],
+    ranges: list[tuple[int, int]],
+    work: Path,
+    done: dict[int, ChunkRecord],
+    encoder_available: bool,
+) -> dict[str, Any]:
+    """The ffmpeg commands and model list for one restore. Nothing is executed."""
+    require_sdr(probe)
+    out_h = probe.height * (2 if spec.settings.upscale else 1)
+    out_w = probe.width * (2 if spec.settings.upscale else 1)
+    chunks_dir = work / "chunks"
+    chunk_plans: list[dict[str, Any]] = []
+    for index, (start, stop) in enumerate(ranges):
+        final = chunk_path(chunks_dir, index)
+        partial = final.with_name(final.name + ".partial")
+        chunk_plans.append(
+            {
+                "index": index,
+                "start": start,
+                "stop": stop,
+                "done": index in done,
+                "decode": decode_range_command(
+                    spec.ffmpeg,
+                    str(spec.source),
+                    start,
+                    stop,
+                    deinterlace=probe.interlaced,
+                ),
+                "encode": encode_chunk_command(
+                    spec.ffmpeg,
+                    encoder=encoder,
+                    destination=str(partial),
+                    width=out_w,
+                    height=out_h,
+                    fps=probe.fps,
+                ),
+            }
+        )
+    list_path = work / "concat.txt"
+    partial_out = spec.destination.with_name(spec.destination.name + ".partial")
+    return {
+        "source": str(spec.source),
+        "destination": str(spec.destination),
+        "mode": spec.settings.mode,
+        "upscale": spec.settings.upscale,
+        "container": spec.settings.container.value,
+        "codec": spec.settings.codec.value,
+        "encoder": encoder,
+        "encoder_available": encoder_available,
+        "width": int(probe.width),
+        "height": int(probe.height),
+        "fps": float(probe.fps),
+        "frames": int(probe.frames),
+        "output_width": out_w,
+        "output_height": out_h,
+        "models": [model.id for model in models_for(spec.settings)],
+        "cuts": list(cuts),
+        "probe_command": probe_command(spec.ffprobe, str(spec.source)),
+        "scene_command": scene_command(spec.ffmpeg, str(spec.source), spec.scene_threshold),
+        "chunks": chunk_plans,
+        "concat_list": str(list_path),
+        "concat": concat_command(
+            spec.ffmpeg,
+            str(list_path),
+            str(spec.source),
+            container=spec.settings.container,
+            destination=str(partial_out),
+            copy_audio=spec.settings.copy_audio,
+        ),
+        "executed": False,
+        "gpu_used": False,
+    }
+
+
+def dry_run_restore(spec: JobSpec, *, run_text: Callable[[list[str]], str] | None = None) -> dict[str, Any]:
+    """Validate the source and build the restore plan without the GPU.
+
+    ffprobe and the CPU scene filter may run. NVDEC, NVENC, CUDA, and the
+    weight loader do not.
+    """
+    text_of = _run_text if run_text is None else run_text
+    if not spec.source.is_file():
+        raise ClarityError("the source video was not found")
+    probe_payload = json.loads(text_of(probe_command(spec.ffprobe, str(spec.source))))
+    if not isinstance(probe_payload, dict):
+        raise ClarityError("ffprobe did not return an object")
+    probe = parse_probe(probe_payload)
+    require_sdr(probe)
+    if probe.frames < 1:
+        raise ClarityError("ffprobe did not report a frame count, so the job cannot resume by chunk")
+    scene_text = text_of(scene_command(spec.ffmpeg, str(spec.source), spec.scene_threshold))
+    cuts = parse_scene_cuts(scene_text, probe.fps)
+    encoders = parse_encoder_list(text_of([spec.ffmpeg, "-hide_banner", "-encoders"]))
+    encoder, available = planned_encoder(spec.settings.codec, encoders)
+    ranges = plan_chunks(probe.frames, cuts, spec.settings.max_frames)
+    digest = settings_digest(spec.settings.digest_payload())
+    work = work_dir_for(spec)
+    source = str(spec.source.resolve())
+    existing = load_plan(work / "plan.json")
+    done: dict[int, ChunkRecord] = {}
+    if existing is not None and plan_matches(existing, digest=digest, source=source, ranges=ranges):
+        done = _finished_records(work / "journal.jsonl", work / "chunks", ranges)
+    return build_restore_plan(
+        spec,
+        probe,
+        encoder=encoder,
+        cuts=cuts,
+        ranges=ranges,
+        work=work,
+        done=done,
+        encoder_available=available,
+    )
+
+
+def _prepare_plan(spec: JobSpec, probe: Any, bound: Control) -> tuple[Path, list[tuple[int, int]], dict[int, ChunkRecord], list[int]]:
     if probe.frames < 1:
         raise ClarityError("ffprobe did not report a frame count, so the job cannot resume by chunk")
     scene_text = bound.run_text(scene_command(spec.ffmpeg, str(spec.source), spec.scene_threshold))
@@ -296,8 +415,8 @@ def _prepare_plan(spec: JobSpec, probe: Any, bound: Control) -> tuple[Path, list
                 "fps": probe.fps,
             },
         )
-        return work, ranges, {}
-    return work, ranges, _finished_records(journal, chunks, ranges)
+        return work, ranges, {}, cuts
+    return work, ranges, _finished_records(journal, chunks, ranges), cuts
 
 
 def _restore_range(
@@ -306,7 +425,8 @@ def _restore_range(
     token: CancelToken,
     *,
     probe: Any,
-    encoder_name: str,
+    decode: list[str],
+    encode: list[str],
     start: int,
     stop: int,
     partial: Path,
@@ -318,25 +438,8 @@ def _restore_range(
     out_w = probe.width * (2 if spec.settings.upscale else 1)
     frame_bytes = probe.width * probe.height * 3
     count = stop - start
-    decoder = bound.spawn(
-        decode_range_command(
-            spec.ffmpeg,
-            str(spec.source),
-            start,
-            stop,
-            deinterlace=probe.interlaced,
-        )
-    )
-    encoder = bound.spawn(
-        encode_chunk_command(
-            spec.ffmpeg,
-            encoder=encoder_name,
-            destination=str(partial),
-            width=out_w,
-            height=out_h,
-            fps=probe.fps,
-        )
-    )
+    decoder = bound.spawn(decode)
+    encoder = bound.spawn(encode)
     token.watch(decoder)
     token.watch(encoder)
     stderr_text: list[str] = []
@@ -457,7 +560,17 @@ def run_job(
         raise Cancelled("cancelled")
     encoders = parse_encoder_list(bound.run_text([spec.ffmpeg, "-hide_banner", "-encoders"]))
     encoder_name = select_encoder(spec.settings.codec, encoders)
-    work, ranges, done = _prepare_plan(spec, probe, bound)
+    work, ranges, done, cuts = _prepare_plan(spec, probe, bound)
+    plan = build_restore_plan(
+        spec,
+        probe,
+        encoder=encoder_name,
+        cuts=cuts,
+        ranges=ranges,
+        work=work,
+        done=done,
+        encoder_available=True,
+    )
     chunks = work / "chunks"
     journal = work / "journal.jsonl"
     total = probe.frames
@@ -473,7 +586,12 @@ def run_job(
     partial = spec.destination.with_name(spec.destination.name + ".partial")
     try:
         with bound.lock("clarity:restore", eta):
-            for index, start, stop in pending(ranges, done):
+            for chunk in plan["chunks"]:
+                if chunk["done"]:
+                    continue
+                index = int(chunk["index"])
+                start = int(chunk["start"])
+                stop = int(chunk["stop"])
                 if token.is_set():
                     raise Cancelled("cancelled")
                 if bound.device:
@@ -488,13 +606,14 @@ def run_job(
                         baseline=baseline,
                     )
                 chunk_final = chunk_path(chunks, index)
-                chunk_partial = chunk_final.with_name(chunk_final.name + ".partial")
+                chunk_partial = Path(str(chunk["encode"][-1]))
                 _restore_range(
                     spec,
                     bound,
                     token,
                     probe=probe,
-                    encoder_name=encoder_name,
+                    decode=list(chunk["decode"]),
+                    encode=list(chunk["encode"]),
                     start=start,
                     stop=stop,
                     partial=chunk_partial,
@@ -514,20 +633,11 @@ def run_job(
                 raise Cancelled("cancelled")
             if finished_frames < 1:
                 raise ClarityError("the decoder produced no frames")
-            list_path = work / "concat.txt"
+            list_path = Path(str(plan["concat_list"]))
             ordered = [str(chunk_path(chunks, index).resolve()) for index in range(len(ranges))]
             list_path.write_text(concat_list(ordered), encoding="utf-8")
             partial.parent.mkdir(parents=True, exist_ok=True)
-            joiner = bound.spawn(
-                concat_command(
-                    spec.ffmpeg,
-                    str(list_path),
-                    str(spec.source),
-                    container=spec.settings.container,
-                    destination=str(partial),
-                    copy_audio=spec.settings.copy_audio,
-                )
-            )
+            joiner = bound.spawn(list(plan["concat"]))
             token.watch(joiner)
             stderr_text: list[str] = []
             threading.Thread(target=_drain, args=(getattr(joiner, "stderr", None), stderr_text), daemon=True).start()

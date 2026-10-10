@@ -35,9 +35,14 @@
   "error.missing_source": "Этот видеофайл не найден.",
   "project.open": "Открыть проект",
   "project.save": "Сохранить проект",
+  "project.save_as": "Сохранить как",
+  "project.save_copy": "Сохранить копию",
+  "project.export": "Экспорт",
+  "project.download": "Скачать модели",
   "project.recent": "Недавние",
   "project.filter": "Проект Clarity (*.vxclarity);;Все файлы (*.*)",
   "status.resumed": "Продолжение с последнего готового фрагмента",
   "status.saved": "Проект сохранён",
+  "status.downloaded": "Модели скачаны",
   "status.gpu_busy": "Видеокарта занята ({detail}). Ожидание, затем повтор."
 }
