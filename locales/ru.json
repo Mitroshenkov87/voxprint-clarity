@@ -25,7 +25,12 @@
   "colour.label": "Цвет для каждой сцены",
   "sharpen.label": "Резкость",
   "start": "Старт",
+  "cancel": "Отмена",
   "status.ready": "Готово",
-  "status.need_gpu_job": "Для восстановления нужна видеокарта RTX 40 или новее. Окно готово; задание пойдёт в рабочий процесс, когда установлен общий движок.",
-  "error.no_source": "Сначала выберите видео."
+  "status.running": "Восстановление {done} из {total}",
+  "status.done": "Завершено",
+  "status.cancelled": "Отменено",
+  "status.cancelling": "Остановка",
+  "error.no_source": "Сначала выберите видео.",
+  "error.missing_source": "Этот видеофайл не найден."
 }

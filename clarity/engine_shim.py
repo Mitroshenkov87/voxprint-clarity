@@ -165,13 +165,29 @@ def thermal_decide(elapsed_s: float, median_c: float | None, throttling_s: float
     return _thermal().decide(elapsed_s, median_c, throttling_s, paused)
 
 
-def gpu_job(job: str, eta_s: float = 600.0, owner: str = "clarity") -> Any:
-    """Hold the suite lock. ``owner`` is passed when the engine accepts it (the video patch)."""
+def gpu_job(
+    job: str,
+    eta_s: float = 600.0,
+    owner: str = "clarity",
+    cancel: Callable[[], bool] | None = None,
+) -> Any:
+    """Hold the suite lock. ``owner`` is passed when the engine accepts it (the video patch).
+
+    ``cancel`` is polled while waiting. An engine that predates those arguments
+    is called again without them.
+    """
     lock = _lock()
+    kwargs: dict[str, Any] = {"eta_s": eta_s}
+    if cancel is not None:
+        kwargs["cancel"] = cancel
     try:
-        return lock.gpu_job(job, eta_s=eta_s, owner=owner)
+        return lock.gpu_job(job, owner=owner, **kwargs)
     except TypeError:
-        return lock.gpu_job(job, eta_s=eta_s)
+        kwargs.pop("cancel", None)
+        try:
+            return lock.gpu_job(job, owner=owner, **kwargs)
+        except TypeError:
+            return lock.gpu_job(job, **kwargs)
 
 
 def register_user(key: str = "clarity", root: Path | None = None) -> dict[str, bool]:

@@ -34,14 +34,14 @@ addopts = "-q --tb=short"
 [tool.ruff]
 target-version = "py314"
 line-length = 120
-src = ["clarity", "main.py", "tools", "tests"]
+src = ["clarity", "main.py", "tests"]
 
 [tool.ruff.lint]
 select = ["F", "E9"]
 
 [tool.mypy]
 python_version = "3.14"
-files = ["clarity", "main.py", "tools/make_icon.py"]
+files = ["clarity", "main.py"]
 ignore_missing_imports = true
 follow_imports = "silent"
 namespace_packages = true

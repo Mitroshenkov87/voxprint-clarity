@@ -68,7 +68,7 @@ appimagetool can be downloaded.
 
 ```bash
 python -m pip install -r requirements-dev.txt
-python -m ruff check clarity main.py tests tools
+python -m ruff check clarity main.py tests
 python -m mypy
 python -m pytest
 QT_QPA_PLATFORM=offscreen python -m clarity --selftest

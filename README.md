@@ -61,8 +61,10 @@ python -m pytest
 ```
 
 The desktop window is PySide6, English with a Russian translation, in the
-suite dark theme. The Start menu group is **Voxprint**, shared with the other
-suite apps.
+suite dark theme. Start runs one job on a worker thread: NVDEC decode,
+restore, then AV1 encode with audio stream-copy, under the suite GPU lock,
+with progress and cancel. The Start menu group is **Voxprint**, shared with
+the other suite apps.
 
 Windows installer: `installer/VoxprintClarity.iss` (Inno Setup 6). It downloads
 Python 3.14 and the CUDA torch wheel. `/RUNTIME=skip` installs the files
@@ -78,7 +80,8 @@ encoder is already in the LGPL ffmpeg). MP4 is optional. H.265 is
 `hevc_nvenc` only, and only when you ask for it. H.264 output is refused.
 Audio, subtitles, chapters, and metadata are stream-copied. Opus is used
 only when the audio cannot be copied. HDR and Dolby Vision are refused in
-this version (SDR only). A crash resumes from the last finished chunk.
+this version (SDR only). The running job writes a `.partial` file and
+publishes it only after the encode exits cleanly. Cancel deletes that file.
 
 GPU lock, VRAM budget, thermal pauses, the model store, and the ONNX session
 come from `voxprint_engine`. Clarity does not keep a second copy of those.

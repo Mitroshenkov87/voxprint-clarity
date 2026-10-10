@@ -35,7 +35,7 @@ jobs:
             || echo "::notice title=Shared engine install failed::The token was set but the pin at 6d00d44 did not install (the engine pyproject is still landing). Pure Clarity tests still run."
       - name: Lint
         run: |
-          ruff check clarity main.py tests tools
+          ruff check clarity main.py tests
           mypy
       - name: Unit tests
         env:

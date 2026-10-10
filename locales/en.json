@@ -25,7 +25,12 @@
   "colour.label": "Colour cleanup for each scene",
   "sharpen.label": "Sharpen",
   "start": "Start",
+  "cancel": "Cancel",
   "status.ready": "Ready",
-  "status.need_gpu_job": "A restore needs an RTX 40 series GPU. The window is ready; the job runs from the worker once the engine is installed.",
-  "error.no_source": "Choose a video first."
+  "status.running": "Restoring {done} of {total}",
+  "status.done": "Finished",
+  "status.cancelled": "Cancelled",
+  "status.cancelling": "Stopping",
+  "error.no_source": "Choose a video first.",
+  "error.missing_source": "That video file was not found."
 }
