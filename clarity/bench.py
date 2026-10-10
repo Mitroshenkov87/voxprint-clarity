@@ -240,26 +240,30 @@ def _vram_mb() -> float:
     return 0.0
 
 
-def export_with_engine(weight: Path, dest: Path) -> bool:
-    """Use the shared engine's exporter when it has one. Enlarge 6d00d44 does not."""
-    try:
-        module = importlib.import_module("voxprint_engine")
-    except ImportError:
-        module = None
-    if module is not None:
-        exporter = getattr(module, "export_onnx", None)
-        if callable(exporter):
-            exporter(str(weight), str(dest))
-            return dest.is_file()
-    try:
-        session = importlib.import_module("voxprint_engine.session")
-    except ImportError:
-        return False
-    exporter = getattr(session, "export_onnx", None)
-    if not callable(exporter):
-        return False
-    exporter(str(weight), str(dest))
-    return dest.is_file()
+def export_with_engine(weight: Path, dest: Path) -> str | None:
+    """Use Enlarge's exporter when that module can be imported.
+
+    ``engine-v1.0.0`` ships the converter as ``tools/export_onnx.py`` in the
+    enlarge repository. The installed ``voxprint_engine`` wheel does not include
+    that file. A ``None`` return means the caller should write the graph itself.
+    """
+    for name in ("voxprint_engine.export_onnx", "tools.export_onnx"):
+        try:
+            module = importlib.import_module(name)
+        except ImportError:
+            continue
+        convert = getattr(module, "convert", None)
+        if not callable(convert):
+            convert = getattr(module, "export_onnx", None)
+        if not callable(convert):
+            continue
+        try:
+            convert(weight, dest)
+        except SystemExit as exc:
+            raise RuntimeError(str(exc)) from exc
+        if dest.is_file():
+            return f"ONNX exported by {name}"
+    return None
 
 
 def export_torch_onnx(network: Any, dest: Path, channels: int, spatial: int = SPATIAL) -> None:
@@ -504,11 +508,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         onnx_path = args.out / f"{model.id}.onnx"
         try:
-            if export_with_engine(weight, onnx_path):
-                exported = "ONNX exported by voxprint_engine"
-            else:
+            exported = export_with_engine(weight, onnx_path)
+            if exported is None:
                 export_torch_onnx(network, onnx_path, model.channels)
-                exported = "ONNX exported with torch.onnx; voxprint_engine 6d00d44 has no export_onnx"
+                exported = (
+                    "ONNX exported with torch.onnx; "
+                    "engine-v1.0.0 keeps tools/export_onnx.py out of the installed wheel"
+                )
             _reset_vram()
             session = open_trt_session(onnx_path, args.out / "trt-cache" / model.id)
             trt_fps, trt_vram = time_trt(session, model.channels, args.frames)

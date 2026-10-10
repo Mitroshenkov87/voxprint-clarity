@@ -38,5 +38,6 @@
   "project.recent": "Recent",
   "project.filter": "Clarity project (*.vxclarity);;All files (*.*)",
   "status.resumed": "Resuming from the last finished chunk",
-  "status.saved": "Project saved"
+  "status.saved": "Project saved",
+  "status.gpu_busy": "The GPU is busy ({detail}). Waiting, then retrying."
 }

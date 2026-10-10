@@ -9,7 +9,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication
 
 from clarity.appinfo import APP_NAME, version_label
-from clarity.engine_shim import (
+from clarity.engine import (
     EngineUnavailable,
     assess_launch,
     models_directory,

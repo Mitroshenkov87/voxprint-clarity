@@ -38,9 +38,10 @@ VoxprintClarity-Setup.exe /VERYSILENT /RUNTIME=skip
 
 A real install omits `/RUNTIME=skip`. After a runtime install the setup runs
 `python main.py --register-models-user`. Uninstall runs
-`--unregister-models-user`. Both need the engine package. The private engine
-is not cloned by the installer; until `engine-v1.0.0` is published, register
-fails with a clear message and the app files are still installed.
+`--unregister-models-user`. Both need the engine package at tag
+`engine-v1.0.0`. The installer does not clone that private repository.
+Register prints a clear message when the package is missing, and the app
+files are still installed.
 
 ffmpeg must be an LGPL build on `PATH` (NVDEC and NVENC). Clarity does not
 ship ffmpeg.

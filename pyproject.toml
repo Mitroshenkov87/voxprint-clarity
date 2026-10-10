@@ -16,9 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# TODO: switch the pin to tag engine-v1.0.0 when the Enlarge engine release exists.
-# 6d00d44 names the project voxprint-enlarge and has no build-system table yet.
-engine = ["voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge.git@6d00d44"]
+engine = ["voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0"]
 
 [project.scripts]
 voxprint-clarity = "clarity.__main__:main"

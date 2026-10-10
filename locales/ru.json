@@ -38,5 +38,6 @@
   "project.recent": "Недавние",
   "project.filter": "Проект Clarity (*.vxclarity);;Все файлы (*.*)",
   "status.resumed": "Продолжение с последнего готового фрагмента",
-  "status.saved": "Проект сохранён"
+  "status.saved": "Проект сохранён",
+  "status.gpu_busy": "Видеокарта занята ({detail}). Ожидание, затем повтор."
 }

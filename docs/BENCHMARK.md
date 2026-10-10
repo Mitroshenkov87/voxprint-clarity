@@ -49,10 +49,12 @@ Each model is loaded with spandrel in fp16 on CUDA. The timed loop is a
 256×256 forward, after one warmup call. Peak VRAM is
 `torch.cuda.max_memory_allocated`.
 
-ONNX export tries `voxprint_engine.export_onnx`, then
-`voxprint_engine.session.export_onnx`. Enlarge pin `6d00d44` has neither, so
-the script writes the graph with `torch.onnx.export` (fp16, opset 17) and
-says so in the report. The ONNX Runtime session is opened with
+ONNX export calls `tools.export_onnx.convert` (or
+`voxprint_engine.export_onnx`) when that module imports. Tag `engine-v1.0.0`
+keeps `tools/export_onnx.py` in the enlarge repository and out of the
+installed wheel, so a machine that only has the wheel writes the graph with
+`torch.onnx.export` (fp16, opset 17) and says so in the report. The ONNX
+Runtime session is opened with
 `TensorrtExecutionProvider` (`trt_fp16_enable`, engine cache under
 `--out/trt-cache`) and then `CUDAExecutionProvider`. There is no CPU
 provider. If TensorRT EP is not in `session.get_providers()`, that model is

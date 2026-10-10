@@ -9,7 +9,8 @@ import pytest
 
 from clarity.bench import Sample, main as bench_main, render_report, save_crops, tensorrt_providers, write_report
 from clarity.bench import conditioned_nchw
-from clarity.engine_shim import Gate, call_assess, video_module
+from clarity.engine import assess_launch, gpu_busy_text, submit_restore
+from clarity.errors import Cancelled
 from clarity.i18n import tr
 from clarity.models import CATALOG, get_model, licence_allowed
 from clarity.pipeline.colour import grey_world
@@ -32,59 +33,6 @@ from clarity.pipeline.scenes import parse_scene_cuts, plan_chunks
 from clarity.pipeline.sharpen import sharpen_frames
 from clarity.platform_gate import assess_platform, linux_supported, windows_supported
 from clarity.ui import theme
-
-
-def test_temporal_windows_cover_every_frame_once() -> None:
-    video = video_module()
-    for count, length, overlap in ((1, 1, 0), (10, 1, 0), (10, 4, 1), (2, 8, 2), (20, 8, 3)):
-        emitted: list[int] = []
-        for window in video.temporal_windows(count, length, overlap):
-            for slot in range(window.keep_start, window.keep_stop):
-                emitted.append(window.input_start + slot)
-        assert emitted == list(range(count))
-
-
-def test_run_batch_keeps_the_batch_axis() -> None:
-    video = video_module()
-
-    class _Input:
-        name = "images"
-        type = "tensor(float16)"
-
-    class _Session:
-        def get_inputs(self) -> list[_Input]:
-            return [_Input()]
-
-        def run(self, _names: object, feed: dict[str, np.ndarray]) -> list[np.ndarray]:
-            assert feed["images"].dtype == np.float16
-            return [feed["images"].astype(np.float32) + 1]
-
-    batch = np.zeros((3, 3, 4, 5), dtype=np.float32)
-    out = video.run_batch(_Session(), batch)
-    assert out.shape == (3, 3, 4, 5)
-    assert out.dtype == np.float32
-    assert float(out.mean()) == pytest.approx(1.0)
-
-
-def test_tile_frames_identity_roundtrip() -> None:
-    video = video_module()
-    rng = np.random.default_rng(0)
-    frames = rng.random((2, 30, 40, 3), dtype=np.float32)
-
-    def infer(batch: np.ndarray) -> np.ndarray:
-        return batch
-
-    restored = video.tile_frames(frames, infer, tile=16, overlap=4, scale=1, batch=3)
-    assert restored.shape == frames.shape
-    assert np.allclose(restored, frames, atol=1e-5)
-
-
-def test_sysmem_spill_threshold() -> None:
-    video = video_module()
-    assert video.sysmem_spill(None, 0) is False
-    assert video.sysmem_spill(300, 0, threshold=256) is True
-    assert video.sysmem_spill(100, 0, threshold=256) is False
-    assert video.parse_shared_usage('"counter","4096"\n') == 4096
 
 
 def test_h264_is_refused_and_av1_is_default() -> None:
@@ -215,6 +163,7 @@ def _identity(model: object, nchw: np.ndarray) -> np.ndarray:
 
 
 def test_process_frames_clean_and_optional_2x() -> None:
+    pytest.importorskip("voxprint_engine")
     frames = np.full((2, 8, 8, 3), 0.4, dtype=np.float32)
     settings = Settings(
         mode="clean",
@@ -235,6 +184,7 @@ def test_process_frames_clean_and_optional_2x() -> None:
 
 
 def test_chunk_loop_pauses_and_halves_on_spill() -> None:
+    pytest.importorskip("voxprint_engine")
     frames = np.full((4, 8, 8, 3), 0.5, dtype=np.float32)
     settings = Settings(mode="strong", sharpen=0, white_balance=False, levels=False, tile=8, overlap=0, batch=4)
     calls = {"spill": 0, "sleep": 0}
@@ -354,28 +304,64 @@ def test_platform_gate() -> None:
     assert not assess_platform(system="linux", os_release='ID=ubuntu\nVERSION_ID="22.04"\n').ok
 
 
-def test_old_engine_warning_becomes_a_refusal() -> None:
-    class _Gate:
-        def __init__(self, ok: bool, message: str = "", warning: str = "") -> None:
-            self.ok = ok
-            self.message = message
-            self.warning = warning
-
-    def old_assess(refuse_below: object = None) -> _Gate:
-        if refuse_below is not None:
-            raise TypeError("unexpected keyword")
-        return _Gate(True, "", "GPU compute capability 8.6 is below 8.9")
-
-    gate = call_assess(old_assess)
+def test_lanczos_flag_does_not_start_clarity(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VOXPRINT_CI_LANCZOS", "1")
+    gate = assess_launch()
     assert gate.ok is False
-    assert "8.6" in gate.warning or "8.6" in gate.message
+    assert "VOXPRINT_CI_LANCZOS" in gate.message
 
-    def new_assess(refuse_below: tuple[int, int] | None = None) -> Gate:
-        assert refuse_below == (8, 9)
-        return Gate(False, "needs Ada", "")
 
-    refused = call_assess(new_assess)
-    assert refused.ok is False
+class _Worker:
+    def __init__(self, replies: list[dict[str, object]]) -> None:
+        self.replies = list(replies)
+        self.sent: list[dict[str, object]] = []
+        self.killed = False
+
+    def _send(self, message: dict[str, object]) -> None:
+        self.sent.append(message)
+
+    def _read(self, timeout: float) -> dict[str, object]:
+        del timeout
+        return self.replies.pop(0)
+
+    def interrupt(self) -> None:
+        self.killed = True
+
+
+def test_restore_waits_when_the_gpu_lock_times_out() -> None:
+    worker = _Worker(
+        [
+            {"op": "error", "ok": False, "message": "the GPU is busy: enlarge / enlarge:photo"},
+            {"op": "result", "ok": True, "message": "onnx CUDA", "dst": "out.npy"},
+        ]
+    )
+    seen: list[str] = []
+    reply = submit_restore(
+        worker,
+        {"op": "restore_batch", "owner": "clarity", "id": "chunk"},
+        on_status=seen.append,
+        cancel=lambda: False,
+        pause=lambda: None,
+    )
+    assert reply["dst"] == "out.npy"
+    assert len(worker.sent) == 2
+    assert worker.killed is False
+    assert seen == [gpu_busy_text("the GPU is busy: enlarge / enlarge:photo")]
+    assert "Waiting" in seen[0]
+
+
+def test_restore_stops_when_the_worker_was_cancelled() -> None:
+    worker = _Worker([{"op": "error", "ok": False, "message": "cancelled while waiting for the GPU"}])
+    with pytest.raises(Cancelled):
+        submit_restore(
+            worker,
+            {"op": "restore_batch", "owner": "clarity"},
+            on_status=lambda _text: None,
+            cancel=lambda: False,
+            pause=lambda: None,
+        )
+    assert worker.killed is False
+    assert len(worker.sent) == 1
 
 
 def test_bench_report_mentions_fps(tmp_path: Path) -> None:

@@ -1,8 +1,8 @@
 """Run one video through decode, restore, and encode.
 
-The GPU lock, VRAM budget, thermal rule, and weight fetch go through
-``clarity.engine_shim``. Tests pass a ``Control`` so they can run without a
-GPU, ffmpeg, or the private engine.
+The GPU lock, VRAM budget, thermal rule, and weight fetch come from
+``voxprint_engine``. Tests pass a ``Control`` so they can run without a GPU,
+ffmpeg, or the private engine.
 """
 from __future__ import annotations
 
@@ -19,16 +19,18 @@ from typing import Any, IO
 
 import numpy as np
 
-from clarity.engine_shim import (
+from clarity.engine import (
     choose_tile,
     empty_cuda_cache,
     ensure_weight,
-    gpu_job,
+    gpu_busy_text,
     halve_tile,
+    hold_gpu,
     measure,
     note_spill,
+    read_shared_usage,
+    sysmem_spill,
     thermal_decide,
-    video_module,
 )
 from clarity.errors import Cancelled, ClarityError
 from clarity.models import ClarityModel
@@ -172,11 +174,18 @@ def _prepare_infer(settings: Settings) -> Callable[[ClarityModel, np.ndarray], n
     return infer
 
 
-def live_control(settings: Settings, token: CancelToken) -> Control:
-    """The path the Start button uses. The lock is the suite GPU lock."""
+def live_control(settings: Settings, token: CancelToken, progress: Progress | None = None) -> Control:
+    """The path the Start button uses. The lock owner matches the restore worker."""
+    report = progress or (lambda _fraction, _text: None)
+
+    def on_wait(holder: dict[str, Any], waited: float) -> None:
+        del waited
+        who = holder.get("owner", "?")
+        what = holder.get("job", "?")
+        report(0.0, gpu_busy_text(f"{who} / {what}"))
 
     def lock(job: str, eta_s: float) -> AbstractContextManager[None]:
-        return gpu_job(job, eta_s=eta_s, owner="clarity", cancel=token.is_set)
+        return hold_gpu(job, eta_s=eta_s, cancel=token.is_set, on_wait=on_wait)
 
     return Control(
         infer=_prepare_infer(settings),
@@ -350,7 +359,14 @@ def _restore_range(
             frames.append(frame / 255.0)
         if token.is_set():
             raise Cancelled("cancelled")
-        restored = process_frames(np.stack(frames), spec.settings, bound.infer, tile=tile, batch=batch)
+        restored = process_frames(
+            np.stack(frames),
+            spec.settings,
+            bound.infer,
+            tile=tile,
+            batch=batch,
+            use_engine=bound.device,
+        )
         if restored.shape != (count, out_h, out_w, 3):
             raise ClarityError(f"restored frames are {restored.shape}, expected {(count, out_h, out_w, 3)}")
         encoder_in = encoder.stdin
@@ -393,8 +409,8 @@ def _device_budget(
     budget = float(getattr(measure(), "budget_gb", 0.0) or 0.0)
     if spec.settings.tile <= 0:
         tile = choose_tile(budget, 0, 0)
-    usage = video_module().read_shared_usage()
-    if video_module().sysmem_spill(usage, baseline):
+    usage = read_shared_usage()
+    if sysmem_spill(usage, baseline):
         empty_cuda_cache()
         batch = note_spill(batch, True)
         smaller = halve_tile(tile)
@@ -416,7 +432,7 @@ def run_job(
 ) -> None:
     """Decode each unfinished scene chunk, restore it, and join the chunks with ``-c copy``.
 
-    Omitting ``control`` uses the engine shim, the suite GPU lock, and ffmpeg.
+    Omitting ``control`` uses the suite GPU lock (owner ``clarity``) and ffmpeg.
     A cancel keeps finished chunks. The next run of the same work folder resumes
     there. The final file is published only after every chunk has been joined.
     """
@@ -431,7 +447,7 @@ def run_job(
     probe = parse_probe(probe_payload)
     require_sdr(probe)
     if control is None:
-        bound = live_control(spec.settings, token)
+        bound = live_control(spec.settings, token, progress)
     else:
         control.token = token
         bound = control

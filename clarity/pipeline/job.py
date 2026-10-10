@@ -1,8 +1,8 @@
 """One restore job: chunks, thermal pauses, spill, models, then ffmpeg commands.
 
 Frame processing is real numpy. The GPU lock, VRAM numbers, and thermal rule
-come from ``voxprint_engine`` through ``clarity.engine_shim`` when a hook is
-left as None. Tests pass hooks so they do not need a GPU or the engine.
+come from ``voxprint_engine.api`` when a hook is left as None. Tests pass
+hooks so they do not need a GPU. Restoring frames still needs the engine.
 """
 from __future__ import annotations
 
@@ -13,13 +13,14 @@ from typing import Any
 
 import numpy as np
 
-from clarity.engine_shim import (
+from clarity.engine import (
     choose_tile as engine_choose_tile,
     empty_cuda_cache,
     halve_tile as engine_halve_tile,
     note_spill as engine_note_spill,
+    restore_frames,
+    sysmem_spill,
     thermal_decide,
-    video_module,
 )
 from clarity.errors import ClarityError
 from clarity.models import ClarityModel, clean_models, get_model, strong_model, upscale_model
@@ -132,9 +133,17 @@ def _with_condition(model: ClarityModel, nchw: np.ndarray, settings: Settings) -
     return np.concatenate([nchw.astype(np.float32, copy=False), extra], axis=1)
 
 
-def _run_model(frames: np.ndarray, model: ClarityModel, settings: Settings, infer: Infer, tile: int, batch: int) -> np.ndarray:
-    video = video_module()
+def _direct_model(frames: np.ndarray, model: ClarityModel, settings: Settings, infer: Infer, tile: int, batch: int) -> np.ndarray:
+    """Apply ``infer`` to the whole chunk. Used when a test injects the network."""
+    del tile, batch
+    nchw = np.ascontiguousarray(np.transpose(frames.astype(np.float32, copy=False), (0, 3, 1, 2)))
+    output = np.asarray(infer(model, _with_condition(model, nchw, settings)), dtype=np.float32)
+    if output.ndim != 4 or output.shape[1] < 3:
+        raise ClarityError(f"{model.id} must return NCHW with 3 channels, got {output.shape}")
+    return np.ascontiguousarray(np.transpose(output[:, :3], (0, 2, 3, 1)))
 
+
+def _run_model(frames: np.ndarray, model: ClarityModel, settings: Settings, infer: Infer, tile: int, batch: int) -> np.ndarray:
     def wrapped(nchw: np.ndarray) -> np.ndarray:
         conditioned = _with_condition(model, nchw, settings)
         output = np.asarray(infer(model, conditioned), dtype=np.float32)
@@ -143,7 +152,7 @@ def _run_model(frames: np.ndarray, model: ClarityModel, settings: Settings, infe
         return output
 
     return np.asarray(
-        video.restore_frames(
+        restore_frames(
             frames.astype(np.float32, copy=False),
             wrapped,
             tile=tile,
@@ -186,25 +195,38 @@ def models_for(settings: Settings) -> list[ClarityModel]:
     return chosen
 
 
-def process_frames(frames: np.ndarray, settings: Settings, infer: Infer, *, tile: int, batch: int) -> np.ndarray:
-    """Run the selected models, then classical colour and sharpen, on one chunk."""
+def process_frames(
+    frames: np.ndarray,
+    settings: Settings,
+    infer: Infer,
+    *,
+    tile: int,
+    batch: int,
+    use_engine: bool = True,
+) -> np.ndarray:
+    """Run the selected models, then classical colour and sharpen, on one chunk.
+
+    ``use_engine`` sends each model through ``voxprint_engine`` tiling. A test
+    control leaves it false and applies ``infer`` to the whole frame.
+    """
     if frames.ndim != 4 or frames.shape[-1] != 3:
         raise ClarityError("frames must be NHWC RGB")
+    step = _run_model if use_engine else _direct_model
     current = frames.astype(np.float32, copy=False)
     if settings.mode == "clean":
         deblock, denoise = clean_models()
-        current = _run_model(current, deblock, settings, infer, tile, batch)
-        current = _run_model(current, denoise, settings, infer, tile, batch)
+        current = step(current, deblock, settings, infer, tile, batch)
+        current = step(current, denoise, settings, infer, tile, batch)
     elif settings.mode == "strong":
-        current = _run_model(current, strong_model(), settings, infer, tile, batch)
+        current = step(current, strong_model(), settings, infer, tile, batch)
     else:
         raise ClarityError("mode must be clean or strong")
     if settings.upscale:
         primary = upscale_model(anime=settings.anime)
-        upscaled = _run_model(current, primary, settings, infer, tile, batch)
+        upscaled = step(current, primary, settings, infer, tile, batch)
         strength = 0.0 if settings.anime else min(1.0, max(0.0, settings.upscale_strength))
         if strength > 0:
-            twin = _run_model(current, get_model("realesr-general-wdn-x4v3"), settings, infer, tile, batch)
+            twin = step(current, get_model("realesr-general-wdn-x4v3"), settings, infer, tile, batch)
             upscaled = (1.0 - strength) * upscaled + strength * twin
         current = downscale_half(upscaled)
     current = cleanup(current, white_balance=settings.white_balance, levels=settings.levels)
@@ -226,7 +248,7 @@ def restore_ranges(
 ) -> list[ChunkRecord]:
     """Restore each unfinished chunk. Re-measures, pauses, and halves the batch on a spill."""
     if hooks.sysmem_spill is None:
-        hooks.sysmem_spill = video_module().sysmem_spill
+        hooks.sysmem_spill = sysmem_spill
     finished: list[ChunkRecord] = []
     paused = False
     batch = max(1, settings.batch)

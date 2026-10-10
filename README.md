@@ -48,11 +48,17 @@ the Windows win_amd64 cp314 wheel both answered HTTP 200.
 
 The shared engine is a git dependency on
 [voxprint-enlarge](https://github.com/Mitroshenkov87/voxprint-enlarge) at
-commit `6d00d44`. TODO: switch the pin to tag `engine-v1.0.0` when that tag
-and the engine package build exist. The repository is private. CI installs it
-only when the `VOXPRINT_ENGINE_TOKEN` secret is set, and skips that install
-with a notice when the secret is absent. Tests that do not need the engine
-still run.
+tag `engine-v1.0.0`:
+
+```text
+voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0
+```
+
+The repository is private. CI installs it over SSH when the
+`VOXPRINT_ENGINE_DEPLOY_KEY` secret is set, and skips that install with a
+notice when the secret is absent (fork pull requests do not receive it).
+Tests that do not need the engine still run. Tests that do need it run when
+the package is installed.
 
 ```bash
 python -m clarity --version
@@ -90,11 +96,12 @@ is written as a `.partial` and replaces the destination only after that copy
 exits cleanly. Cancel deletes the unfinished final file and the in-progress
 chunk. The project format is [docs/formats/VXCLARITY.md](docs/formats/VXCLARITY.md).
 
-GPU lock, VRAM budget, thermal pauses, the model store, and the ONNX session
-come from `voxprint_engine`. Clarity does not keep a second copy of those.
-Video-shaped calls (a multi-frame batch, temporal windows, per-frame tiling)
-are specified in [docs/ENGINE-INTERFACE.md](docs/ENGINE-INTERFACE.md) and in
-the patch under [docs/engine-patches](docs/engine-patches).
+GPU lock, VRAM budget, thermal pauses, the model store, the ONNX session, and
+the video helpers come from `voxprint_engine.api`. Clarity does not keep a
+second copy of those. The parent lock and the restore worker both use the
+owner `clarity`. A restore that finds the GPU lock busy waits and retries,
+and the window shows that wait. See
+[docs/ENGINE-INTERFACE.md](docs/ENGINE-INTERFACE.md).
 
 ## Benchmark
 
