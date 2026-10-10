@@ -19,6 +19,8 @@ _ESRGAN = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0"
 
 @dataclass(frozen=True)
 class ClarityModel:
+    """One catalogue weight: identity, licence, hash, and the engine manifest fields."""
+
     id: str
     name: str
     arch: str
@@ -199,6 +201,17 @@ _BY_ID = {model.id: model for model in CATALOG}
 
 
 def get_model(model_id: str) -> ClarityModel:
+    """Look up one catalogue entry.
+
+    Args:
+        model_id: Catalogue id, such as ``drunet-color``.
+
+    Returns:
+        The matching model.
+
+    Raises:
+        KeyError: When ``model_id`` is not in the catalogue.
+    """
     try:
         return _BY_ID[model_id]
     except KeyError as exc:
@@ -206,14 +219,32 @@ def get_model(model_id: str) -> ClarityModel:
 
 
 def clean_models() -> tuple[ClarityModel, ClarityModel]:
+    """Return the deblocking net and the denoise net used by Clean mode.
+
+    Returns:
+        ``drunet-deblocking-color``, then ``drunet-color``.
+    """
     return get_model("drunet-deblocking-color"), get_model("drunet-color")
 
 
 def strong_model() -> ClarityModel:
+    """Return the single net used by Strong mode.
+
+    Returns:
+        ``scunet-color-real-psnr``.
+    """
     return get_model("scunet-color-real-psnr")
 
 
 def upscale_model(*, anime: bool) -> ClarityModel:
+    """Return the optional 2x net.
+
+    Args:
+        anime: Use the anime preset when true, otherwise the general net.
+
+    Returns:
+        ``realesr-animevideov3`` or ``realesr-general-x4v3``.
+    """
     if anime:
         return get_model("realesr-animevideov3")
     return get_model("realesr-general-x4v3")

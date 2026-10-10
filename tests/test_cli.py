@@ -37,7 +37,7 @@ _PROBE = {
 }
 _ENCODERS = " V..... av1_nvenc             NVIDIA NVENC AV1 encoder\n"
 _TEXT_SUFFIXES = {".py", ".md", ".yml", ".yaml", ".json", ".iss", ".ps1", ".sh", ".toml", ".txt", ".svg", ".desktop", ".xml"}
-_SKIP = {".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "dist"}
+_SKIP = {".git", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "dist", "site"}
 
 
 def _fake_tool(argv: list[str]) -> str:

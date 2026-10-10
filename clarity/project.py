@@ -69,6 +69,8 @@ class ProjectFormatError(ClarityError):
 
 @dataclass
 class Project:
+    """A loaded ``.vxclarity`` file and the settings the window can apply."""
+
     path: Path
     manifest: dict[str, Any]
     settings_raw: dict[str, Any]
@@ -408,6 +410,15 @@ def _settings_document(settings: Settings, destination: Path | None, previous: d
 
 
 def work_dir_for(project: Path, resume: dict[str, Any]) -> Path:
+    """Return the work folder recorded in a project, or one beside the project file.
+
+    Args:
+        project: Path of the ``.vxclarity`` file.
+        resume: The project's ``resume.json`` object.
+
+    Returns:
+        The recorded directory when it exists, otherwise ``project`` plus ``.work``.
+    """
     recorded = resume.get("work")
     if isinstance(recorded, str) and recorded and Path(recorded).is_dir():
         return Path(recorded)
@@ -415,6 +426,14 @@ def work_dir_for(project: Path, resume: dict[str, Any]) -> Path:
 
 
 def resume_from_work(work: Path) -> dict[str, Any]:
+    """Build the ``resume.json`` object from a work folder on disk.
+
+    Args:
+        work: Folder that holds ``plan.json`` and ``journal.jsonl``.
+
+    Returns:
+        Work path, ranges, cuts, settings digest, source, and journal rows.
+    """
     plan = load_plan(work / "plan.json") or {}
     done = load_done(work / "journal.jsonl")
     journal = [
@@ -547,6 +566,17 @@ def _dump(payload: dict[str, Any]) -> bytes:
 
 
 def load_project(path: Path) -> Project:
+    """Read and check a ``.vxclarity`` archive.
+
+    Args:
+        path: Project file.
+
+    Returns:
+        Manifest, settings, resume state, and any extra members.
+
+    Raises:
+        ProjectFormatError: When the file is missing, not a zip, or fails the v1 checks.
+    """
     if not path.is_file():
         raise ProjectFormatError("the project file was not found")
     try:
@@ -608,6 +638,15 @@ def sync_resume(path: Path, work: Path) -> Project:
 
 
 def state_dir() -> Path:
+    """Return the per-user folder that stores ``recent.json``.
+
+    ``VOXPRINT_CLARITY_STATE`` wins. Otherwise this is
+    ``%LOCALAPPDATA%/Voxprint/Clarity`` on Windows and
+    ``$XDG_DATA_HOME/voxprint/clarity`` (or ``~/.local/share/voxprint/clarity``) elsewhere.
+
+    Returns:
+        The directory path. It is not created here.
+    """
     override = os.environ.get("VOXPRINT_CLARITY_STATE", "").strip()
     if override:
         return Path(override)
@@ -621,10 +660,26 @@ def state_dir() -> Path:
 
 
 def recent_file(folder: Path | None = None) -> Path:
+    """Return the path of the recent-projects list.
+
+    Args:
+        folder: State directory. ``None`` uses ``state_dir``.
+
+    Returns:
+        ``folder / "recent.json"``.
+    """
     return (folder if folder is not None else state_dir()) / "recent.json"
 
 
 def load_recent(folder: Path | None = None) -> list[str]:
+    """Read recent project paths.
+
+    Args:
+        folder: State directory. ``None`` uses ``state_dir``.
+
+    Returns:
+        Paths newest first, or an empty list when the file is missing or unreadable.
+    """
     path = recent_file(folder)
     if not path.is_file():
         return []
@@ -639,6 +694,15 @@ def load_recent(folder: Path | None = None) -> list[str]:
 
 
 def remember_recent(path: Path, folder: Path | None = None) -> list[str]:
+    """Put ``path`` first in the recent list and keep at most eight entries.
+
+    Args:
+        path: Project file to remember.
+        folder: State directory. ``None`` uses ``state_dir``.
+
+    Returns:
+        The updated path list.
+    """
     text = str(path.resolve())
     paths = [item for item in load_recent(folder) if item != text]
     paths.insert(0, text)

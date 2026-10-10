@@ -35,6 +35,16 @@ def percentile_stretch(frames: np.ndarray, low: float = 1.0, high: float = 99.0)
 
 
 def cleanup(frames: np.ndarray, *, white_balance: bool, levels: bool) -> np.ndarray:
+    """Apply the colour steps that are switched on.
+
+    Args:
+        frames: NHWC float RGB in 0..1.
+        white_balance: Run grey-world when true.
+        levels: Run the percentile stretch when true.
+
+    Returns:
+        The frames after the selected steps, still in 0..1.
+    """
     result = frames
     if white_balance:
         result = grey_world(result)

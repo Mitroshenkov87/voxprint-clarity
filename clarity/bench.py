@@ -60,6 +60,8 @@ SPATIAL = 256
 
 @dataclass
 class Sample:
+    """One timed run of a catalogue model on one backend."""
+
     model_id: str
     backend: str
     fps: float
@@ -120,6 +122,16 @@ def require_gpu() -> str:
 
 
 def render_report(gpu: str, samples: list[Sample], clip: str) -> tuple[str, dict[str, Any]]:
+    """Build the markdown table and the JSON payload for a benchmark.
+
+    Args:
+        gpu: Name reported by nvidia-smi.
+        samples: Timed runs, including rows that failed to measure.
+        clip: Path or name of the pinned clip.
+
+    Returns:
+        Markdown text and the same data as a dictionary.
+    """
     payload: dict[str, Any] = {
         "gpu": gpu,
         "clip": clip,
@@ -180,6 +192,15 @@ def _rgb_u8(frame: np.ndarray) -> np.ndarray:
 
 
 def center_crop(frame: np.ndarray, size: int = SPATIAL) -> np.ndarray:
+    """Take a square from the middle of an HWC frame.
+
+    Args:
+        frame: Image whose first two axes are height and width.
+        size: Side length. A smaller frame is cropped to its own size.
+
+    Returns:
+        A contiguous crop.
+    """
     height, width = int(frame.shape[0]), int(frame.shape[1])
     crop_h = min(size, height)
     crop_w = min(size, width)
@@ -199,6 +220,17 @@ def fit_square(frame: np.ndarray, size: int = SPATIAL) -> np.ndarray:
 
 
 def save_crops(before: np.ndarray, after: np.ndarray, folder: Path, model_id: str) -> tuple[Path, Path]:
+    """Write the before and after PNG pair for one model.
+
+    Args:
+        before: Preview frame, HWC RGB.
+        after: Restored frame, HWC RGB.
+        folder: Directory that receives the files.
+        model_id: Used in the file names.
+
+    Returns:
+        Paths of the before and after PNGs.
+    """
     folder.mkdir(parents=True, exist_ok=True)
     before_path = folder / f"{model_id}-before.png"
     after_path = folder / f"{model_id}-after.png"
@@ -302,6 +334,16 @@ def _torch_forward(network: Any, nchw: np.ndarray) -> np.ndarray:
 
 
 def time_torch(network: Any, channels: int, frames: int) -> tuple[float, float]:
+    """Time fp16 CUDA inference on a blank tile.
+
+    Args:
+        network: Loaded PyTorch module already on CUDA.
+        channels: Input channel count, including a condition channel.
+        frames: Number of forward passes.
+
+    Returns:
+        Frames per second and the peak VRAM in megabytes.
+    """
     sample = np.zeros((1, channels, SPATIAL, SPATIAL), dtype=np.float32)
 
     def step() -> None:
@@ -312,6 +354,18 @@ def time_torch(network: Any, channels: int, frames: int) -> tuple[float, float]:
 
 
 def open_trt_session(onnx_path: Path, cache: Path) -> Any:
+    """Open an ONNX session that must include TensorrtExecutionProvider.
+
+    Args:
+        onnx_path: Exported graph.
+        cache: Directory for the TensorRT engine cache.
+
+    Returns:
+        The ONNX Runtime inference session.
+
+    Raises:
+        RuntimeError: When ONNX Runtime is missing or TensorRT did not load.
+    """
     if ort is None:
         raise RuntimeError("onnxruntime is not installed. Install requirements-bench.txt on this VM.")
     session = ort.InferenceSession(str(onnx_path), providers=tensorrt_providers(cache))
@@ -331,6 +385,16 @@ def _session_array(session: Any, channels: int) -> np.ndarray:
 
 
 def time_trt(session: Any, channels: int, frames: int) -> tuple[float, float]:
+    """Time TensorRT inference on a blank tile matching the session dtype.
+
+    Args:
+        session: Session from ``open_trt_session``.
+        channels: Input channel count.
+        frames: Number of ``session.run`` calls.
+
+    Returns:
+        Frames per second and the peak VRAM in megabytes.
+    """
     array = _session_array(session, channels)
     name = str(session.get_inputs()[0].name)
 
@@ -341,6 +405,14 @@ def time_trt(session: Any, channels: int, frames: int) -> tuple[float, float]:
 
 
 def rgb_from_nchw(output: np.ndarray) -> np.ndarray:
+    """Take the first three channels of an NCHW tensor as HWC RGB in 0..1.
+
+    Args:
+        output: Batch of one, NCHW.
+
+    Returns:
+        Clipped float32 HWC image.
+    """
     rgb = np.transpose(output[0, :3], (1, 2, 0))
     return np.clip(rgb, 0.0, 1.0).astype(np.float32)
 
@@ -434,6 +506,17 @@ def read_preview_frame(clip: Path) -> np.ndarray:
 
 
 def write_report(folder: Path, gpu: str, samples: list[Sample], clip: str) -> tuple[Path, Path]:
+    """Write ``benchmark.md`` and ``benchmark.json``.
+
+    Args:
+        folder: Output directory. Created when missing.
+        gpu: Name reported by nvidia-smi.
+        samples: Timed runs.
+        clip: Clip path recorded in the report.
+
+    Returns:
+        Paths of the markdown and JSON files.
+    """
     folder.mkdir(parents=True, exist_ok=True)
     markdown, payload = render_report(gpu, samples, clip)
     md_path = folder / "benchmark.md"
@@ -453,6 +536,14 @@ def _reset_vram() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the benchmark CLI.
+
+    Args:
+        argv: Arguments without the program name. Defaults to ``sys.argv``.
+
+    Returns:
+        ``0`` when every model was timed, ``2`` when setup or a model failed.
+    """
     parser = argparse.ArgumentParser(description="Benchmark Clarity models on an NVIDIA GPU.")
     parser.add_argument("--out", type=Path, default=Path("benchmark-out"))
     parser.add_argument("--clip-dir", type=Path, default=Path.home() / ".cache" / "voxprint" / "clarity-bench")

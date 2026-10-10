@@ -43,6 +43,8 @@ Infer = Callable[[ClarityModel, np.ndarray], np.ndarray]
 
 @dataclass
 class Settings:
+    """Restore choices shared by the window, the CLI, and a ``.vxclarity`` file."""
+
     mode: str = "clean"
     upscale: bool = False
     anime: bool = False
@@ -61,6 +63,11 @@ class Settings:
     max_frames: int = 1000
 
     def digest_payload(self) -> dict[str, Any]:
+        """Return the settings fields that change the pixels or the container.
+
+        Returns:
+            A JSON-ready dictionary. The resume digest is the hash of this object.
+        """
         return {
             "mode": self.mode,
             "upscale": self.upscale,
@@ -83,6 +90,11 @@ class Settings:
 
 @dataclass
 class Hooks:
+    """Callables a restore uses for the engine, the clock, and the CUDA cache.
+
+    Tests replace these so a job can be checked without a GPU.
+    """
+
     infer: Infer
     decide: Callable[[float, float | None, float, bool], Any] = thermal_decide
     elapsed: Callable[[], float] = lambda: 0.0
@@ -182,6 +194,17 @@ def downscale_half(frames: np.ndarray) -> np.ndarray:
 
 
 def models_for(settings: Settings) -> list[ClarityModel]:
+    """List the catalogue models a job will run, in order.
+
+    Args:
+        settings: Mode, upscale switch, and anime switch.
+
+    Returns:
+        The clean pair or the strong net, then the upscale nets when upscale is on.
+
+    Raises:
+        ClarityError: When ``mode`` is neither ``clean`` nor ``strong``.
+    """
     if settings.mode == "clean":
         chosen = list(clean_models())
     elif settings.mode == "strong":

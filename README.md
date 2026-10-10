@@ -65,7 +65,14 @@ the job’s progress.
 
 More cases are in [docs/USER-GUIDE.md](docs/USER-GUIDE.md).
 
+## Roadmap
+
+What is next, what can wait, and what Clarity will not add: [ROADMAP.md](ROADMAP.md).
+
 ## Documentation
+
+The documentation site is published from `main`:
+<https://mitroshenkov87.github.io/voxprint-clarity/>.
 
 - [docs/USER-GUIDE.md](docs/USER-GUIDE.md) — install, first run, restore, resume
 - [docs/INSTALL.md](docs/INSTALL.md) — platforms, runtime, ffmpeg
@@ -74,7 +81,9 @@ More cases are in [docs/USER-GUIDE.md](docs/USER-GUIDE.md).
 - [docs/TESTING-GPU.md](docs/TESTING-GPU.md) — the rented RTX 4090 script
 - [docs/formats/VXCLARITY.md](docs/formats/VXCLARITY.md) — the `.vxclarity` project file
 - [docs/CLI.md](docs/CLI.md) — headless `python -m clarity` / `voxprint-clarity`
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — components, data flow, and the GPU rules
 - [docs/RELEASES-CODENAMES.md](docs/RELEASES-CODENAMES.md) — suite codenames
+- [ROADMAP.md](ROADMAP.md) — next version, later work, and what is not planned
 - [docs/DECISIONS.md](docs/DECISIONS.md) — product decisions
 - [docs/RESEARCH.md](docs/RESEARCH.md) — model and pipeline notes
 

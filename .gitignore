@@ -19,3 +19,7 @@ benchmark-out/
 *.partial
 .coverage
 htmlcov/
+site/
+docs/reference/cli.md
+docs/reference/api.md
+docs/roadmap.md

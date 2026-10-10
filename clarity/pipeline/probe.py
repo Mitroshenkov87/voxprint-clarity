@@ -10,6 +10,8 @@ _HDR_TRANSFER = frozenset({"smpte2084", "arib-std-b67", "smpte428"})
 
 @dataclass(frozen=True)
 class Probe:
+    """The video facts a job needs from ffprobe. HDR is recorded and then refused."""
+
     codec: str
     width: int
     height: int
@@ -29,6 +31,11 @@ class Probe:
 
     @property
     def interlaced(self) -> bool:
+        """Return whether the field order asks for a deinterlace.
+
+        Returns:
+            True unless the field order is empty, progressive, or unknown.
+        """
         order = self.field_order.lower()
         return order not in {"", "progressive", "unknown"}
 
@@ -138,6 +145,15 @@ def require_sdr(probe: Probe) -> None:
 
 
 def probe_command(ffprobe: str, source: str) -> list[str]:
+    """Build the ffprobe command that prints streams, format, and chapters as JSON.
+
+    Args:
+        ffprobe: ffprobe binary.
+        source: Input path.
+
+    Returns:
+        The argument list, including ``source``.
+    """
     return [
         ffprobe,
         "-hide_banner",

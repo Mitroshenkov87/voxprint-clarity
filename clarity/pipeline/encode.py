@@ -11,11 +11,15 @@ _ENCODER_LINE = re.compile(r"^\s*[VAS][A-Za-z.]{5}\s+(\S+)")
 
 
 class Container(Enum):
+    """Output container. Audio is copied into the same file."""
+
     MKV = "mkv"
     MP4 = "mp4"
 
 
 class VideoCodec(Enum):
+    """Output codec. AV1 is the default. HEVC is NVENC only."""
+
     AV1 = "av1"
     HEVC = "hevc"
 
@@ -68,6 +72,18 @@ def planned_encoder(codec: VideoCodec, available: set[str]) -> tuple[str, bool]:
 
 
 def video_args(encoder: str, cq: int = 20) -> list[str]:
+    """ffmpeg video-encoder flags for one allowed encoder.
+
+    Args:
+        encoder: ``av1_nvenc``, ``hevc_nvenc``, or ``libsvtav1``.
+        cq: Constant-quality value passed as ``-cq`` or ``-crf``.
+
+    Returns:
+        Flags starting at ``-c:v``.
+
+    Raises:
+        ClarityError: When ``encoder`` is H.264, x265, or otherwise unsupported.
+    """
     assert_encoder_allowed(encoder)
     quality = str(int(cq))
     if encoder == "av1_nvenc":

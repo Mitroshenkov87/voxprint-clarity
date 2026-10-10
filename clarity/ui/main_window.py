@@ -87,7 +87,15 @@ class _JobThread(QThread):
 
 
 class MainWindow(QMainWindow):
+    """The restore window: source, settings, project buttons, and one job thread."""
+
     def __init__(self, runner: Runner | None = None) -> None:
+        """Build the window. Tests pass ``runner`` so Start does not call the GPU.
+
+        Args:
+            runner: Callable with the same signature as ``run_job``.
+                The default is ``run_job``.
+        """
         super().__init__()
         self._runner = run_job if runner is None else runner
         self._thread: _JobThread | None = None
@@ -252,10 +260,20 @@ class MainWindow(QMainWindow):
         )
 
     def showEvent(self, event: object) -> None:  # noqa: N802 - Qt override
+        """Apply the acrylic backdrop once the native window exists.
+
+        Args:
+            event: Qt show event.
+        """
         super().showEvent(event)  # type: ignore[arg-type]
         enable_acrylic(int(self.winId()))
 
     def closeEvent(self, event: object) -> None:  # noqa: N802 - Qt override
+        """Cancel the job token and wait for the worker thread before closing.
+
+        Args:
+            event: Qt close event.
+        """
         self._closing = True
         token = self._token
         if token is not None:
@@ -475,6 +493,11 @@ class MainWindow(QMainWindow):
             self.open_project(Path(value))
 
     def open_project(self, path: Path) -> None:
+        """Load a ``.vxclarity`` file into the form.
+
+        Args:
+            path: Project file. A format error is shown in a dialog.
+        """
         try:
             project = load_project(path)
         except ProjectFormatError as exc:
@@ -488,6 +511,13 @@ class MainWindow(QMainWindow):
             self.status.setText(tr("status.resumed"))
 
     def save_project(self, path: Path, *, retarget: bool = True) -> None:
+        """Write the current form to a ``.vxclarity`` file.
+
+        Args:
+            path: Destination project path.
+            retarget: When true, later saves use ``path``. A save-copy passes false
+                and keeps the project that is already open.
+        """
         source_text = self.source.text().strip()
         if not source_text or not Path(source_text).is_file():
             QMessageBox.warning(self, APP_NAME, tr("error.missing_source"))

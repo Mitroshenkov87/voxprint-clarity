@@ -57,11 +57,28 @@ def _linear(channel: int) -> float:
 
 
 def luminance(hex_color: str) -> float:
+    """Return the WCAG relative luminance of a ``#RRGGBB`` colour.
+
+    Args:
+        hex_color: Six-digit hex colour.
+
+    Returns:
+        Relative luminance in 0..1.
+    """
     red, green, blue = _channel(hex_color)
     return 0.2126 * _linear(red) + 0.7152 * _linear(green) + 0.0722 * _linear(blue)
 
 
 def contrast_ratio(foreground: str, background: str) -> float:
+    """Return the WCAG contrast ratio of two ``#RRGGBB`` colours.
+
+    Args:
+        foreground: Text colour.
+        background: Surface colour.
+
+    Returns:
+        The ratio, from 1 to 21.
+    """
     lighter = max(luminance(foreground), luminance(background))
     darker = min(luminance(foreground), luminance(background))
     return (lighter + 0.05) / (darker + 0.05)
