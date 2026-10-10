@@ -20,7 +20,7 @@ jobs:
       - name: Build
         env:
           QT_QPA_PLATFORM: offscreen
-        run: mkdocs build --strict
+        run: python -m mkdocs build --strict
       - name: Upload GitHub Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v3

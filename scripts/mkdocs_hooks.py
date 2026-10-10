@@ -3,14 +3,17 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 # Set before PySide6 loads. A docs build has no display.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from clarity.cli import _command_parser, build_parser
-
-_ROOT = Path(__file__).resolve().parents[1]
 
 
 def on_pre_build(config: object) -> None:
