@@ -272,14 +272,16 @@ def test_cpu_wheel_and_missing_tensorrt_fail_loudly() -> None:
     ) is None
 
 
-def test_provider_gate_skips_the_ci_stand_in(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_provider_gate_ignores_the_ci_stand_in(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("VOXPRINT_CI_LANCZOS", "1")
+    monkeypatch.setattr("clarity.cli.provider_failure", lambda: "missing CUDAExecutionProvider")
+    assert _provider_gate(False) == "missing CUDAExecutionProvider"
 
     def boom() -> str:
         raise AssertionError("providers were checked")
 
     monkeypatch.setattr("clarity.cli.provider_failure", boom)
-    assert _provider_gate() is None
+    assert _provider_gate(True) is None
 
 
 def test_gui_does_not_force_offscreen() -> None:

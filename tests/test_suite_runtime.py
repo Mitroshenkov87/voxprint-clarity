@@ -146,7 +146,7 @@ def test_selftest_json_includes_the_engine_report(
     monkeypatch.setattr("clarity.cli.ensure_shared_runtime", ensure)
     monkeypatch.setattr("clarity.cli.ensure_ffmpeg", ffmpeg)
     monkeypatch.setattr("clarity.cli._selftest_window", lambda: 0)
-    monkeypatch.setattr("clarity.cli._provider_gate", lambda: None)
+    monkeypatch.setattr("clarity.cli._provider_gate", lambda no_gpu: None)
     assert main(["selftest", "--json"]) == 0
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()]
     progress = [row for row in lines if row.get("type") == "progress"]
@@ -155,6 +155,100 @@ def test_selftest_json_includes_the_engine_report(
     assert result["type"] == "result"
     assert result["ok"] is True
     assert result["runtime"]["ok"] is True
+
+
+def test_ci_and_release_share_one_selftest() -> None:
+    root = _ROOT / ".github" / "workflows"
+    shared = (root / "suite-test.yml").read_text(encoding="utf-8")
+    ci = (root / "ci.yml").read_text(encoding="utf-8")
+    release = (root / "release.yml").read_text(encoding="utf-8")
+    assert "uses: ./.github/workflows/suite-test.yml" in ci
+    assert "uses: ./.github/workflows/suite-test.yml" in release
+    assert "check_release_tag: false" in ci
+    assert "check_release_tag: true" in release
+    assert shared.count("python -m clarity --selftest --no-gpu") == 1
+    assert "VOXPRINT_CI_LANCZOS" not in shared
+    assert "ruff check clarity main.py tests scripts" in shared
+    assert "if: inputs.check_release_tag" in shared
+    for text in (ci, release):
+        assert "python -m clarity --selftest" not in text
+        assert "ruff check" not in text
+
+
+def _ready_runtime(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    seen: dict[str, str] = {}
+
+    def ensure(progress: object) -> _Report:
+        assert callable(progress)
+        seen["lanczos"] = os.environ.get("VOXPRINT_CI_LANCZOS", "")
+        progress("Checking python 3.14")
+        return _Report(ok=True)
+
+    def ffmpeg(progress: object) -> str:
+        assert callable(progress)
+        return "skipped"
+
+    monkeypatch.setattr("clarity.cli.ensure_shared_runtime", ensure)
+    monkeypatch.setattr("clarity.cli.ensure_ffmpeg", ffmpeg)
+    return seen
+
+
+def test_no_gpu_selftest_checks_imports_window_and_plan(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+    seen = _ready_runtime(monkeypatch)
+    opened = {"window": 0}
+
+    def window() -> int:
+        opened["window"] += 1
+        return 0
+
+    def providers() -> str:
+        raise AssertionError("providers were checked")
+
+    monkeypatch.setattr("clarity.cli._selftest_window", window)
+    monkeypatch.setattr("clarity.cli.provider_failure", providers)
+    assert main(["selftest", "--no-gpu", "--json"]) == 0
+    assert seen["lanczos"] == "1"
+    assert os.environ.get("VOXPRINT_CI_LANCZOS") != "1"
+    assert opened["window"] == 1
+    result = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()][-1]
+    assert result["ok"] is True
+    assert result["no_gpu"] is True
+    plan = result["plan"]
+    assert plan["encoder"] == "av1_nvenc"
+    assert plan["pix_fmt"] == "yuv420p"
+    assert plan["chunks"] >= 1
+
+    opened["window"] = 0
+    assert main(["--selftest", "--no-gpu"]) == 0
+    assert opened["window"] == 1
+    assert "selftest ok" in capsys.readouterr().out
+
+
+def test_strict_selftest_requires_gpu_providers(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("VOXPRINT_CI_LANCZOS", "1")
+    _ready_runtime(monkeypatch)
+
+    def window() -> int:
+        raise AssertionError("window")
+
+    monkeypatch.setattr("clarity.cli._selftest_window", window)
+    monkeypatch.setattr(
+        "clarity.cli.provider_failure",
+        lambda: "ONNX Runtime is missing CUDAExecutionProvider, TensorrtExecutionProvider",
+    )
+    assert main(["selftest", "--json"]) == 2
+    captured = capsys.readouterr()
+    assert "CUDAExecutionProvider" in captured.out
+    assert "CUDAExecutionProvider" in captured.err
+    assert main(["--selftest"]) == 2
+    assert "TensorrtExecutionProvider" in capsys.readouterr().out
+    assert main(["--no-gpu"]) == 1
+    assert "--no-gpu applies only to --selftest" in capsys.readouterr().err
 
 
 def test_selftest_stops_when_the_runtime_is_incomplete(

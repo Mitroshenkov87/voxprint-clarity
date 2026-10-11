@@ -107,11 +107,23 @@ The Start button and **Download models** call the same catalogue and the same
 ## selftest
 
 `selftest` calls `ensure_runtime("clarity")`, repairs ffmpeg when it is
-missing, then opens the window offscreen and checks that Start has a label.
+missing, builds the default Clean restore plan, then opens the window
+offscreen and checks that Start has a label. A user-facing run also requires
+the CUDA and TensorRT ONNX Runtime providers. It exits 2 when those providers
+are missing or the CPU `onnxruntime` wheel is installed.
+
+`--no-gpu` is the check for a machine with no GPU. It still imports the
+engine, builds the plan (CUDA decode, `av1_nvenc`, `yuv420p` after `-c:v`),
+and opens the window. It does not require the CUDA or TensorRT providers.
+For that process it tells the engine to skip the suite download, then clears
+the skip. It does not make a restore run on CPU.
+
 `--json` prints each step as a `{"type": "progress"}` line and includes the
-engine report (`ok`, `skipped`, `components`) on the result. `--dry-run`
-lists the checks and does not repair or open a window.
-`python -m clarity --selftest` is the same check the CI job runs.
+engine report (`ok`, `skipped`, `components`) and the plan on the result.
+`--dry-run` lists the checks and does not repair or open a window.
+
+`python -m clarity --selftest` is the check a user runs. CI and the release
+workflow both run `python -m clarity --selftest --no-gpu`.
 
 ## install-suite
 

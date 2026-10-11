@@ -110,14 +110,17 @@ icon from that prefix (default `/usr`).
 
 ```bash
 python -m pip install -r requirements-dev.txt
-python -m ruff check clarity main.py tests
+python -m ruff check clarity main.py tests scripts
 python -m mypy
 python -m pytest
-VOXPRINT_CI_LANCZOS=1 QT_QPA_PLATFORM=offscreen python -m clarity --selftest
+QT_QPA_PLATFORM=offscreen python -m clarity --selftest --no-gpu
 ```
 
-`VOXPRINT_CI_LANCZOS=1` makes `ensure_runtime` skip the network, which is how
-CI runs `--selftest`. `assess_launch` still refuses that flag for a restore.
+`--no-gpu` is the selftest CI and the release workflow both run. It checks
+the window, the engine import, and the restore plan, and it skips the CUDA
+and TensorRT provider requirement. For that process the engine skips the
+suite download. `assess_launch` still refuses `VOXPRINT_CI_LANCZOS` for a
+restore, and a selftest without `--no-gpu` still requires the GPU providers.
 
 CI is GitHub Actions on `ubuntu-latest` and `windows-latest` (lint and unit
 tests, with the public engine installed), plus an installer job and an

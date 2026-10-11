@@ -6,44 +6,9 @@ permissions:
   contents: read
 jobs:
   test:
-    name: test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-      - name: Qt libraries (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libglib2.0-0 ffmpeg
-      - name: Install test tools
-        run: python -m pip install -r requirements-dev.txt
-      - name: Install the shared engine
-        shell: bash
-        run: |
-          python -m pip install "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@d11d60921448b697d832b2699e6e3e04c62c6dfd"
-          python -c "import voxprint_engine"
-      - name: Lint
-        run: |
-          ruff check clarity main.py tests scripts
-          mypy
-      - name: Codename is unique in the suite registry
-        run: python -m clarity.codenames
-      - name: Unit tests
-        env:
-          QT_QPA_PLATFORM: offscreen
-          CLARITY_REQUIRE_FFMPEG: ${{ runner.os == 'Linux' && '1' || '0' }}
-        run: python -m pytest
-      - name: Window self-test
-        env:
-          QT_QPA_PLATFORM: offscreen
-          VOXPRINT_HOME: ${{ runner.temp }}/voxprint-suite
-          VOXPRINT_CI_LANCZOS: "1"
-        run: python -m clarity --selftest
+    uses: ./.github/workflows/suite-test.yml
+    with:
+      check_release_tag: false
 
   installer:
     name: Windows online installer
