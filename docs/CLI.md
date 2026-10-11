@@ -1,6 +1,8 @@
 # Command line
 
-`python -m clarity` and `voxprint-clarity` are the same program. With no
+`python -m clarity`, `voxprint-clarity`, and `voxprint-clarity-cli` are the same program.
+`voxprint-clarity` is the window (`voxprint-clarity.exe` on Windows).
+`voxprint-clarity-cli` is the command-line name. With no
 subcommand they open the window, after the operating-system and GPU gates.
 A positional `.vxclarity` path opens that project in the window.
 
@@ -139,7 +141,7 @@ workflow both run `python -m clarity --selftest --no-gpu`.
 `python -m clarity --install-suite` calls `ensure_shared_runtime`, repairs
 ffmpeg, and fetches every catalogue weight Clarity uses.
 `ensure_runtime("clarity")` does not install Enlarge's default model. A missing engine package says
-`Voxprint inference engine missing, run repair.`
+`VOXPrint inference engine missing, run repair.`
 The Windows setup and `voxprint-clarity-install` run it. Uninstall calls
 `release_runtime("clarity")` from `--unregister-models-user`.
 

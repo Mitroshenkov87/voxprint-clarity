@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import sys
+from dataclasses import replace
 from enum import IntEnum
 from pathlib import Path
 from typing import Any, Literal, NamedTuple, Never
@@ -14,6 +15,7 @@ from clarity.net import install_system_trust
 install_system_trust()
 
 from PySide6.QtWidgets import QApplication
+from voxprint_common.buildinfo import BuildInfo
 from voxprint_common.cli_protocol import EXIT_CANCELLED, EXIT_FAILED, EXIT_OK, EXIT_USAGE, emit
 from voxprint_common.cli_protocol import progress as protocol_progress
 from voxprint_common.cli_protocol import result as protocol_result
@@ -662,6 +664,22 @@ def _command_main(argv: list[str]) -> int:
     return _dispatch(command, args)
 
 
+def splash_identity() -> BuildInfo:
+    """Build identity the splash can draw as ``VOXPrint AI Clarity``.
+
+    ``voxprint-common`` 0.1.1 maps the suite id ``clarity`` to the previous
+    spelling. Any other app string is drawn as written, so the splash receives
+    the display name and the suite id stays ``clarity`` everywhere else.
+
+    Returns:
+        The current build identity with ``app`` set to :data:`APP_NAME`.
+    """
+    identity = build_info()
+    if identity.app == APP_NAME:
+        return identity
+    return replace(identity, app=APP_NAME)
+
+
 def _gui(argv: list[str]) -> int:
     args = build_parser().parse_args(argv)
     if args.version:
@@ -710,7 +728,7 @@ def _gui(argv: list[str]) -> int:
         print(exc)
         return int(ExitCode.ENVIRONMENT)
     application = QApplication.instance() or QApplication(sys.argv)
-    splash = Splash(splash_art(), IDENTITY, build_info())
+    splash = Splash(splash_art(), IDENTITY, splash_identity())
     splash.set_stage("Loading")
     try:
         _ensure_shared(RepairProgress())

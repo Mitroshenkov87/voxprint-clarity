@@ -1,4 +1,4 @@
-# App environment for Voxprint AI Clarity.
+# App environment for VOXPrint AI Clarity.
 # The venv holds PySide, the pinned Pillow wheel, and voxprint_engine so the
 # shortcut can start. Python 3.14 comes from uv. The CUDA 13 wheels, ONNX
 # Runtime GPU, and TensorRT are installed for app id "clarity".
@@ -139,7 +139,7 @@ def _say(text):
     if "Enlarge" in text and "3.14" in text:
         return "Python 3.14 was not found. Clarity installs Python 3.14 with uv during setup."
     if "Enlarge" in text:
-        return "Voxprint inference engine missing, run repair."
+        return "VOXPrint inference engine missing, run repair."
     return text
 
 try:

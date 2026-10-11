@@ -43,8 +43,8 @@ UTF-8 JSON, no BOM, one object. Duplicate keys are rejected.
 ```json
 {
   "format_version": "1.0",
-  "created_by": {"app": "Voxprint AI Clarity", "version": "1.0.0-rc"},
-  "generator": {"app": "Voxprint AI Clarity", "version": "1.0.0-rc"},
+  "created_by": {"app": "VOXPrint AI Clarity", "version": "1.0.0-rc"},
+  "generator": {"app": "VOXPrint AI Clarity", "version": "1.0.0-rc"},
   "created": "2026-10-10T08:52:00Z",
   "source": {"format": "mkv", "filename": "in.mkv"},
   "files": {
@@ -142,10 +142,13 @@ in `files`.
 ## File association
 
 Windows: ProgID `Voxprint.Clarity.Project`, per-user `HKCU`, document icon
-`branding/clarity.ico`. Uninstall deletes the ProgID key and the
+`branding/clarity.ico`. The visible type name is **VOXPrint AI Clarity project**.
+Open runs `voxprint-clarity.exe`. Uninstall deletes the ProgID key and the
 `.vxclarity` class entry.
 
 Linux: shared-mime-info type `application/vnd.voxprint.clarity+zip` with a
-glob of `*.vxclarity`, and a `.desktop` file whose `MimeType` is that type.
-Removing the installed prefix removes both files. `installer/linux/uninstall.sh`
-deletes them from a prefix and refreshes the mime and desktop databases.
+glob of `*.vxclarity`, and `ai.voxprint.Clarity.desktop` whose `MimeType` is
+that type and whose `Name` is **VOXPrint AI Clarity**.
+`installer/linux/uninstall.sh` deletes the association and the desktop file
+and refreshes the mime and desktop databases. It does not delete
+`~/.local/share/voxprint`.

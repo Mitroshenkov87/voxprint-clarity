@@ -49,7 +49,7 @@ TensorRT provider check stays in the engine selftest and in
 | ONNX | `api.ensure_onnx` (checked fp16 file, cached by sha256) |
 | Session | `voxprint_engine.session.open_session`, TensorRT then CUDA |
 | Restore worker | `api.RestoreBatchRequest` with `owner="clarity"`, then `api.WorkerClient` |
-| Startup gate | `voxprint_common.gpu_probe.assess("Voxprint AI Clarity", refuse_below=(8, 9))`. An old driver message gains NVIDIA's download page in Clarity. |
+| Startup gate | `voxprint_common.gpu_probe.assess("VOXPrint AI Clarity", refuse_below=(8, 9))`. An old driver message gains NVIDIA's download page in Clarity. |
 | Shared runtime | `enlarge.suite_runtime.ensure_runtime("clarity")` and `release_runtime("clarity")`. The call writes the app id and does not install Enlarge's default model. |
 | VRAM measurement | `voxprint_engine.vram.measure` |
 

@@ -1,6 +1,6 @@
 # Agents
 
-Clarity is the non-generative video app in the Voxprint AI Media Suite.
+Clarity is the non-generative video app in the VOXPrint AI Media Suite.
 English in the README, docs, comments, and commits. Imperative commit subjects.
 
 - Depend on `voxprint_engine` at tag `engine-v1.4.0`. The requirement is
@@ -13,7 +13,7 @@ English in the README, docs, comments, and commits. Imperative commit subjects.
   rule, the GPU probe, and the licence allow-list live in `voxprint_common`.
   `ensure_runtime` lives in `enlarge.suite_runtime` from the same tag. The
   wheel does not ship that package, so setup copies it from the archive.
-  Pass app id `clarity`. GPU checks use the display name `Voxprint AI Clarity`.
+  Pass app id `clarity`. GPU checks use the display name `VOXPrint AI Clarity`.
   Do not install Enlarge's default model. `ensure_default_model` does that
   only for app id `enlarge`.
 - Depend on `voxprint-common` 0.1.1 "Menuchah" (API 1) from the v0.1.1

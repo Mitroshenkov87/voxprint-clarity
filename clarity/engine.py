@@ -50,7 +50,7 @@ ENGINE_REQUIREMENT = (
 # The wheel ships voxprint_engine only. ensure_runtime lives in the Enlarge
 # package at the same tag.
 SUITE_RUNTIME = "enlarge.suite_runtime"
-_ENGINE_MISSING = "Voxprint inference engine missing, run repair."
+_ENGINE_MISSING = "VOXPrint inference engine missing, run repair."
 _DRIVER_VERSION = re.compile(r"driver ([0-9][0-9.]*)")
 _GPU_BUSY = "the GPU is busy"
 _GPU_CANCELLED = "cancelled while waiting for the GPU"

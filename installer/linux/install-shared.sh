@@ -7,6 +7,8 @@
 # pyproject.toml is at the repository root, so the engine URL has no subdirectory.
 # tensorrt-cu13-libs is installed from the NVIDIA package index.
 # ensure_runtime("clarity") records the ref and does not install Enlarge's default model.
+# A packaged tree is also copied to /opt/voxprint-ai-suite/clarity.
+# Per-user data stays in ~/.local/share/voxprint.
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
@@ -17,6 +19,23 @@ elif [ -f "$script_dir/../../requirements.txt" ]; then
 else
   echo "requirements.txt was not found beside the installer" >&2
   exit 1
+fi
+
+if [ "${1:-}" = "--system-only" ]; then
+  sh "$script_dir/install-system.sh" "$app"
+  exit 0
+fi
+
+if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
+  sudo -u "$SUDO_USER" -H "$0" --user-only
+  sh "$script_dir/install-system.sh" "$app"
+  sudo -u "$SUDO_USER" -H sh "$script_dir/register-user.sh" "${VOXPRINT_SUITE_ROOT:-/opt/voxprint-ai-suite}/clarity"
+  exit 0
+fi
+
+user_only=0
+if [ "${1:-}" = "--user-only" ]; then
+  user_only=1
 fi
 
 if [ -n "${VOXPRINT_HOME:-}" ]; then
@@ -125,3 +144,16 @@ if [ ! -f "$pin" ] || [ ! -f "$lock" ] || [ ! -f "$reqs" ]; then
 fi
 "$venv/bin/python" "$pin" --python "$venv/bin/python" --lock "$lock" --requirements "$reqs"
 "$venv/bin/python" -m pip install "Pillow==12.3.0"
+
+if [ "$user_only" -eq 1 ]; then
+  exit 0
+fi
+
+if [ -x "$app/voxprint-clarity" ] && [ -f "$script_dir/install-system.sh" ]; then
+  if [ "$(id -u)" -eq 0 ]; then
+    sh "$script_dir/install-system.sh" "$app"
+  else
+    sudo "$0" --system-only
+  fi
+  sh "$script_dir/register-user.sh" "${VOXPRINT_SUITE_ROOT:-/opt/voxprint-ai-suite}/clarity"
+fi

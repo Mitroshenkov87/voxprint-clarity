@@ -1,6 +1,6 @@
-# Voxprint AI Clarity
+# VOXPrint AI Clarity
 
-Lightweight non-generative restoration for an SDR video, part of the Voxprint
+Lightweight non-generative restoration for an SDR video, part of the VOXPrint
 AI Media Suite. A clip comes back deblocked, denoised, lightly sharpened, and
 colour-cleaned per scene. Optional 2x is off by default.
 
@@ -29,8 +29,14 @@ from its release wheel (checked against the published `.sha256` file), and
 the public engine at tag `engine-v1.4.0`. The installer is not code-signed.
 The shared library is not a git clone.
 
-The Start menu folder is **Voxprint**. Put ffmpeg on `PATH` before the first
-restore. Linux is the experimental tarball in the same release. Details:
+Windows installs into `C:\Program Files\VOXPrint AI Suite\Clarity`. The Start
+menu folder is **VOXPrint AI Suite** and the shortcut is **VOXPrint AI Clarity**.
+The window program is `voxprint-clarity.exe`. The command line is
+`voxprint-clarity-cli.exe`. An older install under `C:\Program Files\VoxprintClarity`
+is removed on upgrade. Your files in `%LOCALAPPDATA%\Voxprint` stay where they are.
+Put ffmpeg on `PATH` before the first restore. Linux is the experimental
+tarball `voxprint-clarity-linux.tar.gz` in the same release. It installs into
+`/opt/voxprint-ai-suite/clarity`. Details:
 [docs/USER-GUIDE.md](docs/USER-GUIDE.md) and [docs/INSTALL.md](docs/INSTALL.md).
 
 ## First run and a basic restore
@@ -50,7 +56,7 @@ chunks away.
 
 - Models: `%LOCALAPPDATA%\Voxprint\models` (Linux: `~/.local/share/voxprint/models`).
 - Resume data: a `.work` folder beside the project, plus the `.vxclarity` file.
-- Windows setup log: `%TEMP%\VoxprintClarity-setup.log`.
+- Windows setup log: `%TEMP%\voxprint-clarity-setup.log`.
 
 Clarity does not write a separate application log. The window status line is
 the job’s progress.
@@ -82,7 +88,7 @@ The documentation site is published from `main`:
 - [docs/BENCHMARK.md](docs/BENCHMARK.md) — how to time the models
 - [docs/TESTING-GPU.md](docs/TESTING-GPU.md) — the rented RTX 4090 script
 - [docs/formats/VXCLARITY.md](docs/formats/VXCLARITY.md) — the `.vxclarity` project file
-- [docs/CLI.md](docs/CLI.md) — headless `python -m clarity` / `voxprint-clarity`
+- [docs/CLI.md](docs/CLI.md) — headless `python -m clarity` / `voxprint-clarity-cli`
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — components, data flow, and the GPU rules
 - [docs/RELEASES-CODENAMES.md](docs/RELEASES-CODENAMES.md) — suite codenames
 - [ROADMAP.md](ROADMAP.md) — next version, later work, and what is not planned

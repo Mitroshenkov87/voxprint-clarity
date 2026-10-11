@@ -43,6 +43,9 @@ jobs:
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --no-progress -y
+      - name: Build the Windows launchers
+        shell: pwsh
+        run: installer\launchers\build.ps1
       - name: Compile the installer
         shell: pwsh
         run: |
@@ -56,11 +59,14 @@ jobs:
           $setup = (Resolve-Path installer\Output\VoxprintClarity-Setup.exe).Path
           $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=C:\clarity","/RUNTIME=skip" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "install failed ($($p.ExitCode))" }
-          foreach ($f in @("C:\clarity\main.py","C:\clarity\LICENSE","C:\clarity\branding\clarity.ico","C:\clarity\clarity\__main__.py")) {
+          foreach ($f in @("C:\clarity\main.py","C:\clarity\LICENSE","C:\clarity\branding\clarity.ico","C:\clarity\clarity\__main__.py","C:\clarity\voxprint-clarity.exe","C:\clarity\voxprint-clarity-cli.exe")) {
             if (-not (Test-Path $f)) { throw "missing $f" }
           }
-          $menu = Get-ChildItem "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Voxprint" -Filter "*.lnk"
-          if (-not ($menu | Where-Object { $_.Name -eq "Voxprint AI Clarity.lnk" })) { throw "Start menu shortcut missing from the Voxprint folder" }
+          $menu = Get-ChildItem "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\VOXPrint AI Suite" -Filter "*.lnk"
+          if (-not ($menu | Where-Object { $_.Name -eq "VOXPrint AI Clarity.lnk" })) { throw "Start menu shortcut missing from the VOXPrint AI Suite folder" }
+          $reg = Get-ItemProperty "HKCU:\Software\Voxprint\Clarity"
+          if ($reg.Exe -ne "voxprint-clarity.exe") { throw "suite registry Exe is $($reg.Exe)" }
+          if ($reg.InstallPath.TrimEnd('\') -ne "C:\clarity") { throw "suite registry InstallPath is $($reg.InstallPath)" }
           Start-Process "C:\clarity\unins000.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" | Out-Null
           for ($i = 0; $i -lt 60 -and (Test-Path C:\clarity); $i++) { Start-Sleep 2 }
           if (Test-Path C:\clarity) { throw "uninstall left C:\clarity" }
@@ -111,7 +117,7 @@ jobs:
           done > SHA256SUMS
           echo "SHA256SUMS:"
           cat SHA256SUMS
-          notes="Pre-release. The codename is a Hebrew word from the Torah or Tanakh, read from BUILD.json. The Windows file is the full online installer: setup downloads Python 3.14, the CUDA 13.0 PyTorch wheel, the restore libraries, and the public engine. It is not code-signed. The Linux tarball is experimental. Built from commit ${GITHUB_SHA}."
+          notes="Pre-release. The codename is a Hebrew word from the Torah or Tanakh, read from BUILD.json. The Windows file is the full online installer: setup downloads Python 3.14, the CUDA 13.0 PyTorch wheel, the restore libraries, and the public engine. It is not code-signed. Windows program files go in C:\\Program Files\\VOXPrint AI Suite\\Clarity (voxprint-clarity.exe and voxprint-clarity-cli.exe). The Start menu folder is VOXPrint AI Suite. Linux installs into /opt/voxprint-ai-suite/clarity. An upgrade removes an older install and keeps %LOCALAPPDATA%\\Voxprint. The Linux tarball is experimental. Built from commit ${GITHUB_SHA}."
           printf '%s\n\nInstall and first-run notes: docs/USER-GUIDE.md\n' "$notes" > ../release-notes.md
           mapfile -t files < <(find . -type f -printf '%P\n' | sort)
           gh release create "${GITHUB_REF_NAME}" \

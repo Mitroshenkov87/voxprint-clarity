@@ -1,4 +1,4 @@
-Voxprint AI Clarity
+VOXPrint AI Clarity
 Copyright 2026 Aleksandr Mitroshenkov
 
 This product is licensed under the Apache License, Version 2.0.
@@ -31,7 +31,7 @@ PyTorch — BSD-style licence. Clarity pins torch 2.14.1 with CUDA 13.0 wheels.
   https://github.com/pytorch/pytorch
 
 ONNX Runtime — MIT License, used through the shared voxprint-engine package
-  from Voxprint AI Enlarge. Clarity does not vendor that package.
+  from VOXPrint AI Enlarge. Clarity does not vendor that package.
 
 voxprint-common 0.1.0 "Yesod" — Apache License 2.0
   Shared hashing, BUILD.json reading, licence gate, theme, splash, the
@@ -55,7 +55,7 @@ Elephants Dream — Creative Commons Attribution. Used only as the benchmark
 Suite icons
 -----------
 
-`assets/icons/suite/` holds the shared Voxprint icons for save, save as,
+`assets/icons/suite/` holds the shared VOXPrint icons for save, save as,
 save a copy, export, and download. They are suite art (a tray and an arrow).
 They are not a floppy-disk glyph and they are not a third-party icon pack.
 

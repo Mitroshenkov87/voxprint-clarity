@@ -37,6 +37,9 @@ jobs:
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --no-progress -y
+      - name: Build the Windows launchers
+        shell: pwsh
+        run: installer\launchers\build.ps1
       - name: Compile the installer
         shell: pwsh
         run: |
@@ -50,12 +53,17 @@ jobs:
           $setup = (Resolve-Path installer\Output\VoxprintClarity-Setup.exe).Path
           $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=C:\clarity","/RUNTIME=skip" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "install failed ($($p.ExitCode))" }
-          foreach ($f in @("C:\clarity\main.py","C:\clarity\LICENSE","C:\clarity\branding\clarity.ico","C:\clarity\clarity\__main__.py")) {
+          foreach ($f in @("C:\clarity\main.py","C:\clarity\LICENSE","C:\clarity\branding\clarity.ico","C:\clarity\clarity\__main__.py","C:\clarity\voxprint-clarity.exe","C:\clarity\voxprint-clarity-cli.exe")) {
             if (-not (Test-Path $f)) { throw "missing $f" }
           }
-          $menu = Get-ChildItem "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Voxprint" -Filter "*.lnk"
+          $menu = Get-ChildItem "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\VOXPrint AI Suite" -Filter "*.lnk"
           $menu | ForEach-Object { $_.Name }
-          if (-not ($menu | Where-Object { $_.Name -eq "Voxprint AI Clarity.lnk" })) { throw "Start menu shortcut missing from the Voxprint folder" }
+          if (-not ($menu | Where-Object { $_.Name -eq "VOXPrint AI Clarity.lnk" })) { throw "Start menu shortcut missing from the VOXPrint AI Suite folder" }
+          $reg = Get-ItemProperty "HKCU:\Software\Voxprint\Clarity"
+          if ($reg.Exe -ne "voxprint-clarity.exe") { throw "suite registry Exe is $($reg.Exe)" }
+          if ($reg.InstallPath.TrimEnd('\') -ne "C:\clarity") { throw "suite registry InstallPath is $($reg.InstallPath)" }
+          $gui = Get-Item "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\voxprint-clarity.exe"
+          if ($gui.GetValue("").TrimEnd('\') -ne "C:\clarity\voxprint-clarity.exe") { throw "App Paths GUI entry is missing" }
           Start-Process "C:\clarity\unins000.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" | Out-Null
           for ($i = 0; $i -lt 60 -and (Test-Path C:\clarity); $i++) { Start-Sleep 2 }
           if (Test-Path C:\clarity) { throw "uninstall left C:\clarity" }

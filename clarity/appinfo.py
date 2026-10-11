@@ -13,7 +13,7 @@ from pathlib import Path
 
 from voxprint_common.buildinfo import BuildInfo, label, load
 
-APP_NAME = "Voxprint AI Clarity"
+APP_NAME = "VOXPrint AI Clarity"
 USER_KEY = "clarity"
 
 _ROOT = Path(__file__).resolve().parents[1]
