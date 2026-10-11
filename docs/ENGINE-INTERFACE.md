@@ -5,32 +5,24 @@ Clarity uses the shared package `voxprint_engine` (distribution name
 
 | | |
 |---|---|
-| Commit | `d11d609` (`d11d60921448b697d832b2699e6e3e04c62c6dfd`). TODO: tag `engine-v1.1.0` when it is published. |
-| Requirement | `voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@d11d60921448b697d832b2699e6e3e04c62c6dfd` |
+| Tag | `engine-v1.1.0` (commit `0f6a84013a72413b1fb53b4b0ae9826c10c54436`). API stays 1. |
+| Requirement | `voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0` |
 | CI install | the same `git+https` requirement. Enlarge is public, so there is no deploy key. |
 | Import package | `voxprint_engine` |
 | Video names | `voxprint_engine.api` |
 
-The video API is in that commit. Clarity does not vendor a copy of the engine.
-`patches/` holds two diffs against `d11d609` for the Enlarge repository:
+The video API is in that tag. Clarity does not vendor a copy of the engine.
 
-- `patches/engine-d11d609-stream-frames.patch` adds `iter_tile_frames`.
-  `tile_frames` keeps the accumulator, the coverage map, and the clip temporary
-  for every frame at the model scale. 138 frames of 720p at 4x is about 22.7 GiB
-  of float32. Clarity passes at most `host_batch_count` frames (512 MiB for those
-  three buffers) so the installed engine stays inside RAM, downscales 4x to 2x
-  on that batch, and stores uint8. The iterator is the upstream shape: one frame
-  in the accumulator, and stacking the yields brings the whole chunk back.
-- `patches/engine-d11d609-ort-trt-pin.patch` changes `install_gpu_wheels` and the
-  GPU probe. The engine depends on `onnxruntime>=1.20,<2` (the CPU wheel) and
-  then installs unpinned `tensorrt-cu13`, which is TensorRT 11 (`nvinfer_11`).
-  ONNX Runtime 1.31's TensorRT EP loads `nvinfer_10`. Clarity's installers
-  uninstall the CPU wheel after `ensure_runtime` and install
-  `onnxruntime-gpu==1.31.0`, `tensorrt-cu13-libs==10.14.1.48`, and
-  `tensorrt-cu13==10.14.1.48` with `--no-deps`. The 10.14 bindings have no
-  cp314 wheel. The meta package is recorded so the current probe, which only
-  checks that some `tensorrt-cu13` distribution exists, does not install
-  TensorRT 11 on the next repair.
+`iter_tile_frames` yields one restored frame. The accumulator stays one frame.
+Clarity still limits the source window with `host_batch_count` (512 MiB for the
+three full-resolution float32 buffers). A 720p frame at 4x is restored alone.
+Stacking the yields would allocate the chunk again.
+
+`install_gpu_wheels` pins `onnxruntime-gpu==1.31.0` and
+`tensorrt-cu13-libs==10.14.1.48` and removes the CPU `onnxruntime` wheel.
+Clarity's installers leave that pin to the engine. The engine selftest asserts
+`CUDAExecutionProvider` and `TensorrtExecutionProvider`. Clarity's `--selftest`
+checks the window, the import, and the default plan.
 
 ## What Clarity calls
 
@@ -41,7 +33,9 @@ The video API is in that commit. Clarity does not vendor a copy of the engine.
 | Shared GPU memory | `api.read_shared_usage` |
 | Thermal rule | `api.decide` |
 | Weights and users | `api.ensure_weight`, `api.register`, `api.unregister`, `api.models_dir` |
-| Frames | `api.restore_frames`, `api.temporal_windows`, `api.tile_frames` |
+| Frames | `api.iter_tile_frames`, `api.temporal_windows` |
+| ONNX | `api.ensure_onnx` (checked fp16 file, cached by sha256) |
+| Session | `voxprint_engine.session.open_session`, TensorRT then CUDA |
 | Restore worker | `api.RestoreBatchRequest` with `owner="clarity"`, then `api.WorkerClient` |
 | Startup gate | `voxprint_engine.hardware.assess_gpu(refuse_below=(8, 9))`. An old driver message gains NVIDIA's download page in Clarity. |
 | Shared runtime | `suite_runtime.ensure_runtime("clarity")` and `release_runtime("clarity")` |
@@ -49,6 +43,8 @@ The video API is in that commit. Clarity does not vendor a copy of the engine.
 
 `clarity/engine.py` is the only application module that imports
 `voxprint_engine`. It adds no second implementation of those functions.
+`clarity.bench` imports `voxprint_engine.onnx_export.export_weight` for the
+TensorRT timing.
 
 ## Lock owner
 
@@ -65,10 +61,19 @@ again. It does not kill the worker for that line. Cancel ends the retries.
 
 ## ONNX export
 
-Tag `engine-v1.0.0` has `tools/export_onnx.py` (`convert`) in the enlarge
-repository. That file is not part of the installed `voxprint_engine` wheel.
-`python -m clarity.bench` calls `convert` when the module can be imported, and
-otherwise writes the graph with `torch.onnx.export`.
+`api.ensure_onnx` converts a pinned `.pth` to a checked fp16 ONNX file and
+caches it as `<sha256>.onnx`. A second call returns that file.
+`python -m clarity.bench` calls `voxprint_engine.onnx_export.export_weight`
+for the same conversion.
+
+The converter's example tensor is 3 channels. SCUNet and Real-ESRGAN take
+that path, then Clarity opens a session with TensorRT and retries on CUDA
+when the engine build fails. DRUNet takes a condition channel (4 channels)
+and stays on PyTorch. The restore path does not call `torch.onnx.export`.
+
+Before TensorRT loads, Clarity reports `building_engine` or
+`loading_cached_engine`. A `--json` progress line adds `"stage"`. The window
+status shows the same sentence. The first build can take several minutes.
 
 ## CI
 

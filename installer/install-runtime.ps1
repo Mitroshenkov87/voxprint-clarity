@@ -1,15 +1,16 @@
 # App environment for Voxprint AI Clarity.
 # The venv holds PySide, the pinned Pillow wheel, and voxprint_engine so the
-# shortcut can start. Python 3.14, the CUDA 13 wheels, and the engine's default
-# model are installed by voxprint_engine.suite_runtime.ensure_runtime (holder
-# "clarity"). TODO: switch the engine pin to tag engine-v1.1.0 when it is published.
+# shortcut can start. Python 3.14, the CUDA 13 wheels, ONNX Runtime GPU,
+# TensorRT, and the engine's default model are installed by
+# voxprint_engine.suite_runtime.ensure_runtime (holder "clarity").
+# The engine pin is tag engine-v1.1.0.
 # -SkipRuntime is only for the installer compile check.
 param(
     [Parameter(Mandatory = $true)][string]$AppDir,
     [string]$Requirements = "",
     [string]$Lock = "",
     [string]$Log = "",
-    [string]$EngineRequirement = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@d11d60921448b697d832b2699e6e3e04c62c6dfd",
+    [string]$EngineRequirement = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0",
     [switch]$SkipRuntime,
     [switch]$LinkOnly
 )
@@ -59,13 +60,7 @@ if (-not $Requirements -or -not $Lock) { throw "Requirements and Lock are requir
 if (-not (Test-Path -LiteralPath $Lock)) { throw "runtime lock missing: $Lock" }
 $lockJson = Get-Content -Raw -LiteralPath $Lock | ConvertFrom-Json
 $pillow = [string]$lockJson.pillow
-$ortGpu = [string]$lockJson.onnxruntime_gpu
-$trtLibs = [string]$lockJson.tensorrt_cu13_libs
-$trtMeta = [string]$lockJson.tensorrt_cu13
 if (-not $pillow) { throw "runtime lock is missing pillow" }
-if (-not $ortGpu) { throw "runtime lock is missing onnxruntime_gpu" }
-if (-not $trtLibs) { throw "runtime lock is missing tensorrt_cu13_libs" }
-if (-not $trtMeta) { throw "runtime lock is missing tensorrt_cu13" }
 New-Item -ItemType Directory -Force -Path $venvRoot | Out-Null
 $venvPython = Join-Path $venvRoot "Scripts\python.exe"
 if (Test-Path -LiteralPath $venvPython) {
@@ -105,22 +100,10 @@ if (Test-Path -LiteralPath $venvPython) {
 Write-Log "ensuring the shared runtime for clarity"
 & $venvPython -c "from voxprint_engine.suite_runtime import ensure_runtime; report = ensure_runtime('clarity', progress=lambda message: print(message, flush=True)); raise SystemExit(0 if report.ok else 1)"
 if ($LASTEXITCODE -ne 0) { throw "shared runtime install failed" }
-Write-Log "pinning onnxruntime-gpu $ortGpu and TensorRT libs $trtLibs"
-& $venvPython -m pip uninstall -y onnxruntime onnxruntime-gpu tensorrt tensorrt-cu13 tensorrt-cu13-bindings tensorrt-cu13-libs
-& $venvPython -m pip install --extra-index-url "https://pypi.nvidia.com" "onnxruntime-gpu==$ortGpu" "tensorrt-cu13-libs==$trtLibs"
-if ($LASTEXITCODE -ne 0) { throw "onnxruntime-gpu / TensorRT pin failed" }
-# Bindings for TensorRT 10.14 have no cp314 wheel. The engine probe only checks
-# that some tensorrt-cu13 distribution is installed, and an unpinned install is
-# TensorRT 11 (nvinfer_11). The meta package is recorded without dependencies so
-# the next ensure_runtime leaves the 10.14 DLLs in place.
-& $venvPython -m pip install --no-deps "tensorrt-cu13==$trtMeta"
-if ($LASTEXITCODE -ne 0) { throw "tensorrt-cu13 metadata pin failed" }
-& $venvPython -c "import importlib.metadata as m; names={d.metadata['Name'].lower() for d in m.distributions()}; raise SystemExit(1 if 'onnxruntime' in names else 0)"
-if ($LASTEXITCODE -ne 0) { throw "the CPU onnxruntime wheel is still installed and would shadow onnxruntime-gpu" }
 Write-Log "installing Pillow $pillow"
 & $venvPython -m pip install "Pillow==$pillow"
 if ($LASTEXITCODE -ne 0) { throw "Pillow install failed" }
 Ensure-AppRuntimeLink $AppDir $venvRoot
-@{ pillow = $pillow; onnxruntime_gpu = $ortGpu; tensorrt_cu13_libs = $trtLibs; tensorrt_cu13 = $trtMeta; shared = $shared } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $venvRoot "runtime-key.json") -Encoding utf8
+@{ pillow = $pillow; shared = $shared } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $venvRoot "runtime-key.json") -Encoding utf8
 Write-Log "runtime ready"
 exit 0

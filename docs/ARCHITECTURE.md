@@ -27,7 +27,7 @@ A live restore runs these steps in order:
 
 1. **Decode the facts.** ffprobe reads streams, format, and chapters. HDR and Dolby Vision stop here. The scene filter then runs on the CPU (`-vf select=gt(scene,…)`), with no CUDA decode, and the cuts become chunks.
 2. **Scene chunks.** Each chunk is a half-open frame range. A finished chunk is skipped when the journal still matches the file on disk.
-3. **Engine.** For each unfinished chunk the job holds the suite GPU lock, asks the engine for a tile and a thermal decision, and restores the frames. Tiling goes through `voxprint_engine.api.restore_frames` on a host batch small enough that the 4x float32 accumulator stays bounded. Each batch is reduced to uint8 before the next one starts. DRUNet runs in fp32. SCUNet and Real-ESRGAN run in fp16.
+3. **Engine.** For each unfinished chunk the job holds the suite GPU lock, asks the engine for a tile and a thermal decision, and restores the frames. `host_batch_count` keeps the source window inside 512 MiB. `voxprint_engine.api.iter_tile_frames` restores those frames one at a time, so the engine accumulator is one frame. Each batch is reduced to uint8 before the next one starts. DRUNet (a condition channel) stays on PyTorch in fp32. SCUNet and Real-ESRGAN are 3-channel: the engine converts them to a cached fp16 ONNX file and runs TensorRT, retrying on CUDA when the engine build fails.
 4. **Encode.** The chunk is decoded with NVDEC (`-hwaccel cuda`) to raw rgb24, restored, and encoded with `av1_nvenc` (or `hevc_nvenc` when HEVC was requested). The output pixel format is `yuv420p` for an 8-bit source and `p010le` when the source is 10-bit or deeper. `libsvtav1` is used only when this ffmpeg has it and `av1_nvenc` is absent. The chunk is renamed into place and one journal line records its SHA-256.
 5. **Join.** ffmpeg's concat demuxer copies the chunk video (`-c copy`) and copies the source audio into the destination. The file is written to a `.partial` path and renamed into place only after every chunk is in that file.
 
@@ -35,10 +35,10 @@ A live restore runs these steps in order:
 
 ## Engine
 
-Clarity does not reimplement the GPU lock, the VRAM budget, the thermal rule, the model store, the hardware query, or the shared runtime. Those live in `voxprint_engine` from Voxprint AI Enlarge, commit `d11d609`. The pin switches to tag `engine-v1.1.0` when that tag is published.
+Clarity does not reimplement the GPU lock, the VRAM budget, the thermal rule, the model store, the hardware query, or the shared runtime. Those live in `voxprint_engine` from Voxprint AI Enlarge, tag `engine-v1.1.0`.
 
 ```text
-voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@d11d60921448b697d832b2699e6e3e04c62c6dfd
+voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0
 ```
 
 `clarity.engine` loads that package with `importlib` and forwards the calls. The requirement string is `ENGINE_REQUIREMENT`. The lock owner and the runtime holder are `OWNER` (`clarity`). API stays 1.
@@ -65,7 +65,7 @@ Between chunks, while `device` is set:
 - `read_shared_usage` and `sysmem_spill` watch shared GPU memory. A spill empties the CUDA cache, asks `note_spill` for a smaller batch, and may `halve_tile`.
 - `thermal_decide` (`api.decide`) says whether to pause. `wait_for_thermal` sleeps between chunks while the engine says to pause. Finished chunks stay on disk.
 
-There is no CPU restore path. `assess_launch` refuses `VOXPRINT_CI_LANCZOS`. The engine's `ensure_runtime` treats that same flag as a skip so a test run does not download the suite. CI and the release workflow run `python -m clarity --selftest --no-gpu`, which sets the flag for that process only and skips the CUDA and TensorRT provider check. A selftest without `--no-gpu` still requires those providers.
+There is no CPU restore path. `assess_launch` refuses `VOXPRINT_CI_LANCZOS`. The engine's `ensure_runtime` treats that same flag as a skip so a test run does not download the suite. CI and the release workflow run `python -m clarity --selftest --no-gpu`, which sets the flag for that process only. The engine selftest asserts the CUDA and TensorRT providers. Clarity's selftest checks the window, the import, and the plan.
 
 ## `.vxclarity`
 

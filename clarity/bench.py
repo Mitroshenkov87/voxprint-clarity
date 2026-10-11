@@ -284,60 +284,33 @@ def _vram_mb() -> float:
     return 0.0
 
 
-def export_with_engine(weight: Path, dest: Path) -> str | None:
-    """Use Enlarge's exporter when that module can be imported.
-
-    ``engine-v1.0.0`` ships the converter as ``tools/export_onnx.py`` in the
-    enlarge repository. The installed ``voxprint_engine`` wheel does not include
-    that file. A ``None`` return means the caller should write the graph itself.
-    """
-    for name in ("voxprint_engine.export_onnx", "tools.export_onnx"):
-        try:
-            module = importlib.import_module(name)
-        except ImportError:
-            continue
-        convert = getattr(module, "convert", None)
-        if not callable(convert):
-            convert = getattr(module, "export_onnx", None)
-        if not callable(convert):
-            continue
-        try:
-            convert(weight, dest)
-        except SystemExit as exc:
-            raise RuntimeError(str(exc)) from exc
-        if dest.is_file():
-            return f"ONNX exported by {name}"
-    return None
-
-
-def export_torch_onnx(
-    network: Any, dest: Path, channels: int, precision: str, spatial: int = SPATIAL
-) -> None:
-    """Write an ONNX graph from a spandrel network already moved to CUDA.
+def export_with_engine(weight: Path, dest: Path) -> str:
+    """Write a checked fp16 ONNX file with the engine converter.
 
     Args:
-        network: The loaded descriptor.
+        weight: The pinned ``.pth`` file.
         dest: Where the ``.onnx`` file is written.
-        channels: Input channel count, including a condition channel.
-        precision: ``fp16``, ``bf16``, or ``fp32``. DRUNet is fp32.
-        spatial: Square edge of the example tensor.
+
+    Returns:
+        A note stored on the benchmark row.
+
+    Raises:
+        RuntimeError: When the engine converter is missing or the export fails.
     """
-    if torch is None:
-        raise RuntimeError("torch is not installed")
-    module = network.model if hasattr(network, "model") else network
-    dtype = getattr(torch, torch_dtype_name(precision))
-    example = torch.zeros(1, channels, spatial, spatial, device="cuda", dtype=dtype)
-    options: dict[str, Any] = {
-        "input_names": ["images"],
-        "output_names": ["restored"],
-        "opset_version": 17,
-        "dynamo": False,
-    }
     try:
-        torch.onnx.export(module, example, str(dest), **options)
-    except TypeError:
-        options.pop("dynamo")
-        torch.onnx.export(module, example, str(dest), **options)
+        module = importlib.import_module("voxprint_engine.onnx_export")
+    except ImportError as exc:
+        raise RuntimeError("voxprint_engine.onnx_export is not installed") from exc
+    export = getattr(module, "export_weight", None)
+    if not callable(export):
+        raise RuntimeError("voxprint_engine.onnx_export.export_weight is missing")
+    try:
+        export(weight, dest)
+    except Exception as exc:
+        raise RuntimeError(str(exc)) from exc
+    if not dest.is_file():
+        raise RuntimeError(f"the engine did not write {dest.name}")
+    return "ONNX exported by voxprint_engine.onnx_export.export_weight (fp16)"
 
 
 def _load_torch(weight: Path, precision: str) -> Any:
@@ -627,13 +600,12 @@ def main(argv: list[str] | None = None) -> int:
         )
         onnx_path = args.out / f"{model.id}.onnx"
         try:
-            exported = export_with_engine(weight, onnx_path)
-            if exported is None:
-                export_torch_onnx(network, onnx_path, model.channels, model.precision)
-                exported = (
-                    "ONNX exported with torch.onnx; "
-                    "engine-v1.0.0 keeps tools/export_onnx.py out of the installed wheel"
+            if model.channels != 3:
+                raise RuntimeError(
+                    f"{model.id} takes {model.channels} channels. "
+                    "The engine converter writes a 3-channel fp16 graph."
                 )
+            exported = export_with_engine(weight, onnx_path)
             _reset_vram()
             session = open_trt_session(onnx_path, args.out / "trt-cache" / model.id, precision=model.precision)
             trt_fps, trt_vram = time_trt(session, model.channels, args.frames)

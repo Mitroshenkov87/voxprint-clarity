@@ -36,7 +36,9 @@ python -m clarity selftest --json
 With `--json`, a failure still prints one result line on stdout:
 `{"type":"result","ok":false,"error":"..."}`. The same message is on stderr.
 Progress, when a live job reports it, is `{"type":"progress","fraction":0.25,"message":"12/48"}`
-on stdout. Other logs stay on stderr.
+on stdout. A TensorRT build or cache load adds `"stage":"building_engine"` or
+`"stage":"loading_cached_engine"`. The message says the first build can take
+several minutes. Other logs stay on stderr.
 
 ## restore
 
@@ -108,15 +110,13 @@ The Start button and **Download models** call the same catalogue and the same
 
 `selftest` calls `ensure_runtime("clarity")`, repairs ffmpeg when it is
 missing, builds the default Clean restore plan, then opens the window
-offscreen and checks that Start has a label. A user-facing run also requires
-the CUDA and TensorRT ONNX Runtime providers. It exits 2 when those providers
-are missing or the CPU `onnxruntime` wheel is installed.
+offscreen and checks that Start has a label. The CUDA and TensorRT provider
+check belongs to the engine selftest.
 
 `--no-gpu` is the check for a machine with no GPU. It still imports the
 engine, builds the plan (CUDA decode, `av1_nvenc`, `yuv420p` after `-c:v`),
-and opens the window. It does not require the CUDA or TensorRT providers.
-For that process it tells the engine to skip the suite download, then clears
-the skip. It does not make a restore run on CPU.
+and opens the window. For that process it tells the engine to skip the suite
+download, then clears the skip. It does not make a restore run on CPU.
 
 `--json` prints each step as a `{"type": "progress"}` line and includes the
 engine report (`ok`, `skipped`, `components`) and the plan on the result.

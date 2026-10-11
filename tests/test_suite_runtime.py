@@ -87,9 +87,9 @@ def test_runtime_holder_is_clarity_and_install_errors_become_clarity_errors(
 
 def test_missing_suite_runtime_names_the_pinned_engine(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("clarity.engine._load_module", lambda name: None)
-    with pytest.raises(EngineUnavailable, match="d11d609"):
+    with pytest.raises(EngineUnavailable, match="engine-v1.1.0"):
         ensure_shared_runtime()
-    with pytest.raises(EngineUnavailable, match="d11d609"):
+    with pytest.raises(EngineUnavailable, match="engine-v1.1.0"):
         release_shared_runtime()
 
 
@@ -146,7 +146,6 @@ def test_selftest_json_includes_the_engine_report(
     monkeypatch.setattr("clarity.cli.ensure_shared_runtime", ensure)
     monkeypatch.setattr("clarity.cli.ensure_ffmpeg", ffmpeg)
     monkeypatch.setattr("clarity.cli._selftest_window", lambda: 0)
-    monkeypatch.setattr("clarity.cli._provider_gate", lambda no_gpu: None)
     assert main(["selftest", "--json"]) == 0
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()]
     progress = [row for row in lines if row.get("type") == "progress"]
@@ -204,11 +203,7 @@ def test_no_gpu_selftest_checks_imports_window_and_plan(
         opened["window"] += 1
         return 0
 
-    def providers() -> str:
-        raise AssertionError("providers were checked")
-
     monkeypatch.setattr("clarity.cli._selftest_window", window)
-    monkeypatch.setattr("clarity.cli.provider_failure", providers)
     assert main(["selftest", "--no-gpu", "--json"]) == 0
     assert seen["lanczos"] == "1"
     assert os.environ.get("VOXPRINT_CI_LANCZOS") != "1"
@@ -227,26 +222,24 @@ def test_no_gpu_selftest_checks_imports_window_and_plan(
     assert "selftest ok" in capsys.readouterr().out
 
 
-def test_strict_selftest_requires_gpu_providers(
+def test_selftest_leaves_execution_providers_to_the_engine(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setenv("VOXPRINT_CI_LANCZOS", "1")
-    _ready_runtime(monkeypatch)
+    monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+    seen = _ready_runtime(monkeypatch)
+    opened = {"window": 0}
 
     def window() -> int:
-        raise AssertionError("window")
+        opened["window"] += 1
+        return 0
 
     monkeypatch.setattr("clarity.cli._selftest_window", window)
-    monkeypatch.setattr(
-        "clarity.cli.provider_failure",
-        lambda: "ONNX Runtime is missing CUDAExecutionProvider, TensorrtExecutionProvider",
-    )
-    assert main(["selftest", "--json"]) == 2
-    captured = capsys.readouterr()
-    assert "CUDAExecutionProvider" in captured.out
-    assert "CUDAExecutionProvider" in captured.err
-    assert main(["--selftest"]) == 2
-    assert "TensorrtExecutionProvider" in capsys.readouterr().out
+    assert main(["selftest", "--json"]) == 0
+    assert seen["lanczos"] == ""
+    assert opened["window"] == 1
+    result = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()][-1]
+    assert result["ok"] is True
+    assert result["no_gpu"] is False
     assert main(["--no-gpu"]) == 1
     assert "--no-gpu applies only to --selftest" in capsys.readouterr().err
 
@@ -366,19 +359,25 @@ def test_ffmpeg_repairs_once_and_skips_in_ci(monkeypatch: pytest.MonkeyPatch, tm
 
 
 def test_engine_pin_and_pillow_stay() -> None:
-    assert ENGINE_COMMIT.startswith("d11d609")
-    assert ENGINE_COMMIT in ENGINE_REQUIREMENT
+    assert ENGINE_COMMIT == "engine-v1.1.0"
+    assert ENGINE_REQUIREMENT.endswith("@" + ENGINE_COMMIT)
+    assert "git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0" in ENGINE_REQUIREMENT
     engine = (_ROOT / "clarity" / "engine.py").read_text(encoding="utf-8")
-    assert "engine-v1.1.0" in engine
     windows = (_ROOT / "installer" / "install-runtime.ps1").read_text(encoding="utf-8")
     linux = (_ROOT / "installer" / "linux" / "install-shared.sh").read_text(encoding="utf-8")
     package = (_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    workflow = (_ROOT / ".github" / "workflows" / "suite-test.yml").read_text(encoding="utf-8")
     lock = json.loads((_ROOT / "installer" / "runtime_lock.json").read_text(encoding="utf-8"))
     assert lock["pillow"] == "12.3.0"
     assert 'Pillow==$pillow' in windows
     assert "ensure_runtime('clarity'" in windows
-    assert ENGINE_COMMIT in windows
+    assert ENGINE_REQUIREMENT in windows
+    assert ENGINE_REQUIREMENT in linux
+    assert ENGINE_REQUIREMENT in package
+    assert ENGINE_REQUIREMENT in workflow
+    assert 'ENGINE_COMMIT = "engine-v1.1.0"' in engine
+    assert "enlarge@{ENGINE_COMMIT}" in engine
     assert "Pillow==12.3.0" in linux
     assert "--install-suite" in linux
-    assert ENGINE_COMMIT in linux
-    assert ENGINE_COMMIT in package
+    for text in (windows, linux, package, workflow, engine):
+        assert "d11d609" not in text

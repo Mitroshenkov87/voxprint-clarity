@@ -28,12 +28,12 @@ from clarity.engine import (
 from clarity.errors import Cancelled, ClarityError
 from clarity.ffmpeg_setup import FfmpegMissing, ensure_ffmpeg
 from clarity.models import catalogue_rows, clean_models, fetch_weights, strong_model
-from clarity.ort_check import provider_failure
 from clarity.pipeline.encode import Container, VideoCodec
 from clarity.pipeline.job import Settings, commands_for
 from clarity.pipeline.probe import Probe
 from clarity.pipeline.runner import JobSpec, dry_run_restore, run_job
 from clarity.platform_gate import assess_platform
+from clarity.progress import progress_stage
 from clarity.project import ProjectFormatError, load_project, work_dir_for
 from clarity.ui.main_window import MainWindow
 from clarity.ui.platform import gui_qt_platform, require_windows_platform_plugin, selftest_qt_platform
@@ -111,7 +111,11 @@ class Console:
             message: Short status, such as a chunk count.
         """
         if self.json_mode:
-            print(json.dumps({"type": "progress", "fraction": fraction, "message": message}), flush=True)
+            body: dict[str, Any] = {"type": "progress", "fraction": fraction, "message": message}
+            stage = progress_stage(message)
+            if stage is not None:
+                body["stage"] = stage
+            print(json.dumps(body), flush=True)
         else:
             print(message, file=sys.stderr)
 
@@ -440,12 +444,11 @@ def _models_command(args: argparse.Namespace, console: Console) -> int:
 
 
 class _SelftestOutcome(NamedTuple):
-    """Shared selftest result. ``providers`` is set when the GPU stack is refused."""
+    """Shared selftest result: the runtime report, the plan, and the window status."""
 
     report: Any
     plan: dict[str, object]
     window: int
-    providers: str | None
 
 
 def _selftest_window() -> int:
@@ -519,19 +522,19 @@ def _selftest_plan() -> dict[str, object]:
 
 
 def _execute_selftest(progress: Any, *, no_gpu: bool) -> _SelftestOutcome:
-    """Import the shared runtime, check providers, build the plan, and open the window.
+    """Import the shared runtime, build the plan, and open the window.
 
     ``--no-gpu`` sets ``VOXPRINT_CI_LANCZOS`` only while this function runs, so
     the engine and the ffmpeg helper skip their downloads. The variable is
-    removed afterwards. A restore still refuses it.
+    removed afterwards. A restore still refuses it. The CUDA and TensorRT
+    provider check belongs to the engine selftest.
 
     Args:
         progress: Called with one status line.
-        no_gpu: Skip the CUDA and TensorRT provider requirement.
+        no_gpu: Skip the suite download on a machine with no GPU.
 
     Returns:
-        The runtime report, the plan summary, the window status, and a provider
-        error when the strict check failed.
+        The runtime report, the plan summary, and the window status.
     """
     key = "VOXPRINT_CI_LANCZOS"
     previous = os.environ.get(key) if no_gpu else None
@@ -539,12 +542,9 @@ def _execute_selftest(progress: Any, *, no_gpu: bool) -> _SelftestOutcome:
         os.environ[key] = "1"
     try:
         report = _ensure_shared(progress)
-        providers = _provider_gate(no_gpu)
-        if providers is not None:
-            return _SelftestOutcome(report, {}, 0, providers)
         plan = _selftest_plan()
         code = _selftest_window()
-        return _SelftestOutcome(report, plan, code, None)
+        return _SelftestOutcome(report, plan, code)
     finally:
         if no_gpu:
             if previous is None:
@@ -568,8 +568,6 @@ def _selftest_command(args: argparse.Namespace, console: Console) -> int:
         outcome = _execute_selftest(lambda message: console.progress(0.0, message), no_gpu=bool(args.no_gpu))
     except (ImportError, ClarityError, OSError) as exc:
         return console.fail(str(exc), ExitCode.USAGE)
-    if outcome.providers is not None:
-        return console.fail(outcome.providers, ExitCode.ENVIRONMENT)
     if outcome.window != 0:
         return console.fail("the Start button has no label", ExitCode.USAGE)
     return console.ok(
@@ -642,9 +640,6 @@ def _gui(argv: list[str]) -> int:
         except (ImportError, ClarityError, OSError) as exc:
             print(exc)
             return 1
-        if outcome.providers is not None:
-            print(outcome.providers)
-            return int(ExitCode.ENVIRONMENT)
         if outcome.window != 0:
             return outcome.window
         print("selftest ok")
@@ -682,24 +677,6 @@ def _gui(argv: list[str]) -> int:
         window.open_project(args.project)
     window.show()
     return int(application.exec())
-
-
-def _provider_gate(no_gpu: bool) -> str | None:
-    """Return a provider error, or None when ``--no-gpu`` asked to skip the GPU stack.
-
-    A user-facing selftest fails when the CPU wheel is installed or CUDA and
-    TensorRT providers are missing. ``VOXPRINT_CI_LANCZOS`` does not skip this
-    check. CI and the release workflow pass ``--no-gpu``.
-
-    Args:
-        no_gpu: True when the caller passed ``--no-gpu``.
-
-    Returns:
-        The failure text, or None.
-    """
-    if no_gpu:
-        return None
-    return provider_failure()
 
 
 def _ensure_shared(progress: Any) -> Any:
