@@ -51,6 +51,8 @@ def site_packages(python: str) -> Path:
         check=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     folder = (completed.stdout or "").strip()
     if completed.returncode != 0 or not folder:

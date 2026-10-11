@@ -45,10 +45,16 @@ Those integers match the shared protocol, and the names do not. The package
 calls 2 `EXIT_FAILED` and 3 `EXIT_CANCELLED`. Here, 2 is an environment
 refusal and 3 is a failed live job. A cancel is usage (1), not 3. `vm_test`
 and this table are the contract. The JSON `code` field is that same integer.
-Progress, when a live job reports it, is `{"type":"progress","fraction":0.25,"message":"12/48"}`
-on stdout. A TensorRT build or cache load adds `"stage":"building_engine"` or
-`"stage":"loading_cached_engine"`. The message says the first build can take
-several minutes. Other logs stay on stderr.
+Progress is one JSON object per line on stdout, flushed immediately, so a
+caller can tell a long TensorRT build from a hang. A frame count looks like
+`{"type":"progress","fraction":0.25,"message":"12/48"}`. A TensorRT build or
+cache load adds `"stage":"building_engine"` or `"stage":"loading_cached_engine"`.
+The message says the first build can take several minutes. While that build
+is still running, further lines use `"phase":"building_engine"` and
+`"elapsed_s"`. Other phases are `"export"`, `"decode"`, `"chunk_start"`, and
+`"chunk_end"` (`"chunk"` is the scene index). A restored batch adds
+`"phase":"frames"`, `"frames_done"`, `"frames_total"`, and `"fps"`. Other
+logs stay on stderr.
 
 ## restore
 
@@ -121,8 +127,9 @@ The Start button and **Download models** call the same catalogue and the same
 `selftest` calls `ensure_runtime("clarity")`, repairs ffmpeg when it is
 missing, builds the default Clean restore plan, then opens the window
 offscreen and checks that Start has a label. A GPU selftest also requires
-torch and spandrel. `--no-gpu` does not. The CUDA and TensorRT provider
-check belongs to the engine selftest.
+torch and spandrel, then opens a real TensorRT session and a real CUDA
+session and exits non-zero if either falls back to CPU. `--no-gpu` does
+not open those sessions.
 
 `--no-gpu` is the check for a machine with no GPU. It still imports the
 engine, builds the plan (CUDA decode, `av1_nvenc`, `yuv420p` after `-c:v`),

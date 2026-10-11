@@ -28,6 +28,7 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
+from clarity.gpu_runtime import prepare_gpu_runtime
 from clarity.models import ClarityModel, get_model
 from clarity.pipeline.condition import deblock_level, noise_map, sigma_level
 
@@ -39,11 +40,6 @@ try:
 except ImportError:
     torch = None
     ModelLoader = None
-
-try:
-    import onnxruntime as ort
-except ImportError:
-    ort = None
 
 # Elephants Dream (Blender Foundation, Creative Commons Attribution).
 # Archive.org item ElephantsDream, file ed_1024_512kb.mp4 (about 45 MB).
@@ -116,6 +112,8 @@ def require_gpu() -> str:
         ["nvidia-smi", "--query-gpu=name,driver_version,compute_cap", "--format=csv,noheader"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=15,
         check=False,
     )
@@ -406,8 +404,12 @@ def open_trt_session(onnx_path: Path, cache: Path, *, precision: str = "fp16") -
     Raises:
         RuntimeError: When ONNX Runtime is missing or TensorRT did not load.
     """
-    if ort is None:
-        raise RuntimeError("onnxruntime is not installed. Install requirements-bench.txt on this VM.")
+    # onnxruntime loads provider DLLs at import. Register CUDA 13 and TensorRT first.
+    prepare_gpu_runtime()
+    try:
+        import onnxruntime as ort
+    except ImportError as exc:
+        raise RuntimeError("onnxruntime is not installed. Install requirements-bench.txt on this VM.") from exc
     session = ort.InferenceSession(str(onnx_path), providers=tensorrt_providers(cache, precision=precision))
     providers = [str(name) for name in session.get_providers()]
     if "TensorrtExecutionProvider" not in providers:
@@ -503,6 +505,8 @@ def read_preview_frame(clip: Path) -> np.ndarray:
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=60,
         check=False,
     )

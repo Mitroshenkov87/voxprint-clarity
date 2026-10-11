@@ -1,27 +1,22 @@
-"""Exit 0 when the CUDA and TensorRT execution providers both load.
+"""Exit 0 when a real TensorRT session and a real CUDA session both stay active.
 
 The rented GPU VM runs this after ``python -m clarity --selftest``. CI uses
-``--selftest --no-gpu`` and does not run this file.
+``--selftest --no-gpu`` and does not run this file. Importing ``clarity``
+registers the CUDA 13 and TensorRT directories before ONNX Runtime loads.
 """
 from __future__ import annotations
 
-import json
-
-from voxprint_engine.session import available_providers
-
-_REQUIRED = ("CUDAExecutionProvider", "TensorrtExecutionProvider")
+import clarity  # noqa: F401
+from clarity.gpu_runtime import main as probe_sessions
 
 
 def main() -> int:
-    """Print the provider report and return 1 when one of them is missing.
+    """Open both providers and return 1 when one of them falls back to CPU.
 
     Returns:
-        0 when both providers loaded, otherwise 1.
+        0 when both sessions keep the requested provider, otherwise 1.
     """
-    found = [str(name) for name in available_providers()]
-    missing = [name for name in _REQUIRED if name not in found]
-    print(json.dumps({"type": "providers", "providers": found, "missing": missing}), flush=True)
-    return 1 if missing else 0
+    return probe_sessions()
 
 
 if __name__ == "__main__":

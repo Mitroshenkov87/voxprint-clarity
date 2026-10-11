@@ -281,6 +281,8 @@ def test_cli_dry_run_with_ffmpeg(tmp_path: Path) -> None:
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     assert encoded.returncode == 0, encoded.stderr
@@ -308,6 +310,8 @@ def test_cli_dry_run_with_ffmpeg(tmp_path: Path) -> None:
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
         cwd=_ROOT,
     )

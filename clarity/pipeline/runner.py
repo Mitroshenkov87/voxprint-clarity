@@ -70,6 +70,21 @@ Proc = Any
 Progress = Callable[[float, str], None]
 
 
+def _fraction(done: int, total: int) -> float:
+    if total <= 0:
+        return 0.0
+    return max(0.0, min(1.0, done / total))
+
+
+def _emit(progress: Progress, phase: str, fraction: float, message: str, **fields: object) -> None:
+    """Phase lines go through ``event`` so they do not count as job progress."""
+    owner = getattr(progress, "__self__", None)
+    target = owner if owner is not None else progress
+    event = getattr(target, "event", None)
+    if callable(event):
+        event(phase, fraction, message, **fields)
+
+
 class CancelToken:
     """Set from the UI thread. ``cancel`` also kills ffmpeg so a blocked read returns."""
 
@@ -151,7 +166,15 @@ def _spawn(argv: list[str]) -> subprocess.Popen[bytes]:
 
 def _run_text(argv: list[str]) -> str:
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=120, check=False)
+        proc = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+            check=False,
+        )
     except (OSError, subprocess.SubprocessError) as exc:
         raise ClarityError(f"{argv[0]} failed to start: {exc}") from exc
     if proc.returncode != 0:
@@ -177,6 +200,7 @@ def _prepare_infer(settings: Settings, progress: Progress) -> Callable[[ClarityM
             raise ClarityError(f"{model.id} was not fetched before the job")
         session = sessions.get(model.id)
         if session is None:
+            _emit(progress, "export", 0.0, "export")
             onnx_path = ensure_model_onnx(model.manifest(), path, progress)
             session = open_restore_session(onnx_path, progress)
             sessions[model.id] = session
@@ -472,6 +496,9 @@ def _restore_range(
     partial: Path,
     tile: int,
     batch: int,
+    frame_base: int = 0,
+    frame_total: int = 0,
+    started: float | None = None,
 ) -> tuple[int, int]:
     """Decode one chunk, restore it, and leave the encoded bytes in ``partial``.
 
@@ -481,6 +508,8 @@ def _restore_range(
     Colour uses one gain measured on that uint8 chunk, so a scene does not pump
     and the 4x float32 chunk is never allocated.
     """
+    job_started = time.monotonic() if started is None else started
+    _emit(bound.progress, "decode", _fraction(frame_base, frame_total), "decode")
     out_h = probe.height * (2 if spec.settings.upscale else 1)
     out_w = probe.width * (2 if spec.settings.upscale else 1)
     frame_bytes = probe.width * probe.height * 3
@@ -533,6 +562,18 @@ def _restore_range(
             store[cursor : cursor + stored.shape[0]] = stored
             cursor += stored.shape[0]
             pending.clear()
+            done = frame_base + cursor
+            total_frames = frame_total if frame_total > 0 else count
+            elapsed = max(time.monotonic() - job_started, 1e-6)
+            _emit(
+                bound.progress,
+                "frames",
+                _fraction(done, total_frames),
+                f"{done}/{total_frames}",
+                frames_done=done,
+                frames_total=total_frames,
+                fps=done / elapsed,
+            )
 
         for _ in range(count):
             if token.is_set():
@@ -720,6 +761,13 @@ def run_job(
                     )
                 chunk_final = chunk_path(chunks, index)
                 chunk_partial = Path(str(chunk["encode"][-1]))
+                _emit(
+                    bound.progress,
+                    "chunk_start",
+                    _fraction(finished_frames, total),
+                    f"chunk {index} start",
+                    chunk=index,
+                )
                 _restore_range(
                     spec,
                     bound,
@@ -732,6 +780,9 @@ def run_job(
                     partial=chunk_partial,
                     tile=tile,
                     batch=batch,
+                    frame_base=finished_frames,
+                    frame_total=total,
+                    started=started,
                 )
                 if token.is_set():
                     _discard(None, None, chunk_partial)
@@ -741,6 +792,13 @@ def run_job(
                 if on_chunk is not None:
                     on_chunk(work)
                 finished_frames += stop - start
+                _emit(
+                    bound.progress,
+                    "chunk_end",
+                    _fraction(finished_frames, total),
+                    f"chunk {index} end",
+                    chunk=index,
+                )
                 bound.progress(finished_frames / total, f"{finished_frames}/{total}")
             if token.is_set():
                 raise Cancelled("cancelled")

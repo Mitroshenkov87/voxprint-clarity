@@ -94,7 +94,7 @@ Between chunks, while `device` is set:
 - `read_shared_usage` and `sysmem_spill` watch shared GPU memory. A spill empties the CUDA cache, asks `note_spill` for a smaller batch, and may `halve_tile`.
 - `thermal_decide` calls `voxprint_common.thermal.decide`. `wait_for_thermal` sleeps between chunks while that decision says to pause. Finished chunks stay on disk.
 
-There is no CPU restore path. `assess_launch` refuses `VOXPRINT_CI_LANCZOS`. `enlarge.suite_runtime.ensure_runtime` treats that same flag as a skip so a test run does not download the suite. CI and the release workflow run `python -m clarity --selftest --no-gpu`, which sets the flag for that process only. The engine selftest asserts the CUDA and TensorRT providers. Clarity's selftest checks the window, the import, and the plan.
+There is no CPU restore path. `assess_launch` refuses `VOXPRINT_CI_LANCZOS`. `enlarge.suite_runtime.ensure_runtime` treats that same flag as a skip so a test run does not download the suite. CI and the release workflow run `python -m clarity --selftest --no-gpu`, which sets the flag for that process only. A GPU selftest opens a real TensorRT session and a real CUDA session. `--no-gpu` checks the window, the import, and the plan.
 
 ## `.vxclarity`
 

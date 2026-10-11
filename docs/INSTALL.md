@@ -41,8 +41,9 @@ runs `installer/install-runtime.ps1`, which:
 5. Runs `installer/pin_runtime.py` with the venv interpreter, including when
    the venv already existed. That installs `torch==2.14.1` from
    `requirements-gpu.txt` and `spandrel`. If the CPU `onnxruntime`
-   distribution is present, the pin uninstalls it and fails when CUDA or
-   TensorRT providers are still missing. `Pillow==$pillow` from the lock is
+   distribution is present, the pin uninstalls it. The pin then opens a real
+   TensorRT session and a real CUDA session and fails when either one does
+   not stay active. `Pillow==$pillow` from the lock is
    installed after that.
 6. Creates `{app}` if needed and junctions the venv to `{app}\runtime`. The
    link is checked: a failed `mklink` stops the install, and a `runtime` path
@@ -136,9 +137,9 @@ from the engine archive, and installs Pillow 12.3.0, then runs
 `clarity` and does not install Enlarge's default model, repairs ffmpeg, and fetches every catalogue
 weight Clarity uses. It then runs `pin_runtime.py`, so an existing venv still
 receives `torch==2.14.1` and spandrel. If the CPU `onnxruntime` distribution
-is present, the pin uninstalls it and fails when CUDA or TensorRT providers
-are still missing. A second run reuses the venv, installs the engine again,
-and pins torch again.
+is present, the pin uninstalls it. The pin then opens a real TensorRT session
+and a real CUDA session and fails when either one does not stay active.
+A second run reuses the venv, installs the engine again, and pins torch again.
 
 The launcher and `AppRun` prepend `shared/ffmpeg` to `PATH` and prefer the
 shared venv's Python when that interpreter exists.
@@ -175,8 +176,8 @@ QT_QPA_PLATFORM=offscreen python -m clarity --selftest --no-gpu
 the window, the engine import, and the restore plan. For that process the
 engine skips the suite download. `assess_launch` still refuses
 `VOXPRINT_CI_LANCZOS` for a restore. A GPU selftest also refuses a venv that
-cannot import torch and spandrel. `--no-gpu` does not. The CUDA and TensorRT
-provider check belongs to the engine selftest. Clarity does not repeat it.
+cannot import torch and spandrel, then opens a real TensorRT session and a
+real CUDA session. `--no-gpu` does not.
 
 CI is GitHub Actions on `ubuntu-latest` and `windows-latest` (lint and unit
 tests, with the public engine installed), plus an installer job and an

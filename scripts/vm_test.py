@@ -188,14 +188,14 @@ def source_ref(root: Path) -> str:
     described = subprocess.run(
         ["git", "-C", str(root), "describe", "--exact-match", "--tags", "HEAD"],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         check=False,
     )
     exact = (described.stdout or "").strip() if described.returncode == 0 else ""
     parsed = subprocess.run(
         ["git", "-C", str(root), "rev-parse", "--short=7", "HEAD"],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         check=False,
     )
     sha = (parsed.stdout or "").strip()
@@ -320,7 +320,7 @@ def probe_gpu(*, allow_other: bool) -> GpuStatus:
     completed = subprocess.run(
         ["nvidia-smi", "--query-gpu=name,driver_version,compute_cap", "--format=csv,noheader"],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         check=False,
     )
     line = (completed.stdout or "").strip().splitlines()
@@ -726,7 +726,7 @@ def _restore(
 
 def _stream(cmd: list[str], env: dict[str, str], timeout: int, sample: bool) -> tuple[str, str, int, float, float]:
     try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, text=True)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, text=True, encoding="utf-8", errors="replace")
     except OSError as exc:
         raise _VmError(f"could not start {cmd[0]} ({exc})", EXIT_SETUP) from exc
     stdout_lines: list[str] = []
@@ -765,7 +765,7 @@ def _drain(pipe: IO[str] | None, bucket: list[str]) -> None:
 def _python(run: _Run, args: list[str], step: str, timeout: int) -> subprocess.CompletedProcess[str]:
     cmd = [sys.executable, *args]
     try:
-        completed = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=_job_env(run), check=False)
+        completed = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, env=_job_env(run), check=False)
     except subprocess.TimeoutExpired as exc:
         raise _VmError(f"{step} exceeded {timeout} seconds", EXIT_FAIL) from exc
     except OSError as exc:
@@ -1089,18 +1089,18 @@ def _locate_ffmpeg(run: _Run) -> None:
 
 
 def _reject_ffmpeg(binary: Path) -> None:
-    build = subprocess.run([str(binary), "-hide_banner", "-buildconf"], capture_output=True, text=True, check=False)
+    build = subprocess.run([str(binary), "-hide_banner", "-buildconf"], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
     text = (build.stdout or "") + (build.stderr or "")
     if ffmpeg_build_is_gpl(text):
         raise _VmError("ffmpeg is not an LGPL build", EXIT_SETUP)
-    encoders = subprocess.run([str(binary), "-hide_banner", "-encoders"], capture_output=True, text=True, check=False)
+    encoders = subprocess.run([str(binary), "-hide_banner", "-encoders"], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
     if "av1_nvenc" not in ((encoders.stdout or "") + (encoders.stderr or "")):
         raise _VmError("this ffmpeg has no av1_nvenc", EXIT_SETUP)
 
 
 def _checked(cmd: list[str], timeout: int, what: str, *, setup: bool) -> subprocess.CompletedProcess[str]:
     try:
-        completed = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+        completed = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, check=False)
     except subprocess.TimeoutExpired as exc:
         raise _VmError(f"{what} exceeded {timeout} seconds", EXIT_SETUP if setup else EXIT_FAIL) from exc
     except OSError as exc:
@@ -1335,7 +1335,7 @@ def _vram_mib() -> float | None:
     completed = subprocess.run(
         ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         check=False,
     )
     if completed.returncode != 0:
@@ -1350,7 +1350,7 @@ def _vram_mib() -> float | None:
 
 
 def _clarity_imports() -> bool:
-    completed = subprocess.run([sys.executable, "-c", "import clarity"], capture_output=True, text=True, check=False)
+    completed = subprocess.run([sys.executable, "-c", "import clarity"], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
     return completed.returncode == 0
 
 

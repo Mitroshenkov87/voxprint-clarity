@@ -223,6 +223,7 @@ def test_selftest_json_includes_the_engine_report(
     monkeypatch.setattr("clarity.cli.ensure_ffmpeg", ffmpeg)
     monkeypatch.setattr("clarity.cli._selftest_window", lambda: 0)
     monkeypatch.setattr("clarity.cli.gpu_stack_error", lambda: "")
+    monkeypatch.setattr("clarity.cli.require_tensorrt_and_cuda", lambda: None)
     assert main(["selftest", "--json"]) == 0
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()]
     progress = [row for row in lines if row.get("type") == "progress"]
@@ -299,12 +300,13 @@ def test_no_gpu_selftest_checks_imports_window_and_plan(
     assert "selftest ok" in capsys.readouterr().out
 
 
-def test_selftest_leaves_execution_providers_to_the_engine(
+def test_gpu_selftest_opens_tensorrt_and_cuda_sessions(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
     seen = _ready_runtime(monkeypatch)
     opened = {"window": 0}
+    probes: list[str] = []
 
     def window() -> int:
         opened["window"] += 1
@@ -312,12 +314,16 @@ def test_selftest_leaves_execution_providers_to_the_engine(
 
     monkeypatch.setattr("clarity.cli._selftest_window", window)
     monkeypatch.setattr("clarity.cli.gpu_stack_error", lambda: "")
+    monkeypatch.setattr("clarity.cli.require_tensorrt_and_cuda", lambda: probes.append("session"))
     assert main(["selftest", "--json"]) == 0
     assert seen["lanczos"] == ""
     assert opened["window"] == 1
+    assert probes == ["session"]
     result = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()][-1]
     assert result["ok"] is True
     assert result["no_gpu"] is False
+    assert main(["selftest", "--no-gpu", "--json"]) == 0
+    assert probes == ["session"]
     assert main(["--no-gpu"]) == 1
     assert "--no-gpu applies only to --selftest" in capsys.readouterr().err
 

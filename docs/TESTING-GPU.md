@@ -72,8 +72,8 @@ can take several minutes, and each smoke restore is allowed 20 minutes before
 that step fails.
 
 1. `gpu` — driver 600+, compute capability 8.9+, RTX 4090 unless `--allow-other-gpu`.
-2. `install` — uv, CPython 3.14, this checkout, `torch==2.14.1` from the CUDA 13.0 index, `requirements.txt` (including `voxprint-common` 0.1.1 "Menuchah" from its release wheel, checked against the published `.sha256` file), `requirements-bench.txt`, and `voxprint-engine[gpu]` at tag `engine-v1.4.0` (the GitHub archive, so git is not required). The engine install passes `--extra-index-url https://pypi.nvidia.com`. The `gpu` extra installs the ONNX Runtime GPU wheel and the TensorRT libraries. The engine's base dependencies do not include ONNX Runtime. After the engine, `installer/stage_suite_runtime.py` copies `enlarge` from that archive into site-packages. `installer/pin_runtime.py` then installs `torch==2.14.1` from `requirements-gpu.txt` plus spandrel. If the CPU `onnxruntime` distribution is present, the pin uninstalls it and fails when CUDA or TensorRT providers are still missing. The child process checks the providers before the done marker is written. The step's seconds include that install, not only the re-exec check. The done-marker key is the git tag, or `main-` plus the short sha. It is not `BUILD.json`.
-3. `selftest` — `python -m clarity --selftest` with no `--no-gpu`. A missing torch or spandrel fails this step. Then `scripts/vm_provider_check.py`. `CUDAExecutionProvider` and `TensorrtExecutionProvider` both have to load.
+2. `install` — uv, CPython 3.14, this checkout, `torch==2.14.1` from the CUDA 13.0 index, `requirements.txt` (including `voxprint-common` 0.1.1 "Menuchah" from its release wheel, checked against the published `.sha256` file), `requirements-bench.txt`, and `voxprint-engine[gpu]` at tag `engine-v1.4.0` (the GitHub archive, so git is not required). The engine install passes `--extra-index-url https://pypi.nvidia.com`. The `gpu` extra installs the ONNX Runtime GPU wheel and the TensorRT libraries. The engine's base dependencies do not include ONNX Runtime. After the engine, `installer/stage_suite_runtime.py` copies `enlarge` from that archive into site-packages. `installer/pin_runtime.py` then installs `torch==2.14.1` from `requirements-gpu.txt` plus spandrel. If the CPU `onnxruntime` distribution is present, the pin uninstalls it. The pin then opens a real TensorRT session and a real CUDA session and fails when either one does not stay active. The child process checks the providers before the done marker is written. The step's seconds include that install, not only the re-exec check. The done-marker key is the git tag, or `main-` plus the short sha. It is not `BUILD.json`.
+3. `selftest` — `python -m clarity --selftest` with no `--no-gpu`. A missing torch or spandrel fails this step. The selftest then opens a real TensorRT session and a real CUDA session. Then `scripts/vm_provider_check.py` opens those sessions again. Either step exits non-zero when a provider falls back to CPU.
 4. `info` — `python -m clarity info --json` matches `BUILD.json`.
 5. `clip` — 15 seconds of the pinned Elephants Dream file, stream-copied.
 6. `restore-clean` — Clean (DRUNet) with 2x off. Progress must name `building_engine` or `loading_cached_engine`.
@@ -81,7 +81,7 @@ that step fails.
 8. `bounds` — peak process-tree RSS at most 8192 MiB, and peak `nvidia-smi` memory used at most 16384 MiB. The 720p 4x path used to allocate about 22.7 GiB for one chunk.
 9. `forced-failure` — `restore` of a missing file prints `{"type":"result","ok":false,...}` and exits 3.
 
-`VOXPRINT_CI_LANCZOS` is removed for the run, so the provider check is not skipped.
+`VOXPRINT_CI_LANCZOS` is removed for the run, so the TensorRT and CUDA session check is not skipped.
 The script does not pass a multi-line `python -c` string to a native command.
 
 ## Full
