@@ -1,12 +1,10 @@
 """Re-pin a venv after the engine package is installed.
 
-The engine distribution depends on the CPU ``onnxruntime`` wheel. That wheel
-shadows ``onnxruntime-gpu`` and leaves only the CPU and Azure providers.
-TensorRT 10 is a runtime component: ``tensorrt-cu13-libs`` and the
-``tensorrt-cu13`` meta package at 10.14.1.48. The versions live in
-``installer/runtime_lock.json``. The meta package is installed with
-``--no-deps`` because TensorRT 10.14 has no cp314 bindings wheel. An
-unpinned ``tensorrt-cu13`` is TensorRT 11.
+The engine ``gpu`` extra installs ``onnxruntime-gpu`` and
+``tensorrt-cu13-libs``. The CPU distribution named ``onnxruntime`` is a
+fallback only: when that distribution is present it is uninstalled, and the
+install fails if CUDA and TensorRT providers are still missing. Torch and
+spandrel still come from ``requirements-gpu.txt``.
 
 The script is stdlib-only so the Windows installer can run it before the
 Clarity package is importable.
@@ -24,68 +22,32 @@ SPANDREL_SPEC = "spandrel>=0.4,<0.5"
 
 
 class PinError(RuntimeError):
-    """The runtime lock cannot build the ONNX Runtime and TensorRT commands."""
+    """The runtime pin could not finish."""
 
 
-def _need(lock: dict[str, Any], key: str) -> str:
-    value = lock.get(key)
-    if not isinstance(value, str) or not value.strip():
-        raise PinError(f"runtime lock is missing {key}")
-    text = value.strip()
-    if any(char.isspace() for char in text):
-        raise PinError(f"runtime lock {key} must be one token")
-    return text
+_CPU_DIST = "onnxruntime"
+_DIST_PROBE = (
+    "import importlib.metadata as meta\n"
+    "names = {\n"
+    "    dist.metadata['Name'].lower()\n"
+    "    for dist in meta.distributions()\n"
+    "    if dist.metadata and dist.metadata.get('Name')\n"
+    "}\n"
+    "raise SystemExit(0 if 'onnxruntime' in names else 1)\n"
+)
+_PROVIDER_PROBE = (
+    "import onnxruntime as ort\n"
+    "needed = ('CUDAExecutionProvider', 'TensorrtExecutionProvider')\n"
+    "found = list(ort.get_available_providers())\n"
+    "missing = [name for name in needed if name not in found]\n"
+    "if missing:\n"
+    "    raise SystemExit('missing ' + ', '.join(missing) + '; found ' + ', '.join(found))\n"
+)
 
 
-def gpu_pin_steps(lock: dict[str, Any]) -> list[tuple[list[str], bool]]:
-    """Pip arguments that replace the CPU ONNX Runtime wheel with the lock pair.
-
-    Each item is ``(arguments after "pip", fail when the status is non-zero)``.
-    Uninstall steps are not required: a package that is already absent is fine.
-
-    Args:
-        lock: The parsed ``runtime_lock.json`` object.
-
-    Returns:
-        The uninstall, GPU install, CPU uninstall, and TensorRT meta steps.
-
-    Raises:
-        PinError: When a pin is missing or the NVIDIA index is not https.
-    """
-    ort = _need(lock, "onnxruntime-gpu")
-    libs = _need(lock, "tensorrt-cu13-libs")
-    meta = _need(lock, "tensorrt-cu13")
-    index = _need(lock, "nvidia_index")
-    if not index.startswith("https://"):
-        raise PinError("nvidia_index must be https")
-    return [
-        (
-            [
-                "uninstall",
-                "-y",
-                "onnxruntime",
-                "onnxruntime-gpu",
-                "tensorrt",
-                "tensorrt-cu13",
-                "tensorrt-cu13-bindings",
-                "tensorrt-cu13-libs",
-            ],
-            False,
-        ),
-        (
-            [
-                "install",
-                "--extra-index-url",
-                index,
-                f"onnxruntime-gpu=={ort}",
-                f"tensorrt-cu13-libs=={libs}",
-            ],
-            True,
-        ),
-        (["uninstall", "-y", "onnxruntime"], False),
-        (["install", "--no-deps", f"tensorrt-cu13=={meta}"], True),
-        (["uninstall", "-y", "onnxruntime"], False),
-    ]
+def cpu_uninstall_args() -> list[str]:
+    """Pip arguments that remove only the CPU ONNX Runtime distribution."""
+    return ["uninstall", "-y", _CPU_DIST]
 
 
 def torch_args(requirements: Path) -> list[str]:
@@ -149,22 +111,68 @@ def _run(cmd: list[str], *, required: bool) -> None:
         raise PinError(f"{shown} exited {completed.returncode}")
 
 
-def apply_pin(python: str, lock_path: Path, requirements: Path, *, uv: str = "") -> None:
-    """Install torch and spandrel, then the lock's ONNX Runtime GPU and TensorRT 10.
+def cpu_onnxruntime_installed(python: str) -> bool:
+    """Return whether the CPU ``onnxruntime`` distribution is installed.
+
+    ``onnxruntime-gpu`` is a different distribution name and does not count.
 
     Args:
         python: The venv interpreter.
-        lock_path: ``runtime_lock.json``.
+
+    Returns:
+        True when that distribution is present.
+
+    Raises:
+        PinError: When the probe cannot run.
+    """
+    completed = subprocess.run([python, "-c", _DIST_PROBE], check=False, capture_output=True, text=True)
+    if completed.returncode == 0:
+        return True
+    if completed.returncode == 1:
+        return False
+    detail = (completed.stderr or completed.stdout or "").strip()
+    raise PinError(detail or "could not list installed distributions")
+
+
+def require_gpu_providers(python: str) -> None:
+    """Fail when CUDA or TensorRT is not an available ONNX Runtime provider.
+
+    Args:
+        python: The venv interpreter.
+
+    Raises:
+        PinError: When either provider is missing or the probe cannot run.
+    """
+    completed = subprocess.run([python, "-c", _PROVIDER_PROBE], check=False, capture_output=True, text=True)
+    if completed.returncode == 0:
+        return
+    detail = (completed.stdout or completed.stderr or "").strip()
+    raise PinError(
+        "CPU onnxruntime was uninstalled, but CUDAExecutionProvider or "
+        f"TensorrtExecutionProvider is still missing. {detail}".strip()
+    )
+
+
+def apply_pin(python: str, lock_path: Path, requirements: Path, *, uv: str = "") -> None:
+    """Install torch and spandrel, then drop a CPU ONNX Runtime wheel if one is present.
+
+    Args:
+        python: The venv interpreter.
+        lock_path: ``runtime_lock.json``. Read so a damaged lock fails setup.
         requirements: ``requirements-gpu.txt``.
         uv: When set, run ``uv pip --python`` instead of ``python -m pip``.
 
     Raises:
-        PinError: When a required pip command fails or the lock is incomplete.
+        PinError: When pip fails, the CPU wheel remains, or the providers are missing.
     """
-    lock = load_lock(lock_path)
+    load_lock(lock_path)
     _run(pip_command(python, torch_args(requirements), uv=uv), required=True)
-    for args, required in gpu_pin_steps(lock):
-        _run(pip_command(python, args, uv=uv), required=required)
+    if not cpu_onnxruntime_installed(python):
+        return
+    _run(pip_command(python, cpu_uninstall_args(), uv=uv), required=True)
+    if cpu_onnxruntime_installed(python):
+        raise PinError("CPU onnxruntime is still installed after uninstall")
+    require_gpu_providers(python)
 
 
 def main(argv: list[str] | None = None) -> int:

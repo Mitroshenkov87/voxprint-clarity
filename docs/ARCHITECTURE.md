@@ -35,10 +35,10 @@ A live restore runs these steps in order:
 
 ## Engine
 
-Clarity does not reimplement the GPU lock, the VRAM budget, the thermal rule, the model store, the hardware query, or the shared runtime. Those live in `voxprint_engine` at tag `engine-v1.2.1`. The package metadata is at the repository root, so the archive URL has no subdirectory.
+Clarity does not reimplement the GPU lock, the VRAM budget, the thermal rule, the model store, the hardware query, or the shared runtime. Those live in `voxprint_engine` at tag `engine-v1.2.1`. The package metadata is at the repository root, so the archive URL has no subdirectory. The `gpu` extra holds the ONNX Runtime GPU and TensorRT pins. Installing it needs `--extra-index-url https://pypi.nvidia.com`.
 
 ```text
-voxprint-engine @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz
+voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz
 ```
 
 `clarity.engine` loads that package with `importlib` and forwards the calls. The requirement string is `ENGINE_REQUIREMENT`. The lock owner and the runtime holder are `OWNER` (`clarity`). API stays 1.

@@ -129,8 +129,16 @@ def test_clip_hash_matches_the_benchmark() -> None:
     assert module.CLIP_SHA256 in bench
     assert module.CLIP_URL in bench
     assert module.ENGINE_TAG == "engine-v1.2.1"
-    assert "engine-v1.2.1.tar.gz" in module.ENGINE_URL
+    assert module.ENGINE_URL == (
+        "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge"
+        "/archive/refs/tags/engine-v1.2.1.tar.gz"
+    )
+    assert module.NVIDIA_INDEX == "https://pypi.nvidia.com"
     assert "git+" not in module.ENGINE_URL
+    source = (_ROOT / "scripts" / "vm_test.py").read_text(encoding="utf-8")
+    ref = source[source.index("def source_ref"): source.index("def marker_path")]
+    assert "BUILD.json" not in ref
+    assert "--extra-index-url" in source
 
 
 def test_entries_share_flags_and_exit_codes() -> None:

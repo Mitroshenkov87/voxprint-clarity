@@ -38,9 +38,11 @@ python -m clarity.bench
 
 `requirements-bench.txt` pulls the CUDA 13.0 torch wheel, `spandrel`,
 `onnx`, and `onnxruntime-gpu==1.31.0`. TensorRT EP has to be in that build.
-Engine tag `engine-v1.2.1` is the shared library. The bench file and
-`installer/pin_runtime.py` still install `tensorrt-cu13-libs==10.14.1.48`
-(`nvinfer_10`) and remove the CPU wheel.
+Engine tag `engine-v1.2.1` is the shared library, installed as
+`voxprint-engine[gpu]` with `--extra-index-url https://pypi.nvidia.com`.
+The `gpu` extra installs the TensorRT libraries. `installer/pin_runtime.py`
+uninstalls the CPU `onnxruntime` distribution only when that distribution is
+present.
 `--skip-download` reuses files already in `--clip-dir` and still exits 2
 when one of them is absent.
 

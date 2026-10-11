@@ -72,7 +72,7 @@ can take several minutes, and each smoke restore is allowed 20 minutes before
 that step fails.
 
 1. `gpu` — driver 600+, compute capability 8.9+, RTX 4090 unless `--allow-other-gpu`.
-2. `install` — uv, CPython 3.14, this checkout, `torch==2.14.1` from the CUDA 13.0 index, `requirements.txt`, `requirements-bench.txt`, and `voxprint-engine` at tag `engine-v1.2.1` (the GitHub archive, so git is not required). After the engine, `installer/pin_runtime.py` removes the CPU `onnxruntime` wheel, installs `onnxruntime-gpu==1.31.0`, `tensorrt-cu13-libs==10.14.1.48`, and `tensorrt-cu13==10.14.1.48` (`--no-deps`) from the runtime lock, and installs `torch==2.14.1` from `requirements-gpu.txt` plus spandrel. The child process checks the providers before the done marker is written. The step's seconds include that wheel install, not only the re-exec check.
+2. `install` — uv, CPython 3.14, this checkout, `torch==2.14.1` from the CUDA 13.0 index, `requirements.txt`, `requirements-bench.txt`, and `voxprint-engine[gpu]` at tag `engine-v1.2.1` (the GitHub archive, so git is not required). The engine install passes `--extra-index-url https://pypi.nvidia.com`. The `gpu` extra installs the ONNX Runtime GPU wheel and the TensorRT libraries. The engine's base dependencies do not include ONNX Runtime. After the engine, `installer/pin_runtime.py` installs `torch==2.14.1` from `requirements-gpu.txt` plus spandrel. If the CPU `onnxruntime` distribution is present, the pin uninstalls it and fails when CUDA or TensorRT providers are still missing. The child process checks the providers before the done marker is written. The step's seconds include that install, not only the re-exec check. The done-marker key is the git tag, or `main-` plus the short sha. It is not `BUILD.json`.
 3. `selftest` — `python -m clarity --selftest` with no `--no-gpu`. A missing torch or spandrel fails this step. Then `scripts/vm_provider_check.py`. `CUDAExecutionProvider` and `TensorrtExecutionProvider` both have to load.
 4. `info` — `python -m clarity info --json` matches `BUILD.json`.
 5. `clip` — 15 seconds of the pinned Elephants Dream file, stream-copied.
@@ -113,7 +113,7 @@ configuration contains `--enable-gpl`, `--enable-libx264`, or
 kept. `av1_nvenc` must be present. The engine archive does not need git.
 The engine line is
 
-`voxprint-engine @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz`
+`voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz`
 
 ## `scripts/test-gpu.ps1`
 

@@ -2,7 +2,7 @@
 # Windows Server 2025, RTX 4090, NVIDIA driver 600+. See docs/TESTING-GPU.md.
 #requires -Version 5.1
 
-$script:ClarityEngineUrl = "voxprint-engine @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz"
+$script:ClarityEngineUrl = "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz"
 $script:ClarityFfmpegUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip"
 $script:ClarityUvUrl = "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip"
 
@@ -157,11 +157,11 @@ function Install-ClarityGpuPython {
     Write-Host "installing Clarity requirements"
     Invoke-Native { & $Uv pip install --python $python -r (Join-Path $Root "requirements.txt") -r (Join-Path $Root "requirements-bench.txt") } "requirements failed to install"
     Write-Host "installing the shared engine engine-v1.2.1"
-    Invoke-Native { & $Uv pip install --python $python $script:ClarityEngineUrl } "the public engine install failed"
+    Invoke-Native { & $Uv pip install --python $python --extra-index-url "https://pypi.nvidia.com" "$script:ClarityEngineUrl" } "the inference engine install failed"
     $pin = Join-Path $Root "installer\pin_runtime.py"
     $lock = Join-Path $Root "installer\runtime_lock.json"
     $gpuReq = Join-Path $Root "requirements-gpu.txt"
-    Write-Host "pinning torch, spandrel, and the GPU runtime"
+    Write-Host "pinning torch and spandrel"
     Invoke-Native { & $python $pin --uv $Uv --python $python --lock $lock --requirements $gpuReq } "the runtime pin failed"
     return $python
 }

@@ -33,11 +33,11 @@ except ImportError:
 
 OWNER = "clarity"
 NVIDIA_DRIVER_URL = "https://www.nvidia.com/Download/index.aspx"
-# Tag engine-v1.2.1. pyproject.toml is at the enlarge repository root, so this
-# archive URL has no #subdirectory fragment and pip does not need git.
+# Tag engine-v1.2.1. pyproject.toml is at the repository root, so this
+# archive URL has no subdirectory. The gpu extra needs the NVIDIA package index.
 ENGINE_TAG = "engine-v1.2.1"
 ENGINE_REQUIREMENT = (
-    "voxprint-engine @ https://github.com/Mitroshenkov87/voxprint-enlarge"
+    "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge"
     "/archive/refs/tags/engine-v1.2.1.tar.gz"
 )
 _ENGINE_MISSING = "Voxprint inference engine missing, run repair."

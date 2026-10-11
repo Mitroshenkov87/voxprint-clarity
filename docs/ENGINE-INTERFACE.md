@@ -6,9 +6,9 @@ Clarity uses the shared package `voxprint_engine` (distribution name
 | | |
 |---|---|
 | Tag | `engine-v1.2.1` |
-| Requirement | `voxprint-engine @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz` |
+| Requirement | `voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz` |
 | Layout | `pyproject.toml` is at the repository root, so the archive URL has no `#subdirectory` fragment. pip does not need git. |
-| CI install | the same archive URL. The repository is public, so there is no deploy key. |
+| CI install | the same archive URL, with `--extra-index-url https://pypi.nvidia.com`. The repository is public, so there is no deploy key. |
 | Import package | `voxprint_engine` |
 | Video names | `voxprint_engine.api` |
 
@@ -19,17 +19,21 @@ Clarity still limits the source window with `host_batch_count` (512 MiB for the
 three full-resolution float32 buffers). A 720p frame at 4x is restored alone.
 Stacking the yields would allocate the chunk again.
 
-`install_gpu_wheels` pins `onnxruntime-gpu==1.31.0` and
-`tensorrt-cu13-libs==10.14.1.48` and removes the CPU `onnxruntime` wheel.
+The `gpu` extra pins `onnxruntime-gpu==1.31.0` and
+`tensorrt-cu13-libs==10.14.1.48`. The TensorRT libraries are on the NVIDIA
+package index, so the install passes `--extra-index-url https://pypi.nvidia.com`.
+The engine's base dependencies do not include ONNX Runtime. A CPU
+`onnxruntime` distribution shadows the GPU wheel, and the engine selftest
+fails when that distribution is present. Clarity's `pin_runtime.py` uninstalls
+it only when it is installed, then fails if CUDA or TensorRT providers are
+still missing. Torch and spandrel come from `requirements-gpu.txt` on every
+install, including a venv that already existed.
 The engine export uses a static batch of 1. Height and width are the dynamic
 axes. `run_onnx_batch` runs a larger tile batch as slices of that declared
-size and concatenates the rows. Clarity's installers also re-pin the venv
-the shortcut uses, from `installer/runtime_lock.json`, after the engine
-install. A shared venv created by another app can still contain the CPU
-wheel, and it does not gain Clarity's `torch==2.14.1` or spandrel until that
-pin runs. A GPU `--selftest` refuses a venv that cannot import torch and
-spandrel. `--selftest --no-gpu` does not. The CUDA and TensorRT provider
-check stays in the engine selftest and in `scripts/vm_provider_check.py`.
+size and concatenates the rows. A GPU `--selftest` refuses a venv that cannot
+import torch and spandrel. `--selftest --no-gpu` does not. The CUDA and
+TensorRT provider check stays in the engine selftest and in
+`scripts/vm_provider_check.py`.
 
 ## What Clarity calls
 

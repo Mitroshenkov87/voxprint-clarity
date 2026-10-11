@@ -88,8 +88,10 @@ The documentation site is published from `main`:
 - [docs/RESEARCH.md](docs/RESEARCH.md) — model and pipeline notes
 
 From a checkout, developers install with `requirements-dev.txt`,
-`requirements-gpu.txt`, and `pip install -e ".[engine]"`. The engine line is
-`voxprint-engine @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz`.
+`requirements-gpu.txt`, and
+`pip install --extra-index-url https://pypi.nvidia.com -e ".[engine]"`.
+The engine line is
+`voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz`.
 Model weights are MIT, Apache-2.0, or BSD only. The table is in
 [docs/USER-GUIDE.md](docs/USER-GUIDE.md).
 

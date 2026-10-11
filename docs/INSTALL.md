@@ -18,12 +18,15 @@ runs `installer/install-runtime.ps1`, which:
 1. Reads `installer/runtime_lock.json` (Pillow 12.3.0).
 2. Creates a venv under `%LOCALAPPDATA%\Voxprint\shared\venv`
    (`%VOXPRINT_HOME%\shared\venv` when `VOXPRINT_HOME` is set). An existing
-   venv is reused. Reuse still installs Clarity's torch and the GPU runtime
-   into that venv.
-3. Installs `requirements.txt` and the engine at tag `engine-v1.2.1`
-   (`voxprint-engine @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz`)
-   when the venv is new. The archive has no subdirectory, and the install
-   does not need git.
+   venv is reused. Reuse still installs Clarity's torch and spandrel into
+   that venv, and it installs the engine extra again.
+3. Installs `requirements.txt` when the venv is new, and the engine at tag
+   `engine-v1.2.1`
+   (`voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz`)
+   for a new venv and a reused one. The archive has no subdirectory, and the
+   install does not need git. The `gpu` extra is installed with
+   `--extra-index-url https://pypi.nvidia.com`. The engine's base dependencies
+   do not include ONNX Runtime. The GPU pins are that extra.
 4. Calls the engine runtime install for holder `clarity` and skips the
    engine's default upscale weight. This step runs before `{app}` exists, so
    it does not import the Clarity package. It drops Clarity's holder on that
@@ -31,10 +34,10 @@ runs `installer/install-runtime.ps1`, which:
    and fetches the catalogue weights Clarity uses.
 5. Runs `installer/pin_runtime.py` with the venv interpreter, including when
    the venv already existed. That installs `torch==2.14.1` from
-   `requirements-gpu.txt`, `spandrel`, `onnxruntime-gpu==1.31.0`,
-   `tensorrt-cu13-libs==10.14.1.48`, and `tensorrt-cu13==10.14.1.48`
-   (`--no-deps`). The CPU `onnxruntime` wheel is removed from the venv the
-   shortcut uses. `Pillow==$pillow` from the lock is installed after that.
+   `requirements-gpu.txt` and `spandrel`. If the CPU `onnxruntime`
+   distribution is present, the pin uninstalls it and fails when CUDA or
+   TensorRT providers are still missing. `Pillow==$pillow` from the lock is
+   installed after that.
 6. Creates `{app}` if needed and junctions the venv to `{app}\runtime`. The
    link is checked: a failed `mklink` stops the install, and a `runtime` path
    that is not a junction is refused.
@@ -90,13 +93,17 @@ appimagetool can be downloaded. The package includes
 Run `voxprint-clarity-install` once after extracting the package, and once
 for an AppImage before the first restore. When Python 3.14 or uv is missing,
 the script downloads uv and runs `uv python install 3.14`. It installs the
-engine at tag `engine-v1.2.1` and Pillow 12.3.0, and runs `--install-suite`.
-That calls `ensure_shared_runtime`, which installs the ONNX Runtime GPU and
-TensorRT pins, skips the engine's default upscale weight, repairs ffmpeg, and
-fetches every catalogue weight Clarity uses. It then runs `pin_runtime.py`, so an existing venv
-still receives `torch==2.14.1`, spandrel, and the lock's GPU runtime, and the
-CPU `onnxruntime` wheel is removed from that venv. A second run reuses the
-venv and pins it again.
+engine at tag `engine-v1.2.1`
+(`voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz`)
+with `--extra-index-url https://pypi.nvidia.com`, and Pillow 12.3.0, and runs
+`--install-suite`. That calls `ensure_shared_runtime`, which skips the
+engine's default upscale weight, repairs ffmpeg, and fetches every catalogue
+weight Clarity uses. It then runs `pin_runtime.py`, so an existing venv still
+receives `torch==2.14.1` and spandrel. If the CPU `onnxruntime` distribution
+is present, the pin uninstalls it and fails when CUDA or TensorRT providers
+are still missing. A second run reuses the venv, installs the engine again,
+and pins torch again.
+
 The launcher and `AppRun` prepend `shared/ffmpeg` to `PATH`.
 
 After extracting onto a prefix, update the MIME and desktop databases.

@@ -3,10 +3,12 @@
 # shortcut can start. Python 3.14 comes from uv. The CUDA 13 wheels, ONNX
 # Runtime GPU, and TensorRT are installed for holder "clarity". Clarity does
 # not download the engine's default upscale weight.
-# The engine pin is tag engine-v1.2.1 as a GitHub archive. pyproject.toml is
-# at the repository root, so the URL has no subdirectory and pip does not need git.
-# An existing shared venv is reused, then pin_runtime.py still installs
-# requirements-gpu.txt, spandrel, and the lock's GPU runtime into that venv.
+# The engine pin is tag engine-v1.2.1 as a GitHub archive, with the gpu extra.
+# pyproject.toml is at the repository root, so the URL has no subdirectory.
+# The extra's NVIDIA wheels come from the NVIDIA package index.
+# A new venv and a reused venv both install that extra. pin_runtime.py then
+# installs requirements-gpu.txt and spandrel. A CPU onnxruntime distribution,
+# when present, is uninstalled.
 # -SkipRuntime is only for the installer compile check.
 param(
     [Parameter(Mandatory = $true)][string]$AppDir,
@@ -15,7 +17,7 @@ param(
     [string]$Lock = "",
     [string]$PinScript = "",
     [string]$Log = "",
-    [string]$EngineRequirement = "voxprint-engine @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz",
+    [string]$EngineRequirement = "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz",
     [switch]$SkipRuntime,
     [switch]$LinkOnly
 )
@@ -90,15 +92,15 @@ if (Test-Path -LiteralPath $venvPython) {
     Write-Log "installing Clarity requirements"
     & $uv.FullName pip install --python $venvPython -r $Requirements
     if ($LASTEXITCODE -ne 0) { throw "requirements install failed" }
-    Write-Log "installing the shared engine"
-    & $uv.FullName pip install --python $venvPython $EngineRequirement
-    if ($LASTEXITCODE -ne 0) { throw "engine install failed" }
 }
 & $venvPython -c "import pip"
 if ($LASTEXITCODE -ne 0) {
     & $venvPython -m ensurepip --upgrade
     if ($LASTEXITCODE -ne 0) { throw "pip is missing from the shared venv" }
 }
+Write-Log "installing the shared engine"
+& $venvPython -m pip install --extra-index-url "https://pypi.nvidia.com" "$EngineRequirement"
+if ($LASTEXITCODE -ne 0) { throw "engine install failed" }
 Write-Log "ensuring the shared runtime for clarity"
 # {app} does not exist yet during PrepareToInstall, so this step cannot import
 # clarity. The probes skip the engine's default upscale weight. --install-suite
@@ -173,7 +175,7 @@ if ($prepareCode -ne 0) { throw "shared runtime install failed" }
 Write-Log "installing Pillow $pillow"
 & $venvPython -m pip install "Pillow==$pillow"
 if ($LASTEXITCODE -ne 0) { throw "Pillow install failed" }
-Write-Log "pinning torch, spandrel, and the GPU runtime into the shared venv"
+Write-Log "pinning torch and spandrel into the shared venv"
 & $venvPython $PinScript --python $venvPython --lock $Lock --requirements $GpuRequirements
 if ($LASTEXITCODE -ne 0) { throw "runtime pin failed" }
 Write-Log "installing Pillow $pillow"

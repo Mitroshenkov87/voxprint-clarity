@@ -1,4 +1,4 @@
-"""The shared ONNX Runtime and TensorRT pin. No downloads."""
+"""The shared runtime pin. No downloads."""
 from __future__ import annotations
 
 import importlib.util
@@ -21,24 +21,17 @@ def _pin():
     return module
 
 
-def test_gpu_pin_removes_the_cpu_wheel_before_the_lock_pair() -> None:
+def _lock_and_requirements(tmp_path: Path) -> tuple[Path, Path]:
+    lock = tmp_path / "runtime_lock.json"
+    lock.write_text("{}\n", encoding="utf-8")
+    requirements = tmp_path / "requirements-gpu.txt"
+    requirements.write_text("torch==2.14.1\n", encoding="utf-8")
+    return lock, requirements
+
+
+def test_cpu_uninstall_targets_only_the_cpu_distribution() -> None:
     module = _pin()
-    lock = module.load_lock(_ROOT / "installer" / "runtime_lock.json")
-    steps = module.gpu_pin_steps(lock)
-    commands = [args for args, _required in steps]
-    assert commands[0][:3] == ["uninstall", "-y", "onnxruntime"]
-    assert "onnxruntime-gpu" in commands[0]
-    install = commands[1]
-    assert install[0] == "install"
-    assert "onnxruntime-gpu==1.31.0" in install
-    assert "tensorrt-cu13-libs==10.14.1.48" in install
-    assert install[install.index("--extra-index-url") + 1].startswith("https://")
-    assert commands[2] == ["uninstall", "-y", "onnxruntime"]
-    assert commands[3] == ["install", "--no-deps", "tensorrt-cu13==10.14.1.48"]
-    assert commands[4] == ["uninstall", "-y", "onnxruntime"]
-    assert steps[0][1] is False
-    assert steps[1][1] is True
-    assert steps[3][1] is True
+    assert module.cpu_uninstall_args() == ["uninstall", "-y", "onnxruntime"]
 
 
 def test_torch_args_use_the_gpu_requirements_file() -> None:
@@ -59,9 +52,85 @@ def test_uv_command_drops_the_pip_yes_flag() -> None:
     assert uv == ["uv", "pip", "uninstall", "onnxruntime", "--python", "C:/venv/python.exe"]
 
 
-def test_lock_rejects_a_missing_pin(tmp_path: Path) -> None:
+def test_apply_pin_skips_uninstall_when_the_cpu_wheel_is_absent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _pin()
+    calls: list[list[str]] = []
+
+    def record(cmd: list[str], *, required: bool) -> None:
+        assert required is True
+        calls.append(cmd)
+
+    def providers(_python: str) -> None:
+        raise AssertionError("providers are checked only after a CPU uninstall")
+
+    monkeypatch.setattr(module, "_run", record)
+    monkeypatch.setattr(module, "cpu_onnxruntime_installed", lambda _python: False)
+    monkeypatch.setattr(module, "require_gpu_providers", providers)
+    lock, requirements = _lock_and_requirements(tmp_path)
+    module.apply_pin("python", lock, requirements)
+    assert len(calls) == 1
+    assert calls[0][:5] == ["python", "-m", "pip", "install", "-r"]
+
+
+def test_apply_pin_uninstalls_a_cpu_wheel_and_requires_providers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _pin()
+    calls: list[list[str]] = []
+    probes = iter((True, False))
+    seen: list[str] = []
+
+    def record(cmd: list[str], *, required: bool) -> None:
+        assert required is True
+        calls.append(cmd)
+
+    def providers(python: str) -> None:
+        seen.append(python)
+
+    monkeypatch.setattr(module, "_run", record)
+    monkeypatch.setattr(module, "cpu_onnxruntime_installed", lambda _python: next(probes))
+    monkeypatch.setattr(module, "require_gpu_providers", providers)
+    lock, requirements = _lock_and_requirements(tmp_path)
+    module.apply_pin("python", lock, requirements, uv="uv")
+    assert calls[0][0] == "uv"
+    assert calls[1][:3] == ["uv", "pip", "uninstall"]
+    assert "onnxruntime" in calls[1]
+    assert "-y" not in calls[1]
+    assert seen == ["python"]
+
+
+def test_apply_pin_fails_when_the_cpu_wheel_remains(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _pin()
+
+    def providers(_python: str) -> None:
+        raise AssertionError("providers are checked only after the CPU wheel is gone")
+
+    monkeypatch.setattr(module, "_run", lambda cmd, *, required: None)
+    monkeypatch.setattr(module, "cpu_onnxruntime_installed", lambda _python: True)
+    monkeypatch.setattr(module, "require_gpu_providers", providers)
+    lock, requirements = _lock_and_requirements(tmp_path)
+    with pytest.raises(module.PinError, match="still installed"):
+        module.apply_pin("python", lock, requirements)
+
+
+def test_missing_providers_fail_loudly(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _pin()
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> object:
+        return module.subprocess.CompletedProcess(cmd, 1, "missing CUDAExecutionProvider; found CPUExecutionProvider", "")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    with pytest.raises(module.PinError, match="still missing"):
+        module.require_gpu_providers("python")
+
+
+def test_lock_rejects_a_damaged_file(tmp_path: Path) -> None:
     module = _pin()
     path = tmp_path / "runtime_lock.json"
-    path.write_text('{"onnxruntime-gpu": "1.31.0"}\n', encoding="utf-8")
+    path.write_text("{", encoding="utf-8")
     with pytest.raises(module.PinError):
-        module.gpu_pin_steps(module.load_lock(path))
+        module.load_lock(path)
+    path.write_text("[]\n", encoding="utf-8")
+    with pytest.raises(module.PinError):
+        module.load_lock(path)
+    lock = module.load_lock(_ROOT / "installer" / "runtime_lock.json")
+    assert lock["nvidia_index"] == "https://pypi.nvidia.com"
+    assert "[gpu]" in lock["engine"]

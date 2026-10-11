@@ -48,9 +48,10 @@ VRAM_BOUND_MIB = 16384
 SMOKE_SECONDS = 15
 ENGINE_TAG = "engine-v1.2.1"
 ENGINE_URL = (
-    "voxprint-engine @ https://github.com/Mitroshenkov87/voxprint-enlarge"
+    "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge"
     "/archive/refs/tags/engine-v1.2.1.tar.gz"
 )
+NVIDIA_INDEX = "https://pypi.nvidia.com"
 CLIP_URL = "https://archive.org/download/ElephantsDream/ed_1024_512kb.mp4"
 CLIP_SHA256 = "fd6dc0e9da3a2f63487957325983f197f23c6ff1cd2b29bb71e64db567e0994c"
 CLIP_NAME = "elephants-dream-ed_1024_512kb.mp4"
@@ -885,10 +886,13 @@ def _check_providers(run: _Run, step: str) -> None:
 
 
 def _pin_runtime(run: _Run, uv: str, python: Path) -> None:
-    """Re-pin torch, spandrel, ONNX Runtime GPU, and TensorRT 10 after the engine.
+    """Install torch and spandrel, then drop a CPU ONNX Runtime wheel if one is present.
 
-    The engine distribution depends on the CPU ONNX Runtime wheel. ``uv pip``
-    is required because this virtualenv is created without pip.
+    The engine ``gpu`` extra installs ``onnxruntime-gpu``. The CPU distribution
+    named ``onnxruntime`` is uninstalled only when that distribution is
+    installed. ``uv pip`` is required because this virtualenv is created
+    without pip. The provider check after this step fails the install when
+    CUDA or TensorRT is still missing.
 
     Args:
         run: The current invocation.
@@ -951,7 +955,12 @@ def _install(run: _Run) -> None:
         "requirements failed to install",
         setup=True,
     )
-    _checked([uv, "pip", "install", "--python", str(py), ENGINE_URL], 900, "the inference engine install failed", setup=True)
+    _checked(
+        [uv, "pip", "install", "--python", str(py), "--extra-index-url", NVIDIA_INDEX, ENGINE_URL],
+        900,
+        "the inference engine install failed",
+        setup=True,
+    )
     _pin_runtime(run, uv, py)
     _ensure_ffmpeg(run.tools)
     elapsed = round(time.perf_counter() - started, 3)

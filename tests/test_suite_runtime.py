@@ -562,18 +562,22 @@ def test_ffmpeg_repairs_once_and_skips_in_ci(monkeypatch: pytest.MonkeyPatch, tm
 def test_engine_pin_and_pillow_stay() -> None:
     assert ENGINE_TAG == "engine-v1.2.1"
     assert ENGINE_REQUIREMENT == (
-        "voxprint-engine @ https://github.com/Mitroshenkov87/voxprint-enlarge"
+        "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge"
         "/archive/refs/tags/engine-v1.2.1.tar.gz"
     )
     assert "git+" not in ENGINE_REQUIREMENT
     assert "#subdirectory" not in ENGINE_REQUIREMENT
+    assert "[gpu]" in ENGINE_REQUIREMENT
     engine = (_ROOT / "clarity" / "engine.py").read_text(encoding="utf-8")
     windows = (_ROOT / "installer" / "install-runtime.ps1").read_text(encoding="utf-8")
     linux = (_ROOT / "installer" / "linux" / "install-shared.sh").read_text(encoding="utf-8")
     package = (_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     workflow = (_ROOT / ".github" / "workflows" / "suite-test.yml").read_text(encoding="utf-8")
+    vm = (_ROOT / "scripts" / "vm_test.py").read_text(encoding="utf-8")
+    shared = (_ROOT / "scripts" / "gpu-common.ps1").read_text(encoding="utf-8")
     lock = json.loads((_ROOT / "installer" / "runtime_lock.json").read_text(encoding="utf-8"))
     assert lock["pillow"] == "12.3.0"
+    assert lock["engine"] == ENGINE_REQUIREMENT
     assert 'Pillow==$pillow' in windows
     assert 'probes={"model": lambda _root: True}' in windows
     assert 'installers={"model": lambda _root, _progress: None}' in windows
@@ -582,9 +586,16 @@ def test_engine_pin_and_pillow_stay() -> None:
     assert ENGINE_REQUIREMENT in linux
     assert ENGINE_REQUIREMENT in package
     assert ENGINE_REQUIREMENT in workflow
+    assert ENGINE_REQUIREMENT in shared
+    assert "pypi.nvidia.com" in windows
+    assert "pypi.nvidia.com" in linux
+    assert "pypi.nvidia.com" in workflow
+    assert "pypi.nvidia.com" in vm
+    assert "pypi.nvidia.com" in shared
     assert 'ENGINE_TAG = "engine-v1.2.1"' in engine
     assert "engine-v1.2.1.tar.gz" in engine
     assert "switch to tag" not in engine
+    assert "Switch to the engine-v1.2.1" not in engine
     assert "python install 3.14" in linux
     assert "Enlarge bundle" not in linux
     assert "MinGit" not in windows

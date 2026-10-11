@@ -38,8 +38,8 @@ Run the installer. During setup it installs Python 3.14 with uv and calls
 wheels into `%LOCALAPPDATA%\Voxprint\shared` (or `%VOXPRINT_HOME%\shared`
 when that variable is set). It does not download the engine's default upscale
 weight. Clarity then adds the LGPL ffmpeg build and the catalogue weights it
-uses. Pillow stays at 12.3.0. The engine pin is tag `engine-v1.2.1`, fetched
-as a GitHub archive so setup does not need git. The Start menu folder is
+uses. Pillow stays at 12.3.0. The engine pin is tag `engine-v1.2.1` with the
+`gpu` extra, fetched as a GitHub archive so setup does not need git. The Start menu folder is
 **Voxprint**. The shortcut is **Voxprint AI Clarity**.
 
 ### Linux
