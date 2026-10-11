@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 from clarity.appinfo import APP_NAME
 from clarity.cli import splash_identity
@@ -36,7 +39,10 @@ def test_display_name_and_user_data_path(monkeypatch) -> None:
     monkeypatch.delenv("VOXPRINT_CLARITY_STATE", raising=False)
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     folder = state_dir()
-    assert folder.parts[-2:] == ("voxprint", "clarity")
+    if os.name == "nt":
+        assert folder.parts[-2:] == ("Voxprint", "Clarity")
+    else:
+        assert folder.parts[-2:] == ("voxprint", "clarity")
     source = (_ROOT / "clarity" / "project.py").read_text(encoding="utf-8")
     assert 'windows_base / "Voxprint" / "Clarity"' in source
 
@@ -81,6 +87,7 @@ def test_linux_package_uses_the_suite_directory() -> None:
     assert ".local/share/voxprint" in (_ROOT / "installer" / "linux" / "migrate-old.sh").read_text(encoding="utf-8")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="The Linux migration script needs a POSIX shell")
 def test_linux_migration_keeps_user_data(tmp_path: Path) -> None:
     root = tmp_path / "sys"
     old_bin = root / "usr" / "bin"
@@ -104,6 +111,7 @@ def test_linux_migration_keeps_user_data(tmp_path: Path) -> None:
     assert (new_app / "main.py").is_file()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="The Linux desktop script needs a POSIX shell")
 def test_user_desktop_registration_keeps_user_data(tmp_path: Path) -> None:
     home = tmp_path / "home"
     data = home / ".local" / "share" / "voxprint" / "models"
