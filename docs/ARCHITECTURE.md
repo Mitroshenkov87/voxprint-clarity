@@ -42,7 +42,7 @@ Clarity does not reimplement the VRAM budget, the model store, or the ONNX sessi
 voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.4.0.tar.gz
 ```
 
-`clarity.engine` loads the engine with `importlib` and forwards the calls. The requirement string is `ENGINE_REQUIREMENT`. The lock app id and the runtime app id are `OWNER` (`clarity`). A `restore_batch` message still sends `owner` `clarity`. API stays 1. Launch calls `voxprint_common.gpu_probe.assess` with the display name `Voxprint AI Clarity` and `refuse_below=(8, 9)`.
+`clarity.engine` loads the engine with `importlib` and forwards the calls. The requirement string is `ENGINE_REQUIREMENT`. The lock app id and the runtime app id are `OWNER` (`clarity`). A `restore_batch` message still sends `owner` `clarity`. API stays 1. Launch calls `voxprint_common.gpu_probe.assess` with the display name `VOXPrint AI Clarity` and `refuse_below=(8, 9)`.
 
 ## Shared dependencies
 
@@ -52,7 +52,7 @@ The folder is `%LOCALAPPDATA%\Voxprint\shared` on Windows and `$XDG_DATA_HOME/vo
 
 Clarity's Clean and Strong weights go through the engine registry (`ensure_weight`, `register`, `unregister`). ffmpeg is the one suite piece the runtime installer does not install: Clarity downloads the LGPL build into `shared/ffmpeg` when the machine does not already have one. A repair shows a Qt dialog. `--selftest --json` prints the engine report (`ok`, `skipped`, `components`) and `{"type": "progress"}` lines for each step.
 
-A driver older than the R600 series is refused by `assess_launch`, which calls `voxprint_common.gpu_probe.assess("Voxprint AI Clarity", refuse_below=(8, 9))`. The probe message does not include a download page, so Clarity adds <https://www.nvidia.com/Download/index.aspx>. `VOXPRINT_CI_LANCZOS` is still refused before the probe runs.
+A driver older than the R600 series is refused by `assess_launch`, which calls `voxprint_common.gpu_probe.assess("VOXPrint AI Clarity", refuse_below=(8, 9))`. The probe message does not include a download page, so Clarity adds <https://www.nvidia.com/Download/index.aspx>. `VOXPRINT_CI_LANCZOS` is still refused before the probe runs.
 
 ## Shared library
 

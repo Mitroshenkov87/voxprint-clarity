@@ -1,12 +1,12 @@
 # Clarity user guide
 
-Voxprint AI Clarity restores an SDR video without generating new picture.
+VOXPrint AI Clarity restores an SDR video without generating new picture.
 Deblocking, denoise, classical sharpening, and a per-scene colour cleanup run
 on the frames you already have. Optional 2x is off unless you turn it on.
 
 Clarity does not interpolate frames, does not offer a GAN or “enhanced” look,
 does not colourise with DDColor, and does not use the NVIDIA RTX Video SDK.
-Stills belong to Voxprint AI Enlarge. HDR and Dolby Vision are refused. There
+Stills belong to VOXPrint AI Enlarge. HDR and Dolby Vision are refused. There
 is no CPU mode and no H.264 output.
 
 ## Requirements
@@ -39,16 +39,25 @@ wheels into `%LOCALAPPDATA%\Voxprint\shared` (or `%VOXPRINT_HOME%\shared`
 when that variable is set). It does not download Enlarge's default model.
 Clarity then adds the LGPL ffmpeg build and the catalogue weights it
 uses. Pillow stays at 12.3.0. The engine pin is tag `engine-v1.4.0` with the
-`gpu` extra, fetched as a GitHub archive so setup does not need git. The Start menu folder is
-**Voxprint**. The shortcut is **Voxprint AI Clarity**.
+`gpu` extra, fetched as a GitHub archive so setup does not need git. Program
+files go in `C:\Program Files\VOXPrint AI Suite\Clarity`. The Start menu folder
+is **VOXPrint AI Suite**. The shortcut is **VOXPrint AI Clarity** and opens
+`voxprint-clarity.exe`. The command line is `voxprint-clarity-cli.exe`.
+Setup replaces an older install in `C:\Program Files\VoxprintClarity`, including
+its Start menu shortcut and uninstall entry. It leaves
+`%LOCALAPPDATA%\Voxprint` in place.
 
 ### Linux
 
-The Linux package in the same release, `VoxprintClarity-linux.tar.gz`, is
-experimental. Extract it and run `voxprint-clarity-install` once. If uv is
+The Linux package in the same release, `voxprint-clarity-linux.tar.gz`, is
+experimental. Extract it and run `voxprint-clarity-install` once, with
+permission to write `/opt`. That copies the app to
+`/opt/voxprint-ai-suite/clarity` and links `voxprint-clarity` and
+`voxprint-clarity-cli` onto `PATH`. If uv is
 missing, that script downloads it and runs `uv python install 3.14`. It then
 calls the same `ensure_shared_runtime` into
-`$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared`. See
+`$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared`. An older
+launcher or desktop file is removed. The shared data directory is not. See
 [INSTALL.md](INSTALL.md).
 
 ### Version and codename
@@ -63,7 +72,7 @@ Before a tag, update the suite table and this copy in the same commit as
 
 ### Command line
 
-`python -m clarity` and `voxprint-clarity` take the same commands: `restore`,
+`python -m clarity`, `voxprint-clarity`, and `voxprint-clarity-cli` take the same commands: `restore`,
 `project open`, `project resume`, `info`, `version`, `models list`,
 `models fetch`, and `selftest`. `--dry-run` prints the ffmpeg plan and does
 not use the GPU. `--json` prints result lines on stdout. Exit codes and the
@@ -140,7 +149,9 @@ Chunk media stays in a work folder beside the project
 | Recent projects | `%LOCALAPPDATA%\Voxprint\Clarity\recent.json` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/clarity/recent.json` or `~/.local/share/voxprint/clarity/recent.json`. |
 | Scene chunks and the journal | `<project>.vxclarity.work` beside the project (`plan.json`, `journal.jsonl`, `chunks/`). |
 | GPU lock | `%TEMP%\voxprint-gpu.lock` (the system temp directory on Linux). |
-| Windows setup log | `%TEMP%\VoxprintClarity-setup.log` |
+| Program files (Windows) | `C:\Program Files\VOXPrint AI Suite\Clarity` (`voxprint-clarity.exe`, `voxprint-clarity-cli.exe`) |
+| Program files (Linux) | `/opt/voxprint-ai-suite/clarity` (`voxprint-clarity`, `voxprint-clarity-cli`) |
+| Windows setup log | `%TEMP%\voxprint-clarity-setup.log` |
 
 Clarity does not write its own application log. The status line in the window
 is the record of the current job. The setup log is the record of the install.
@@ -154,7 +165,7 @@ below the 600 series. Clarity will not start a CPU job. A driver older than
 the R600 series includes a link to
 <https://www.nvidia.com/Download/index.aspx>. Update the driver or use an
 RTX 40 series GPU or newer. A missing engine package says
-`Voxprint inference engine missing, run repair.`
+`VOXPrint inference engine missing, run repair.`
 
 **The status says the GPU is busy.** Another suite job holds the shared lock.
 Clarity waits and retries. It does not cancel your restore for that wait.

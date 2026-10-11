@@ -1,4 +1,4 @@
-"""Clarity's model catalogue. Weights stay in the shared Voxprint models folder.
+"""Clarity's model catalogue. Weights stay in the shared models folder.
 
 The suite gate is ``voxprint_common.licence``. Clarity still fetches only MIT,
 Apache-2.0, and BSD. A non-commercial, copyleft, or missing licence is refused

@@ -1,4 +1,4 @@
-# Voxprint AI Clarity: product decisions
+# VOXPrint AI Clarity: product decisions
 
 Decided by Aleksandr on 2026-10-10. These override the research recommendations in [RESEARCH.md](RESEARCH.md) where they differ.
 

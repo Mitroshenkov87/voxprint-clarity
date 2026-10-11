@@ -1,4 +1,4 @@
-# Voxprint AI Clarity
+# VOXPrint AI Clarity
 
 Lightweight non-generative restoration for SDR video. Clean and Strong run on
 an NVIDIA RTX 40 series GPU or newer. The optional 2x step stays off until

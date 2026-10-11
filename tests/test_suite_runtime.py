@@ -98,7 +98,7 @@ def test_missing_suite_runtime_names_the_pinned_engine(monkeypatch: pytest.Monke
         ensure_shared_runtime()
     with pytest.raises(EngineUnavailable, match="run repair"):
         release_shared_runtime()
-    with pytest.raises(EngineUnavailable, match="Voxprint inference engine missing"):
+    with pytest.raises(EngineUnavailable, match="VOXPrint inference engine missing"):
         ensure_shared_runtime()
 
 
@@ -443,7 +443,7 @@ def test_launch_probe_uses_the_clarity_display_name(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr("clarity.engine.assess_gpu", assess)
     gate = assess_launch()
     assert gate.ok is True
-    assert seen["app"] == APP_NAME == "Voxprint AI Clarity"
+    assert seen["app"] == APP_NAME == "VOXPrint AI Clarity"
     assert seen["refuse"] == (8, 9)
 
 

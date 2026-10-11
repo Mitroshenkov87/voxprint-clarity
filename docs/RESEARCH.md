@@ -1,4 +1,4 @@
-# Voxprint AI Clarity: Phase 1 research (non-generative video restoration)
+# VOXPrint AI Clarity: Phase 1 research (non-generative video restoration)
 
 Updated: 2026-10-10. Status: research only. No repo, builds or installs until the Audiobook Builder and Movie Dubber RC builds (999) are tested.
 
@@ -106,7 +106,7 @@ Sources: Movie Dubber reply (2026-10-10), voxprint/FOR-MOVIE-DUBBER.md, movie-du
 | Installer / runtime | Inno Setup online installer built by GitHub Actions; `install-runtime.ps1` uses uv to create a CPython 3.11 venv in shared `%LOCALAPPDATA%\Voxprint\runtime-<key>`; key moving to SHA-256(lock) + flavor. torch 2.11.0+cu128 [V Movie Dubber] | join the shared runtime if pins match; overlay onnxruntime-gpu / tensorrt wheels, spandrel, scenedetect |
 | TensorRT | **none in the suite yet** [V Movie Dubber] | new Clarity decision: engine cache per GPU + TRT version, outside models (proposal `%LOCALAPPDATA%\Voxprint\trt-cache\<gpu>-<driver>-<trt>\`, rebuildable, not refcounted) |
 | ffmpeg | BtbN LGPL n8.1.3 (AB) [V]; suite uses stream copy only, **no NVDEC/NVENC yet** [V Movie Dubber] | Clarity is the first NVDEC/NVENC user: verify LGPL build has `hevc_nvenc`/`av1_nvenc`/cuvid on both laptops |
-| Start menu | Inno `DefaultGroupName=Voxprint` in both `.iss` [V] | same group, "Voxprint AI Clarity" + diagnostics |
+| Start menu | Inno `DefaultGroupName=Voxprint` in both `.iss` [V] | folder **VOXPrint AI Suite**, shortcut **VOXPrint AI Clarity** |
 | Build numbers | `BUILD.json` offset + run number, a Hebrew word from the Torah or Tanakh as the codename [V] | same scheme |
 
 ## 5. Recommended MVP stack

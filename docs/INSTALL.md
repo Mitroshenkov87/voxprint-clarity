@@ -50,15 +50,37 @@ runs `installer/install-runtime.ps1`, which:
 
 `PrepareToInstall` runs before `{app}` exists, so the setup runs the same
 script again with `-LinkOnly` after the files are copied. That second step
-only creates the junction. The shortcut and `--register-models-user` use
-`{app}\runtime\Scripts\python.exe`.
+only creates the junction. `--register-models-user` uses
+`{app}\runtime\Scripts\python.exe`. The shortcut uses `voxprint-clarity.exe`,
+which starts `pythonw.exe` from that junction. Compile
+`installer/launchers/build.ps1` before Inno Setup so those executables exist.
 
-The Start menu folder is `Voxprint`. The shortcut is **Voxprint AI Clarity**.
+The install directory is `C:\Program Files\VOXPrint AI Suite\Clarity`
+(`{autopf}\VOXPrint AI Suite\Clarity`). The directory page is off, so a normal
+install uses that folder. `/DIR` still overrides it for the CI file check.
+The Start menu folder is `VOXPrint AI Suite`. The shortcut is **VOXPrint AI Clarity**
+and runs `voxprint-clarity.exe`. `voxprint-clarity-cli.exe` is the command-line
+program. Both are added to the user `PATH`. Peers find Clarity at
+`HKCU\Software\Voxprint\Clarity` (`InstallPath`, `Exe`, `Version`, an empty
+`IpcName`, `ProtocolVersion` 0) and at
+`HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\voxprint-clarity.exe`.
+`voxprint-common` 0.1.1 does not ship a registry helper, so the installer writes
+those keys. Clarity has no IPC server, so `IpcName` is empty and
+`ProtocolVersion` is 0.
+
+An upgrade keeps the same AppId and does not reuse the previous directory.
+It removes `C:\Program Files\VoxprintClarity` when that folder is still present,
+and it removes any other install directory recorded on the old uninstall entry
+when that path is not the new folder and is not under `%LOCALAPPDATA%`. The
+`runtime` junction is unlinked before the old tree is deleted, so the shared
+venv in `%LOCALAPPDATA%\Voxprint` stays. Old Start menu shortcuts in the
+`Voxprint` folder are removed. The folder itself is removed only when it is
+empty. The user `PATH` drops the old directory and gains the new one.
 
 The installer registers `.vxclarity` for the current user (HKCU). The ProgID is
 `Voxprint.Clarity.Project`. The document icon is `branding\clarity.ico`. Open
-runs `pythonw main.py` with the project path. Uninstall deletes that ProgID
-and the extension entry.
+runs `voxprint-clarity.exe` with the project path. Uninstall deletes that ProgID
+and the extension entry. The visible file type is **VOXPrint AI Clarity project**.
 
 Silent install without the GPU runtime (CI, and any machine that should only
 receive the files):
@@ -90,13 +112,19 @@ Experimental package:
 bash installer/linux/build-package.sh
 ```
 
-That writes `dist/VoxprintClarity-linux.tar.gz`. An AppImage is attempted when
-appimagetool can be downloaded. The package includes
-`usr/share/mime/packages/voxprint-clarity.xml`, a `.desktop` file whose
-`MimeType` is `application/vnd.voxprint.clarity+zip`,
-`usr/bin/voxprint-clarity`, and `usr/bin/voxprint-clarity-install`.
+That writes `dist/voxprint-clarity-linux.tar.gz`. An AppImage is attempted when
+appimagetool can be downloaded (`dist/voxprint-clarity-x86_64.AppImage`). The
+package includes `share/mime/packages/voxprint-clarity.xml`, the discovery
+desktop file `ai.voxprint.Clarity.desktop` (`Name=VOXPrint AI Clarity`,
+`X-Voxprint-Ipc`, `X-Voxprint-Protocol=0`, `X-Voxprint-Version`),
+`voxprint-clarity`, `voxprint-clarity-cli`, and `voxprint-clarity-install`.
 
-Run `voxprint-clarity-install` once after extracting the package, and once
+Run `voxprint-clarity-install` once after extracting the package. It copies
+the tree to `/opt/voxprint-ai-suite/clarity`, links both programs into
+`/usr/local/bin`, and writes the desktop file for the current user and under
+`/usr/local/share/applications`. Writing `/opt` needs root; a normal account
+is asked for `sudo` for that step only. The shared runtime still goes to the
+invoking user's `~/.local/share/voxprint`. Run it once
 for an AppImage before the first restore. When Python 3.14 or uv is missing,
 the script downloads uv and runs `uv python install 3.14`. It installs the
 engine at tag `engine-v1.4.0`
@@ -112,12 +140,15 @@ is present, the pin uninstalls it and fails when CUDA or TensorRT providers
 are still missing. A second run reuses the venv, installs the engine again,
 and pins torch again.
 
-The launcher and `AppRun` prepend `shared/ffmpeg` to `PATH`.
+The launcher and `AppRun` prepend `shared/ffmpeg` to `PATH` and prefer the
+shared venv's Python when that interpreter exists.
 
-After extracting onto a prefix, update the MIME and desktop databases.
+`voxprint-clarity-install` removes an older `/usr/bin/voxprint-clarity`, the
+old `voxprint-clarity.desktop` shortcut, and a leftover `/opt/VoxprintClarity`
+directory. It does not delete `~/.local/share/voxprint`.
 `voxprint-clarity-uninstall` drops Clarity's suite references when `main.py`
-is beside the script, and removes the association, the desktop file, and the
-icon from that prefix (default `/usr`).
+is beside the script, removes `/opt/voxprint-ai-suite/clarity`, the PATH
+links, the association, and the desktop file. User data stays.
 
 ## Shared folders
 

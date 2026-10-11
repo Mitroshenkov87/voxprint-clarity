@@ -559,7 +559,7 @@ def test_version_label_reads_build_json() -> None:
     else:
         assert f"build {info.build}" in text
     assert text.endswith(f'"{data["codename"]}"')
-    assert release_title() == f"Voxprint AI Clarity {text}"
+    assert release_title() == f"VOXPrint AI Clarity {text}"
     override = os.environ.get("VOXPRINT_BUILD", "").strip() or os.environ.get("VOXPRINT_BUILD_NUMBER", "").strip()
     run = os.environ.get("GITHUB_RUN_NUMBER", "").strip()
     if override.isdigit():

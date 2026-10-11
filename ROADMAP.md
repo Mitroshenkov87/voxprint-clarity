@@ -22,7 +22,7 @@ This page is what is coming next, what can wait, and what will stay out.
 
 - Generative repainting, including any “enhanced” look that invents texture.
 - Frame interpolation.
-- Still-image upscaling. That is Voxprint AI Enlarge.
+- Still-image upscaling. That is VOXPrint AI Enlarge.
 
 ## Smart memory placement
 
