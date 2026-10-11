@@ -19,7 +19,7 @@ from voxprint_common.cli_protocol import progress as protocol_progress
 from voxprint_common.cli_protocol import result as protocol_result
 from voxprint_common.ui.splash import Splash
 
-from clarity.appinfo import APP_BUILD, APP_NAME, APP_VERSION, CODENAME, build_info, version_label
+from clarity.appinfo import APP_NAME, APP_VERSION, CODENAME, build_info, version_label
 from clarity.engine import (
     EngineUnavailable,
     assess_launch,
@@ -326,11 +326,12 @@ def _project_payload(path: Path) -> dict[str, Any]:
 
 
 def _info_payload() -> dict[str, Any]:
+    identity = build_info()
     return {
         "command": "info",
         "name": APP_NAME,
         "version": APP_VERSION,
-        "build": APP_BUILD,
+        "build": identity.build,
         "codename": CODENAME,
         "label": version_label(),
     }

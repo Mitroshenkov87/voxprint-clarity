@@ -17,7 +17,7 @@ and optionally upscale. They do not invent a new picture.
 | `clarity.pipeline.resume` | `plan.json`, `journal.jsonl`, and the published chunk files. |
 | `clarity.project` | Read and write a `.vxclarity` file. |
 | `clarity.models` | The six permissive catalogue weights. |
-| `clarity.engine` | The only module that imports `voxprint_engine`. The GPU probe is `voxprint_common.gpu_probe`. |
+| `clarity.engine` | Imports `voxprint_engine` for video, VRAM, and the model store. Paths, the GPU lock, thermals, and the GPU probe come from `voxprint_common`. |
 | `clarity.platform_gate` | Windows 11 24H2+ and the 2025 Linux releases. |
 | `clarity.ui.theme` | Re-exports the shared theme and holds Clarity's splash identity colour. |
 | `clarity.bench` | Times the catalogue on CUDA and TensorRT. |
@@ -36,61 +36,65 @@ A live restore runs these steps in order:
 
 ## Engine
 
-Clarity does not reimplement the GPU lock, the VRAM budget, the thermal rule, the model store, or the shared runtime. Those live in `voxprint_engine` at tag `engine-v1.2.1`. The package metadata is at the repository root, so the archive URL has no subdirectory. The `gpu` extra holds the ONNX Runtime GPU and TensorRT pins. Installing it needs `--extra-index-url https://pypi.nvidia.com`. The launch GPU probe is `voxprint_common.gpu_probe`, not a second copy of the engine query.
+Clarity does not reimplement the VRAM budget, the model store, or the ONNX session. Those stay in `voxprint_engine` at tag `engine-v1.4.0`. Paths, the GPU lock, the thermal rule, the GPU probe, and the licence allow-list live in `voxprint_common` 0.1.1. The shared runtime installer is `enlarge.suite_runtime` in that same tag. The engine wheel packages `voxprint_engine` only, so setup copies the `enlarge` package from the tag archive into site-packages. The package metadata is at the repository root, so the archive URL has no subdirectory. The `gpu` extra holds the ONNX Runtime GPU and TensorRT pins. Installing it needs `--extra-index-url https://pypi.nvidia.com`.
 
 ```text
-voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz
+voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.4.0.tar.gz
 ```
 
-`clarity.engine` loads that package with `importlib` and forwards the calls. The requirement string is `ENGINE_REQUIREMENT`. The lock owner and the runtime holder are `OWNER` (`clarity`). API stays 1.
+`clarity.engine` loads the engine with `importlib` and forwards the calls. The requirement string is `ENGINE_REQUIREMENT`. The lock app id and the runtime app id are `OWNER` (`clarity`). A `restore_batch` message still sends `owner` `clarity`. API stays 1. Launch calls `voxprint_common.gpu_probe.assess` with the display name `Voxprint AI Clarity` and `refuse_below=(8, 9)`.
 
 ## Shared dependencies
 
-The installer, every launch, and `selftest` call `ensure_runtime("clarity")` through `clarity.engine.ensure_shared_runtime`. Uninstall calls `release_runtime("clarity")`. The engine installs Python 3.14, the CUDA 13 torch, ONNX Runtime GPU, and TensorRT wheels. Clarity tells that call to skip the engine's default upscale weight, then drops its own holder on that component. When Clarity is the only holder, the weight file is deleted. Other holders keep the file. Clarity's own weights are registered under `clarity` in the shared models folder. Holders are a list in `shared/manifest.json`. A payload is removed when that list is empty.
+The installer, every launch, and `selftest` call `ensure_runtime("clarity")` through `clarity.engine.ensure_shared_runtime`. Uninstall calls `release_runtime("clarity")`. `ensure_runtime` writes `clarity` into the component refs and installs Python 3.14, the CUDA 13 torch, ONNX Runtime GPU, and TensorRT wheels. It does not download Enlarge's default model. `ensure_default_model` installs that weight only for app id `enlarge`, and Clarity does not call it. Catalogue weights are fetched separately, under `clarity` in the shared models folder. A payload is removed when its ref list is empty.
 
 The folder is `%LOCALAPPDATA%\Voxprint\shared` on Windows and `$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared` on Linux. `VOXPRINT_HOME` replaces the Voxprint directory.
 
-Clarity's Clean and Strong weights go through the engine registry (`ensure_weight`, `register`, `unregister`). ffmpeg is the one suite piece the engine does not install: Clarity downloads the LGPL build into `shared/ffmpeg` when the machine does not already have one. A repair shows a Qt dialog. `--selftest --json` prints the engine report (`ok`, `skipped`, `components`) and `{"type": "progress"}` lines for each step.
+Clarity's Clean and Strong weights go through the engine registry (`ensure_weight`, `register`, `unregister`). ffmpeg is the one suite piece the runtime installer does not install: Clarity downloads the LGPL build into `shared/ffmpeg` when the machine does not already have one. A repair shows a Qt dialog. `--selftest --json` prints the engine report (`ok`, `skipped`, `components`) and `{"type": "progress"}` lines for each step.
 
-A driver older than the R600 series is refused by `assess_launch`, which calls `voxprint_common.gpu_probe.assess` with `refuse_below=(8, 9)`. The probe message does not include a download page, so Clarity adds <https://www.nvidia.com/Download/index.aspx>. `VOXPRINT_CI_LANCZOS` is still refused before the probe runs.
+A driver older than the R600 series is refused by `assess_launch`, which calls `voxprint_common.gpu_probe.assess("Voxprint AI Clarity", refuse_below=(8, 9))`. The probe message does not include a download page, so Clarity adds <https://www.nvidia.com/Download/index.aspx>. `VOXPRINT_CI_LANCZOS` is still refused before the probe runs.
 
 ## Shared library
 
-`voxprint-common` 0.1.0 "Yesod" (import `voxprint_common`, API 1) supplies the pieces that used to be copied in this repository:
+`voxprint-common` 0.1.1 "Menuchah" (import `voxprint_common`, API 1) supplies the shared suite pieces:
 
 | Piece | Module |
 |---|---|
 | SHA-256 of files and byte strings | `voxprint_common.hashing` |
-| `BUILD.json` | `voxprint_common.buildinfo` |
-| Licence gate | `voxprint_common.licence` |
+| `BUILD.json` | `voxprint_common.buildinfo`. A missing build stays null. The label says `dev`. |
+| Licence gate and the permissive allow-list | `voxprint_common.licence` |
 | Theme tokens and stylesheet | `voxprint_common.ui.theme` |
 | Splash window | `voxprint_common.ui.splash` |
 | `--json` progress and result lines | `voxprint_common.cli_protocol` |
-| NVIDIA probe and VRAM tier | `voxprint_common.gpu_probe` |
+| NVIDIA probe and VRAM tier | `voxprint_common.gpu_probe.assess(app, ...)` |
+| Shared and models directories | `voxprint_common.paths` |
+| GPU lock | `voxprint_common.gpu_lock.gpu_job(app, stage, ...)` |
+| Thermal rule | `voxprint_common.thermal.decide` |
+| Runtime manifest | `voxprint_common.runtime_manifest` |
 
-The install is the v0.1.0 tag archive. pip does not need git, and Clarity does not clone the repository:
+The install is the v0.1.1 release wheel. The installer downloads the `.sha256` file published beside that wheel and refuses a digest that does not match `installer/runtime_lock.json`. pip does not need git, and Clarity does not clone the repository:
 
 ```text
-voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/archive/refs/tags/v0.1.0.tar.gz
+voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl
 ```
 
-`installer/runtime_lock.json` records the series as `0.1.*`. Project files, the journal, and the catalogue stay in Clarity. Only the hash function moved. The fetch gate still accepts MIT, Apache-2.0, and BSD after the shared check. ISC, CC-BY, and CC0 pass the shared release list and are not fetched here.
+Project files, the journal, and the catalogue stay in Clarity. The fetch gate still accepts MIT, Apache-2.0, and BSD after the shared check. ISC, CC-BY, and CC0 pass the shared release list and are not fetched here.
 
 The GUI opens `voxprint_common.ui.splash.Splash` on `assets/splash/clarity.jpg`. The progress bar uses Clarity's identity colour `#2dd4bf` (teal, registered in the suite palette). It is not the `GREEN` success token. The rest of the window uses the shared yellow primary and soft blue accents. A missing art file paints `#0b1020`. The splash stays up at least 0.6 seconds, then fades for 200 ms.
 
 ## GPU lock, VRAM, and thermals
 
-The live path (`live_control`) sets `device=True` and takes the lock with `hold_gpu`, which calls `gpu_job(..., owner="clarity")`. The same owner is written on a `restore_batch` message. The engine shares a parent lock with a worker only when both sides pass that owner.
+The live path (`live_control`) sets `device=True` and takes the lock with `hold_gpu`, which calls `gpu_job("clarity", stage, ...)`. The lock file records `app` and `stage`. An older file that says `owner` and `job` is read as those fields. A parent process with the same app id borrows the lock and does not delete it. The `restore_batch` message still sends `owner` `clarity`.
 
-If the lock is already held, the engine reports a busy wait. The window shows that status and retries. `submit_restore` does the same for a worker line: a `GpuLockTimeout` comes back as an error line, the worker process stays up, and Clarity sends the request again. Cancel ends the retries.
+If the lock is already held, the lock reports a busy wait. The window shows that status and retries. `submit_restore` does the same for a worker line: a `GpuLockTimeout` comes back as an error line, the worker process stays up, and Clarity sends the request again. Cancel ends the retries.
 
 Between chunks, while `device` is set:
 
 - `measure` reads the VRAM budget, and `choose_tile` picks a tile when settings left the tile at 0.
 - `read_shared_usage` and `sysmem_spill` watch shared GPU memory. A spill empties the CUDA cache, asks `note_spill` for a smaller batch, and may `halve_tile`.
-- `thermal_decide` (`api.decide`) says whether to pause. `wait_for_thermal` sleeps between chunks while the engine says to pause. Finished chunks stay on disk.
+- `thermal_decide` calls `voxprint_common.thermal.decide`. `wait_for_thermal` sleeps between chunks while that decision says to pause. Finished chunks stay on disk.
 
-There is no CPU restore path. `assess_launch` refuses `VOXPRINT_CI_LANCZOS`. The engine's `ensure_runtime` treats that same flag as a skip so a test run does not download the suite. CI and the release workflow run `python -m clarity --selftest --no-gpu`, which sets the flag for that process only. The engine selftest asserts the CUDA and TensorRT providers. Clarity's selftest checks the window, the import, and the plan.
+There is no CPU restore path. `assess_launch` refuses `VOXPRINT_CI_LANCZOS`. `enlarge.suite_runtime.ensure_runtime` treats that same flag as a skip so a test run does not download the suite. CI and the release workflow run `python -m clarity --selftest --no-gpu`, which sets the flag for that process only. The engine selftest asserts the CUDA and TensorRT providers. Clarity's selftest checks the window, the import, and the plan.
 
 ## `.vxclarity`
 

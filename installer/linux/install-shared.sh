@@ -1,11 +1,12 @@
 #!/bin/sh
 # Install Clarity into the shared suite folder.
 # Python 3.14 comes from uv. uv is downloaded when it is not already on PATH.
-# The engine pin is tag engine-v1.2.1 as a GitHub archive, with the gpu extra.
-# voxprint-common 0.1.* comes from the v0.1.0 tag archive.
-# pyproject.toml is at the repository root, so the URL has no subdirectory.
+# The engine pin is tag engine-v1.4.0 as a GitHub archive, with the gpu extra.
+# voxprint-common 0.1.1 (Menuchah) is the release wheel. The download is checked
+# against the published .sha256 file.
+# pyproject.toml is at the repository root, so the engine URL has no subdirectory.
 # tensorrt-cu13-libs is installed from the NVIDIA package index.
-# Clarity does not download the engine's default upscale weight.
+# ensure_runtime("clarity") records the ref and does not install Enlarge's default model.
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
@@ -27,8 +28,8 @@ else
   esac
 fi
 
-engine="voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz"
-common="voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/archive/refs/tags/v0.1.0.tar.gz"
+engine="voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.4.0.tar.gz"
+common="voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl"
 
 uv_bin=$(command -v uv || true)
 uv_dir=""
@@ -89,11 +90,16 @@ fi
 if ! "$venv/bin/python" -c "import pip"; then
   "$venv/bin/python" -m ensurepip --upgrade
 fi
-"$venv/bin/python" -m pip install -r "$app/requirements.txt"
-"$venv/bin/python" -m pip install "$common"
-"$venv/bin/python" -m pip install --extra-index-url "https://pypi.nvidia.com" "$engine"
-"$venv/bin/python" -m pip install "Pillow==12.3.0"
-VOXPRINT_HOME=$suite_home PYTHONPATH="$app${PYTHONPATH:+:$PYTHONPATH}" "$venv/bin/python" -m clarity --install-suite
+if [ -f "$script_dir/fetch_common.py" ]; then
+  fetch=$script_dir/fetch_common.py
+  stage_py=$script_dir/stage_suite_runtime.py
+elif [ -f "$script_dir/../fetch_common.py" ]; then
+  fetch=$script_dir/../fetch_common.py
+  stage_py=$script_dir/../stage_suite_runtime.py
+else
+  echo "fetch_common.py was not found beside the installer" >&2
+  exit 1
+fi
 if [ -f "$app/installer/pin_runtime.py" ]; then
   pin=$app/installer/pin_runtime.py
   lock=$app/installer/runtime_lock.json
@@ -101,6 +107,17 @@ else
   pin=$app/pin_runtime.py
   lock=$app/runtime_lock.json
 fi
+common_dir=$(mktemp -d)
+wheel=$("$venv/bin/python" "$fetch" --lock "$lock" --dest "$common_dir")
+"$venv/bin/python" -m pip install "$wheel"
+filtered=$(mktemp)
+grep -v 'voxprint-common' "$app/requirements.txt" > "$filtered"
+"$venv/bin/python" -m pip install -r "$filtered"
+rm -f "$filtered"
+"$venv/bin/python" -m pip install --extra-index-url "https://pypi.nvidia.com" "$engine"
+"$venv/bin/python" "$stage_py" --python "$venv/bin/python" --lock "$lock"
+"$venv/bin/python" -m pip install "Pillow==12.3.0"
+VOXPRINT_HOME=$suite_home PYTHONPATH="$app${PYTHONPATH:+:$PYTHONPATH}" "$venv/bin/python" -m clarity --install-suite
 reqs=$app/requirements-gpu.txt
 if [ ! -f "$pin" ] || [ ! -f "$lock" ] || [ ! -f "$reqs" ]; then
   echo "pin_runtime.py, the runtime lock, or requirements-gpu.txt is missing" >&2

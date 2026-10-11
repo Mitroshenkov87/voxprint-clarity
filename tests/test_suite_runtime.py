@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -10,17 +11,22 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 from PySide6.QtWidgets import QApplication
+from voxprint_common.gpu_lock import Acquired, Holder, try_acquire
 from voxprint_common.gpu_probe import GpuDevice, old_driver_message
 
 from clarity.cli import _ensure_shared, main
+from clarity.appinfo import APP_NAME
 from clarity.engine import (
     ENGINE_REQUIREMENT,
     ENGINE_TAG,
     NVIDIA_DRIVER_URL,
+    SUITE_RUNTIME,
     EngineUnavailable,
+    OWNER,
     assess_launch,
     driver_refusal,
     ensure_shared_runtime,
+    hold_gpu,
     release_shared_runtime,
 )
 from clarity.errors import ClarityError
@@ -67,7 +73,7 @@ def test_runtime_holder_is_clarity_and_install_errors_become_clarity_errors(
     module = _Module()
 
     def load(name: str) -> _Module:
-        assert name == "voxprint_engine.suite_runtime"
+        assert name == "enlarge.suite_runtime"
         return module
 
     monkeypatch.setattr("clarity.engine._load_module", load)
@@ -112,121 +118,32 @@ def test_enlarge_bundle_message_stands_alone(monkeypatch: pytest.MonkeyPatch) ->
     assert "Enlarge" not in str(caught.value)
 
 
-def test_clarity_drops_a_sole_hold_on_the_default_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    manifest = {
-        "schema": 1,
-        "components": {"model": {"holders": ["clarity"], "version": "4x-nomos2-realplksr-dysample"}},
-    }
-    deleted: list[tuple[str, str]] = []
-    written: dict[str, object] = {}
-
-    class _Model:
-        id = "4x-nomos2-realplksr-dysample"
-
-    class _Store:
-        class StoreError(RuntimeError):
-            pass
-
-        @staticmethod
-        def delete_weight(model: _Model, root: object = None, *, user: str = "enlarge") -> None:
-            del root
-            deleted.append((model.id, user))
-
-    class _Registry:
-        DEFAULT_MODEL_ID = "4x-nomos2-realplksr-dysample"
-
-        @staticmethod
-        def load_builtin(*, release: bool) -> dict[str, _Model]:
-            assert release is True
-            return {_Registry.DEFAULT_MODEL_ID: _Model()}
+def test_ensure_runtime_does_not_install_the_default_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
 
     class _Module:
         SuiteInstallError = _SuiteInstallError
 
         @staticmethod
-        def shared_dir() -> Path:
-            return tmp_path
-
-        @staticmethod
-        def read_manifest() -> dict[str, object]:
-            return manifest
-
-        @staticmethod
-        def _write_manifest(doc: dict[str, object], root: Path) -> None:
-            written["doc"] = doc
-            written["root"] = root
-
-        @staticmethod
         def ensure_runtime(app: str, progress: object = None, **extra: object) -> _Report:
-            assert app == "clarity"
-            probes = extra["probes"]
-            installers = extra["installers"]
-            assert isinstance(probes, dict)
-            assert probes["model"](tmp_path) is True
-            installers["model"](tmp_path, progress or (lambda _message: None))
+            seen["app"] = app
+            seen["extra"] = extra
+            if callable(progress):
+                progress("Checking python 3.14")
             return _Report(ok=True)
 
     def load(name: str) -> object:
-        if name == "voxprint_engine.suite_runtime":
-            return _Module()
-        if name == "voxprint_engine.store":
-            return _Store()
-        if name == "voxprint_engine.registry":
-            return _Registry()
-        if name == "voxprint_engine.onnx_export":
-            return type("Onnx", (), {"cached_onnx": staticmethod(lambda _model: None)})()
-        return None
+        assert name == "enlarge.suite_runtime"
+        return _Module()
 
     monkeypatch.setattr("clarity.engine._load_module", load)
     report = ensure_shared_runtime()
     assert report.ok is True
-    components = manifest["components"]
-    assert isinstance(components, dict)
-    assert "model" not in components
-    assert written["root"] == tmp_path
-    assert deleted == [("4x-nomos2-realplksr-dysample", "clarity")]
-
-
-def test_clarity_keeps_another_apps_default_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    manifest = {
-        "schema": 1,
-        "components": {"model": {"holders": ["enlarge", "clarity"], "version": "4x-nomos2-realplksr-dysample"}},
-    }
-
-    class _Module:
-        SuiteInstallError = _SuiteInstallError
-
-        @staticmethod
-        def shared_dir() -> Path:
-            return tmp_path
-
-        @staticmethod
-        def read_manifest() -> dict[str, object]:
-            return manifest
-
-        @staticmethod
-        def _write_manifest(doc: dict[str, object], root: Path) -> None:
-            del doc, root
-
-        @staticmethod
-        def ensure_runtime(app: str, progress: object = None, **_extra: object) -> _Report:
-            del app, progress, _extra
-            return _Report(ok=True)
-
-    def load(name: str) -> object | None:
-        if name == "voxprint_engine.suite_runtime":
-            return _Module()
-        if name == "voxprint_engine.store":
-            raise AssertionError("weight delete")
-        return None
-
-    monkeypatch.setattr("clarity.engine._load_module", load)
-    ensure_shared_runtime()
-    components = manifest["components"]
-    assert isinstance(components, dict)
-    entry = components["model"]
-    assert isinstance(entry, dict)
-    assert entry["holders"] == ["enlarge"]
+    assert seen["app"] == "clarity"
+    extra = seen["extra"]
+    assert isinstance(extra, dict)
+    assert "probes" not in extra
+    assert "installers" not in extra
 
 
 def test_skipped_runtime_does_not_touch_the_model_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -513,6 +430,54 @@ def test_old_driver_includes_the_nvidia_download_page(monkeypatch: pytest.Monkey
     assert NVIDIA_DRIVER_URL in driver_refusal("551.76")
 
 
+def test_launch_probe_uses_the_clarity_display_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def assess(app: str, *, refuse_below: object = None, **_kwargs: object) -> object:
+        seen["app"] = app
+        seen["refuse"] = refuse_below
+        return type("Probe", (), {"ok": True, "message": "", "warning": ""})()
+
+    monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
+    monkeypatch.setattr("clarity.engine._engine_api", object())
+    monkeypatch.setattr("clarity.engine.assess_gpu", assess)
+    gate = assess_launch()
+    assert gate.ok is True
+    assert seen["app"] == APP_NAME == "Voxprint AI Clarity"
+    assert seen["refuse"] == (8, 9)
+
+
+def test_parent_lock_is_shared_only_when_the_app_matches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "voxprint-gpu.lock"
+    monkeypatch.setenv("VOXPRINT_GPU_LOCK", str(path))
+    moment = datetime.now(timezone.utc)
+    payload = {
+        "owner": OWNER,
+        "pid": os.getppid(),
+        "job": "clarity:restore",
+        "started": moment.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "eta": (moment + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    borrowed = try_acquire(OWNER, "restore", path=path)
+    assert isinstance(borrowed, Acquired)
+    assert borrowed.borrowed is True
+    holder = try_acquire("enlarge", "restore", path=path)
+    assert isinstance(holder, Holder)
+    assert holder.app == OWNER
+    assert path.is_file()
+
+
+def test_clarity_lock_records_the_app_and_stage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "voxprint-gpu.lock"
+    monkeypatch.setenv("VOXPRINT_GPU_LOCK", str(path))
+    with hold_gpu("clarity:restore", eta_s=60):
+        recorded = json.loads(path.read_text(encoding="utf-8"))
+    assert recorded["app"] == OWNER
+    assert recorded["stage"] == "clarity:restore"
+    assert not path.is_file()
+
+
 def test_repair_dialog_opens_only_while_installing() -> None:
     app = QApplication.instance() or QApplication([])
     progress = RepairProgress()
@@ -555,10 +520,11 @@ def test_ffmpeg_repairs_once_and_skips_in_ci(monkeypatch: pytest.MonkeyPatch, tm
 
 
 def test_engine_pin_and_pillow_stay() -> None:
-    assert ENGINE_TAG == "engine-v1.2.1"
+    assert ENGINE_TAG == "engine-v1.4.0"
+    assert SUITE_RUNTIME == "enlarge.suite_runtime"
     assert ENGINE_REQUIREMENT == (
         "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge"
-        "/archive/refs/tags/engine-v1.2.1.tar.gz"
+        "/archive/refs/tags/engine-v1.4.0.tar.gz"
     )
     assert "git+" not in ENGINE_REQUIREMENT
     assert "#subdirectory" not in ENGINE_REQUIREMENT
@@ -570,28 +536,37 @@ def test_engine_pin_and_pillow_stay() -> None:
     workflow = (_ROOT / ".github" / "workflows" / "suite-test.yml").read_text(encoding="utf-8")
     vm = (_ROOT / "scripts" / "vm_test.py").read_text(encoding="utf-8")
     shared = (_ROOT / "scripts" / "gpu-common.ps1").read_text(encoding="utf-8")
+    iss = (_ROOT / "installer" / "VoxprintClarity.iss").read_text(encoding="utf-8")
     lock = json.loads((_ROOT / "installer" / "runtime_lock.json").read_text(encoding="utf-8"))
     assert lock["pillow"] == "12.3.0"
     assert lock["engine"] == ENGINE_REQUIREMENT
     common = (
         "voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common"
-        "/archive/refs/tags/v0.1.0.tar.gz"
+        "/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl"
     )
     requirements = (_ROOT / "requirements.txt").read_text(encoding="utf-8")
-    assert lock["voxprint-common"] == "0.1.*"
+    assert lock["voxprint-common"] == "0.1.1"
     assert lock["voxprint-common_requirement"] == common
-    assert "voxprint-common==0.1.*" in requirements
+    assert lock["voxprint-common_sha256"] == "c9361d5d00913faf39497fc55124e682ba15b2098c775068c49582c0520cd4d1"
+    assert lock["voxprint-common_sha256_url"] == common.split(" @ ", 1)[1] + ".sha256"
     assert common in requirements
-    assert "voxprint-common==0.1.*" in package
     assert common in package
     assert common in windows
     assert common in linux
     assert "git+" not in common
     assert "MinGit" not in common
     assert 'Pillow==$pillow' in windows
-    assert 'probes={"model": lambda _root: True}' in windows
-    assert 'installers={"model": lambda _root, _progress: None}' in windows
-    assert 'delete_weight(model, user="clarity")' in windows
+    assert "probes=" not in windows
+    assert "delete_weight" not in windows
+    assert 'ensure_runtime(\n        "clarity"' in windows
+    assert "fetch_common.py" in windows
+    assert "stage_suite_runtime.py" in windows
+    assert "fetch_common.py" in linux
+    assert "stage_suite_runtime.py" in linux
+    assert "stage_suite_runtime.py" in workflow
+    assert "enlarge.suite_runtime" in workflow
+    assert "ExtractTemporaryFile('fetch_common.py')" in iss
+    assert "ExtractTemporaryFile('stage_suite_runtime.py')" in iss
     assert ENGINE_REQUIREMENT in windows
     assert ENGINE_REQUIREMENT in linux
     assert ENGINE_REQUIREMENT in package
@@ -602,10 +577,10 @@ def test_engine_pin_and_pillow_stay() -> None:
     assert "pypi.nvidia.com" in workflow
     assert "pypi.nvidia.com" in vm
     assert "pypi.nvidia.com" in shared
-    assert 'ENGINE_TAG = "engine-v1.2.1"' in engine
-    assert "engine-v1.2.1.tar.gz" in engine
+    assert 'ENGINE_TAG = "engine-v1.4.0"' in engine
+    assert "engine-v1.4.0.tar.gz" in engine
     assert "switch to tag" not in engine
-    assert "Switch to the engine-v1.2.1" not in engine
+    assert "engine-v1.2.1" not in engine
     assert "python install 3.14" in linux
     assert "Enlarge bundle" not in linux
     assert "MinGit" not in windows

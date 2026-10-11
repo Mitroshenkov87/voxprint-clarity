@@ -14,6 +14,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from voxprint_common.cli_protocol import EXIT_CANCELLED, EXIT_FAILED, EXIT_OK, EXIT_USAGE
 
+from clarity.appinfo import build_info
 from clarity.cli import ExitCode, main, protocol_code
 from clarity.errors import Cancelled
 from clarity.codenames import check, foreign_names, parse_registry
@@ -196,7 +197,7 @@ def test_version_models_and_selftest_dry_run(capsys: pytest.CaptureFixture[str])
     info = _result(capsys.readouterr().out)
     data = json.loads((_ROOT / "BUILD.json").read_text(encoding="utf-8"))
     assert info["version"] == data["version"]
-    assert info["build"] == data["build"]
+    assert info["build"] == build_info().build
     assert info["codename"] == data["codename"]
     assert main(["--json", "models", "list"]) == 0
     listed = _result(capsys.readouterr().out)

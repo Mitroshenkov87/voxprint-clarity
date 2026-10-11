@@ -8,6 +8,7 @@ you turn it on.
 - [Install](INSTALL.md)
 - [Command line](CLI.md) and the [generated command reference](reference/cli.md)
 - [Architecture](ARCHITECTURE.md)
+- [Changelog](CHANGELOG.md)
 - [Project file](formats/VXCLARITY.md)
 - [API reference](reference/api.md)
 - [Roadmap](roadmap.md)

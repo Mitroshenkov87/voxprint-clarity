@@ -46,10 +46,10 @@ EXIT_NO_GPU = 3
 RAM_BOUND_MIB = 8192
 VRAM_BOUND_MIB = 16384
 SMOKE_SECONDS = 15
-ENGINE_TAG = "engine-v1.2.1"
+ENGINE_TAG = "engine-v1.4.0"
 ENGINE_URL = (
     "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge"
-    "/archive/refs/tags/engine-v1.2.1.tar.gz"
+    "/archive/refs/tags/engine-v1.4.0.tar.gz"
 )
 NVIDIA_INDEX = "https://pypi.nvidia.com"
 CLIP_URL = "https://archive.org/download/ElephantsDream/ed_1024_512kb.mp4"
@@ -921,6 +921,24 @@ def _pin_runtime(run: _Run, uv: str, python: Path) -> None:
     )
 
 
+def _requirements_without_common(source: Path, dest: Path) -> Path:
+    """Copy ``source`` without the ``voxprint-common`` line.
+
+    The verified wheel is installed first. A later ``pip -r`` must not
+    download that URL again.
+
+    Args:
+        source: ``requirements.txt``.
+        dest: File to write.
+
+    Returns:
+        ``dest``.
+    """
+    lines = [line for line in source.read_text(encoding="utf-8").splitlines(True) if "voxprint-common" not in line]
+    dest.write_text("".join(lines), encoding="utf-8")
+    return dest
+
+
 def _install(run: _Run) -> None:
     started = time.perf_counter()
     uv = _ensure_uv(run.tools)
@@ -932,13 +950,37 @@ def _install(run: _Run) -> None:
     py = _venv_python(run.results)
     if not py.is_file():
         _checked([uv, "venv", "--python", base, str(run.results / "venv")], 180, "uv could not create the virtualenv", setup=True)
-    _checked([uv, "pip", "install", "--python", str(py), "-e", str(run.root)], 600, "the Clarity checkout failed to install", setup=True)
+    lock = run.root / "installer" / "runtime_lock.json"
+    fetched = _checked(
+        [
+            sys.executable,
+            str(run.root / "installer" / "fetch_common.py"),
+            "--lock",
+            str(lock),
+            "--dest",
+            str(run.tools / "common-wheel"),
+        ],
+        180,
+        "voxprint-common download failed",
+        setup=True,
+    )
+    wheel = (fetched.stdout or "").strip()
+    if not wheel:
+        raise _VmError("voxprint-common download did not print a wheel path", EXIT_SETUP)
+    _checked([uv, "pip", "install", "--python", str(py), wheel], 180, "voxprint-common install failed", setup=True)
+    _checked(
+        [uv, "pip", "install", "--python", str(py), "--no-deps", "-e", str(run.root)],
+        600,
+        "the Clarity checkout failed to install",
+        setup=True,
+    )
     _checked(
         [uv, "pip", "install", "--python", str(py), "torch==2.14.1", "--index-url", TORCH_INDEX],
         900,
         "torch 2.14.1 cu130 failed to install",
         setup=True,
     )
+    filtered = _requirements_without_common(run.root / "requirements.txt", run.tools / "requirements.txt")
     _checked(
         [
             uv,
@@ -947,7 +989,7 @@ def _install(run: _Run) -> None:
             "--python",
             str(py),
             "-r",
-            str(run.root / "requirements.txt"),
+            str(filtered),
             "-r",
             str(run.root / "requirements-bench.txt"),
         ],
@@ -959,6 +1001,19 @@ def _install(run: _Run) -> None:
         [uv, "pip", "install", "--python", str(py), "--extra-index-url", NVIDIA_INDEX, ENGINE_URL],
         900,
         "the inference engine install failed",
+        setup=True,
+    )
+    _checked(
+        [
+            sys.executable,
+            str(run.root / "installer" / "stage_suite_runtime.py"),
+            "--python",
+            str(py),
+            "--lock",
+            str(lock),
+        ],
+        900,
+        "enlarge.suite_runtime failed to install",
         setup=True,
     )
     _pin_runtime(run, uv, py)

@@ -4,13 +4,15 @@
   "cuda": "cu130",
   "pillow": "12.3.0",
   "index": "https://download.pytorch.org/whl/cu130",
-  "engine": "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz",
+  "engine": "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.4.0.tar.gz",
   "onnxruntime-gpu": "1.31.0",
   "tensorrt-cu13-libs": "10.14.1.48",
   "tensorrt-cu13": "10.14.1.48",
   "nvidia_index": "https://pypi.nvidia.com",
   "driver_major_min": 600,
   "compute_capability_min": "8.9",
-  "voxprint-common": "0.1.*",
-  "voxprint-common_requirement": "voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/archive/refs/tags/v0.1.0.tar.gz"
+  "voxprint-common": "0.1.1",
+  "voxprint-common_requirement": "voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl",
+  "voxprint-common_sha256": "c9361d5d00913faf39497fc55124e682ba15b2098c775068c49582c0520cd4d1",
+  "voxprint-common_sha256_url": "https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl.sha256"
 }

@@ -1,13 +1,8 @@
 """Tests that need the installed ``voxprint-engine`` package.
 
-CI installs ``voxprint_engine`` at tag ``engine-v1.2.1`` before this module runs.
+CI installs ``voxprint_engine`` at tag ``engine-v1.4.0`` before this module runs.
 """
 from __future__ import annotations
-
-import json
-import os
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -16,10 +11,9 @@ pytest.importorskip("voxprint_engine")
 
 from voxprint_common.gpu_probe import GpuDevice
 from voxprint_engine.api import sysmem_spill, temporal_windows, tile_frames
-from voxprint_engine.gpu_lock import try_acquire
 from voxprint_engine.video import parse_shared_usage, run_batch
 
-from clarity.engine import OWNER, assess_launch, hold_gpu, restore_message
+from clarity.engine import OWNER, assess_launch, restore_message
 
 
 def test_temporal_windows_cover_every_frame_once() -> None:
@@ -104,31 +98,3 @@ def test_restore_message_uses_the_clarity_owner() -> None:
     message = restore_message(id="1", frames_npy="in.npy", out_npy="out.npy", onnx="model.onnx", owner="enlarge")
     assert message["op"] == "restore_batch"
     assert message["owner"] == OWNER == "clarity"
-
-
-def test_parent_lock_is_shared_only_when_the_owner_matches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    path = tmp_path / "voxprint-gpu.lock"
-    monkeypatch.setenv("VOXPRINT_GPU_LOCK", str(path))
-    moment = datetime.now(timezone.utc)
-    payload = {
-        "owner": OWNER,
-        "pid": os.getppid(),
-        "job": "clarity:restore",
-        "started": moment.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "eta": (moment + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
-    path.write_text(json.dumps(payload), encoding="utf-8")
-    assert try_acquire("clarity:restore", owner=OWNER, path=path) is None
-    holder = try_acquire("clarity:restore", owner="enlarge", path=path)
-    assert holder is not None
-    assert holder["owner"] == OWNER
-    assert path.is_file()
-
-
-def test_clarity_lock_records_the_clarity_owner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    path = tmp_path / "voxprint-gpu.lock"
-    monkeypatch.setenv("VOXPRINT_GPU_LOCK", str(path))
-    with hold_gpu("clarity:restore", eta_s=60):
-        recorded = json.loads(path.read_text(encoding="utf-8"))
-    assert recorded["owner"] == OWNER
-    assert recorded["job"] == "clarity:restore"

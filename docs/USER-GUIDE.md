@@ -34,11 +34,11 @@ the Torah or Tanakh. Check the download against
 can warn.
 
 Run the installer. During setup it installs Python 3.14 with uv and calls
-`ensure_shared_runtime` with holder `clarity`. That installs the CUDA 13
+`ensure_shared_runtime` with app id `clarity`. That installs the CUDA 13
 wheels into `%LOCALAPPDATA%\Voxprint\shared` (or `%VOXPRINT_HOME%\shared`
-when that variable is set). It does not download the engine's default upscale
-weight. Clarity then adds the LGPL ffmpeg build and the catalogue weights it
-uses. Pillow stays at 12.3.0. The engine pin is tag `engine-v1.2.1` with the
+when that variable is set). It does not download Enlarge's default model.
+Clarity then adds the LGPL ffmpeg build and the catalogue weights it
+uses. Pillow stays at 12.3.0. The engine pin is tag `engine-v1.4.0` with the
 `gpu` extra, fetched as a GitHub archive so setup does not need git. The Start menu folder is
 **Voxprint**. The shortcut is **Voxprint AI Clarity**.
 
@@ -135,8 +135,8 @@ Chunk media stays in a work folder beside the project
 
 | What | Where |
 |---|---|
-| Shared suite | `%LOCALAPPDATA%\Voxprint\shared` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared`. `VOXPRINT_HOME` replaces the Voxprint directory. The shared folder keeps Python 3.14, the CUDA 13 wheels, and the holder list in `manifest.json`. Clarity registers its own weights there and adds the LGPL ffmpeg binary under `shared/ffmpeg`. |
-| Shared models | `%LOCALAPPDATA%\Voxprint\models` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/models` or `~/.local/share/voxprint/models`. The engine owns the folder, the hashes, and `.users.json`. |
+| Shared suite | `%LOCALAPPDATA%\Voxprint\shared` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared`. `VOXPRINT_HOME` replaces the Voxprint directory. The shared folder keeps Python 3.14, the CUDA 13 wheels, and the ref list in `manifest.json`. Clarity registers its own weights there and adds the LGPL ffmpeg binary under `shared/ffmpeg`. |
+| Shared models | `%LOCALAPPDATA%\Voxprint\models` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/models` or `~/.local/share/voxprint/models`. `voxprint_common.paths` owns the folder. The engine store owns the hashes and `.users.json`. |
 | Recent projects | `%LOCALAPPDATA%\Voxprint\Clarity\recent.json` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/clarity/recent.json` or `~/.local/share/voxprint/clarity/recent.json`. |
 | Scene chunks and the journal | `<project>.vxclarity.work` beside the project (`plan.json`, `journal.jsonl`, `chunks/`). |
 | GPU lock | `%TEMP%\voxprint-gpu.lock` (the system temp directory on Linux). |

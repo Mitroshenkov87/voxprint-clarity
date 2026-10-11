@@ -1,6 +1,6 @@
 """LGPL ffmpeg in the shared suite folder.
 
-``voxprint_engine.suite_runtime`` installs Python and the CUDA wheels.
+``enlarge.suite_runtime`` installs Python and the CUDA wheels.
 It does not install ffmpeg. Clarity keeps this one
 piece: an https download of the BtbN LGPL build into ``shared/ffmpeg``.
 """

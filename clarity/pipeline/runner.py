@@ -1,8 +1,8 @@
 """Run one video through decode, restore, and encode.
 
-The GPU lock, VRAM budget, thermal rule, and weight fetch come from
-``voxprint_engine``. Tests pass a ``Control`` so they can run without a GPU,
-ffmpeg, or the private engine.
+The GPU lock and the thermal rule come from ``voxprint_common``. The VRAM
+budget and the weight fetch come from ``voxprint_engine``. Tests pass a
+``Control`` so they can run without a GPU, ffmpeg, or the private engine.
 """
 from __future__ import annotations
 
@@ -189,10 +189,10 @@ def live_control(settings: Settings, token: CancelToken, progress: Progress | No
     """The path the Start button uses. The lock owner matches the restore worker."""
     report = progress or (lambda _fraction, _text: None)
 
-    def on_wait(holder: dict[str, Any], waited: float) -> None:
+    def on_wait(holder: Any, waited: float) -> None:
         del waited
-        who = holder.get("owner", "?")
-        what = holder.get("job", "?")
+        who = str(getattr(holder, "app", "") or "?")
+        what = str(getattr(holder, "stage", "") or "?")
         report(0.0, gpu_busy_text(f"{who} / {what}"))
 
     def lock(job: str, eta_s: float) -> AbstractContextManager[None]:

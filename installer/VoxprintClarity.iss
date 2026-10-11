@@ -2,7 +2,7 @@
 ; ISCC installer\VoxprintClarity.iss
 ; Start menu folder is Voxprint, shared with the other suite apps.
 ; /RUNTIME=skip skips the shared runtime. That switch is for the CI file check.
-; A normal install calls voxprint_engine.suite_runtime.ensure_runtime for holder clarity.
+; A normal install calls enlarge.suite_runtime.ensure_runtime("clarity").
 
 #define AppName "VoxprintClarity"
 #define AppDisplayName "Voxprint AI Clarity"
@@ -84,6 +84,8 @@ Source: "..\requirements.txt"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "..\requirements-gpu.txt"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "runtime_lock.json"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "pin_runtime.py"; DestDir: "{tmp}"; Flags: dontcopy
+Source: "fetch_common.py"; DestDir: "{tmp}"; Flags: dontcopy
+Source: "stage_suite_runtime.py"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "..\main.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements-gpu.txt"; DestDir: "{app}"; Flags: ignoreversion
@@ -154,6 +156,8 @@ begin
   ExtractTemporaryFile('requirements-gpu.txt');
   ExtractTemporaryFile('runtime_lock.json');
   ExtractTemporaryFile('pin_runtime.py');
+  ExtractTemporaryFile('fetch_common.py');
+  ExtractTemporaryFile('stage_suite_runtime.py');
   Script := ExpandConstant('{tmp}\install-runtime.ps1');
   LogFile := ExpandConstant('{%TEMP}\VoxprintClarity-setup.log');
   if CompareText(CmdParam('RUNTIME', 'install'), 'skip') = 0 then

@@ -5,8 +5,8 @@ Clarity uses the shared package `voxprint_engine` (distribution name
 
 | | |
 |---|---|
-| Tag | `engine-v1.2.1` |
-| Requirement | `voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz` |
+| Tag | `engine-v1.4.0` |
+| Requirement | `voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.4.0.tar.gz` |
 | Layout | `pyproject.toml` is at the repository root, so the archive URL has no `#subdirectory` fragment. pip does not need git. |
 | CI install | the same archive URL, with `--extra-index-url https://pypi.nvidia.com`. The repository is public, so there is no deploy key. |
 | Import package | `voxprint_engine` |
@@ -39,17 +39,18 @@ TensorRT provider check stays in the engine selftest and in
 
 | Need | Import |
 |---|---|
-| GPU lock | `api.gpu_job(..., owner="clarity")` |
+| GPU lock | `voxprint_common.gpu_lock.gpu_job("clarity", stage, ...)` |
 | VRAM tile, spill, batch | `api.choose_tile`, `api.halve_tile`, `api.note_spill`, `api.sysmem_spill` |
 | Shared GPU memory | `api.read_shared_usage` |
-| Thermal rule | `api.decide` |
-| Weights and users | `api.ensure_weight`, `api.register`, `api.unregister`, `api.models_dir` |
+| Thermal rule | `voxprint_common.thermal.decide` |
+| Weights and users | `api.ensure_weight`, `api.register`, `api.unregister` |
+| Models directory | `voxprint_common.paths.models_dir` |
 | Frames | `api.iter_tile_frames`, `api.temporal_windows` |
 | ONNX | `api.ensure_onnx` (checked fp16 file, cached by sha256) |
 | Session | `voxprint_engine.session.open_session`, TensorRT then CUDA |
 | Restore worker | `api.RestoreBatchRequest` with `owner="clarity"`, then `api.WorkerClient` |
-| Startup gate | `voxprint_common.gpu_probe.assess("Clarity", refuse_below=(8, 9))`. An old driver message gains NVIDIA's download page in Clarity. |
-| Shared runtime | `suite_runtime.ensure_runtime("clarity")` and `release_runtime("clarity")` |
+| Startup gate | `voxprint_common.gpu_probe.assess("Voxprint AI Clarity", refuse_below=(8, 9))`. An old driver message gains NVIDIA's download page in Clarity. |
+| Shared runtime | `enlarge.suite_runtime.ensure_runtime("clarity")` and `release_runtime("clarity")`. The call writes the app id and does not install Enlarge's default model. |
 | VRAM measurement | `voxprint_engine.vram.measure` |
 
 `clarity/engine.py` is the only application module that imports
@@ -59,9 +60,11 @@ TensorRT timing.
 
 ## Lock owner
 
-The engine shares a parent lock with a worker subprocess only when both sides
-pass the same `owner`. Clarity's parent and its `restore_batch` message both
-use `clarity`. An `enlarge` lock is not reused.
+The lock file records `app` and `stage`. A parent process with the same app
+id borrows the lock and does not delete it. An older file that says `owner`
+and `job` is read as those fields. Clarity's parent uses app id `clarity`.
+The `restore_batch` message still sends `owner` `clarity`. An `enlarge` lock
+is not reused.
 
 ## GPU lock timeout
 
@@ -91,6 +94,7 @@ status shows the same sentence. The first build can take several minutes.
 
 ## CI
 
-CI installs the public commit over HTTPS on every test job and imports
-`voxprint_engine` before the suite runs. `tests/test_engine.py` runs in that
-job. There is no deploy key and no skip when a secret is absent.
+CI installs the public tag over HTTPS on every test job, then copies
+`enlarge` from that archive into site-packages, and imports `voxprint_engine`
+and `enlarge.suite_runtime` before the suite runs. `tests/test_engine.py`
+runs in that job. There is no deploy key and no skip when a secret is absent.
