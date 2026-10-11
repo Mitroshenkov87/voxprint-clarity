@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 from dataclasses import replace
 from enum import IntEnum
 from pathlib import Path
@@ -34,6 +35,7 @@ from clarity.engine import (
 )
 from clarity.errors import Cancelled, ClarityError
 from clarity.ffmpeg_setup import FfmpegMissing, ensure_ffmpeg
+from clarity.gpu_runtime import require_tensorrt_and_cuda
 from clarity.models import catalogue_ids, catalogue_rows, fetch_weights
 from clarity.pipeline.encode import Container, VideoCodec
 from clarity.pipeline.job import Settings, commands_for
@@ -109,6 +111,7 @@ class Console:
             json_mode: Write result and progress lines to stdout.
         """
         self.json_mode = json_mode
+        self._lock = threading.Lock()
 
     def fail(self, message: str, code: ExitCode) -> int:
         """Print a failure and return its process status.
@@ -154,9 +157,61 @@ class Console:
             body = protocol_progress(stage or "status", fraction, message)
             if stage is None:
                 body.pop("stage", None)
-            emit(body)
+            with self._lock:
+                emit(body)
         else:
             print(message, file=sys.stderr)
+
+    def event(
+        self,
+        phase: str,
+        fraction: float,
+        message: str,
+        *,
+        elapsed_s: float | None = None,
+        frames_done: int | None = None,
+        frames_total: int | None = None,
+        fps: float | None = None,
+        chunk: int | None = None,
+    ) -> None:
+        """Emit one flushed phase or frame-batch line.
+
+        JSON mode writes ``phase`` plus whichever of ``elapsed_s``,
+        ``frames_done``, ``frames_total``, ``fps``, and ``chunk`` were passed.
+        ``building_engine`` and ``loading_cached_engine`` also set ``stage``
+        so a caller can see a TensorRT build while it is still running.
+
+        Args:
+            phase: ``export``, ``building_engine``, ``decode``, ``chunk_start``,
+                ``chunk_end``, or ``frames``.
+            fraction: Completion from 0 to 1.
+            message: Short status.
+            elapsed_s: Seconds spent in this phase.
+            frames_done: Frames restored so far.
+            frames_total: Frames in the job.
+            fps: Restored frames divided by elapsed job time.
+            chunk: Scene-chunk index.
+        """
+        if not self.json_mode:
+            print(message, file=sys.stderr)
+            return
+        stage = phase if phase in {"building_engine", "loading_cached_engine"} else progress_stage(message)
+        body = protocol_progress(stage or "status", fraction, message)
+        if stage is None:
+            body.pop("stage", None)
+        body["phase"] = phase
+        if elapsed_s is not None:
+            body["elapsed_s"] = round(float(elapsed_s), 3)
+        if frames_done is not None:
+            body["frames_done"] = int(frames_done)
+        if frames_total is not None:
+            body["frames_total"] = int(frames_total)
+        if fps is not None:
+            body["fps"] = round(float(fps), 3)
+        if chunk is not None:
+            body["chunk"] = int(chunk)
+        with self._lock:
+            emit(body)
 
 
 def _human(body: dict[str, Any]) -> None:
@@ -566,9 +621,10 @@ def _execute_selftest(progress: Any, *, no_gpu: bool) -> _SelftestOutcome:
 
     ``--no-gpu`` sets ``VOXPRINT_CI_LANCZOS`` only while this function runs, so
     the engine and the ffmpeg helper skip their downloads. The variable is
-    removed afterwards. A restore still refuses it. The CUDA and TensorRT
-    provider check belongs to the engine selftest. A GPU selftest also
-    refuses a venv that cannot import torch and spandrel.
+    removed afterwards. A restore still refuses it. A GPU selftest opens a
+    real TensorRT session and a real CUDA session after the torch check.
+    ``--no-gpu`` does not. A GPU selftest also refuses a venv that cannot
+    import torch and spandrel.
 
     Args:
         progress: Called with one status line.
@@ -587,6 +643,7 @@ def _execute_selftest(progress: Any, *, no_gpu: bool) -> _SelftestOutcome:
             missing = gpu_stack_error()
             if missing:
                 raise ClarityError(missing)
+            require_tensorrt_and_cuda()
         plan = _selftest_plan()
         code = _selftest_window()
         return _SelftestOutcome(report, plan, code)

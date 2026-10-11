@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Build 1004. On Windows, register the CUDA 13 and TensorRT library directories
+  before ONNX Runtime is imported. A session that stays on
+  `CPUExecutionProvider` fails, and the message names `nvinfer_10.dll`.
+  The installer and a GPU selftest open a real TensorRT session and a real
+  CUDA session. `--json` flushes phase and frame-batch progress while a job
+  is running. Subprocess text is read as UTF-8.
 - Install Windows program files in `C:\Program Files\VOXPrint AI Suite\Clarity`.
   The Start menu folder is **VOXPrint AI Suite**. The window is
   `voxprint-clarity.exe` and the command line is `voxprint-clarity-cli.exe`.

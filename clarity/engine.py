@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib
 import os
 import re
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -25,8 +26,9 @@ from voxprint_common.thermal import decide as decide_thermal
 
 from clarity.appinfo import APP_NAME
 from clarity.errors import Cancelled, ClarityError
+from clarity.gpu_runtime import prepare_gpu_runtime, require_gpu_session
 from clarity.i18n import tr
-from clarity.progress import progress_stage
+from clarity.progress import progress_stage, pulse_until
 
 try:
     import torch
@@ -465,9 +467,11 @@ def open_restore_session(onnx_path: Path, on_progress: Callable[[float, str], No
         The open ONNX Runtime session.
 
     Raises:
-        ClarityError: When no provider accepts the file.
+        ClarityError: When no provider accepts the file, or the session
+            stays on CPU. That message names ``nvinfer_10.dll``.
         EngineUnavailable: When the engine session helpers are not installed.
     """
+    prepare_gpu_runtime()
     session_mod = _load_module("voxprint_engine.session")
     providers_mod = _load_module("voxprint_engine.providers")
     if session_mod is None or providers_mod is None:
@@ -479,20 +483,43 @@ def open_restore_session(onnx_path: Path, on_progress: Callable[[float, str], No
     if fallback:
         attempts.append(fallback)
     errors: list[str] = []
+    owner = getattr(on_progress, "__self__", None)
+    event = getattr(owner, "event", None) if owner is not None else None
     for choices in attempts:
         if not choices:
             continue
+        stop: threading.Event | None = None
+        beater: threading.Thread | None = None
         if choices[0].name == "TensorrtExecutionProvider":
             cache = Path(str(choices[0].options.get("trt_engine_cache_path") or ""))
-            on_progress(0.0, _engine_stage_text(str(session_mod.trt_build_message(cache))))
+            text = _engine_stage_text(str(session_mod.trt_build_message(cache)))
+            on_progress(0.0, text)
+            if callable(event):
+                stop = threading.Event()
+                started = time.monotonic()
+
+                def emit_elapsed(elapsed: float, _text: str = text, _event: Callable[..., None] = event) -> None:
+                    _event("building_engine", 0.0, _text, elapsed_s=elapsed)
+
+                beater = pulse_until(stop, emit_elapsed, started)
         try:
             session, provider = session_mod.open_session(onnx_path, choices)
         except session_mod.EngineBuildError as exc:
-            errors.append(str(exc))
+            detail = str(exc)
+            if "nvinfer_10.dll" not in detail:
+                detail = f"{detail}; nvinfer_10.dll is missing from the DLL search path"
+            errors.append(detail)
             continue
-        if provider == "TensorrtExecutionProvider":
-            on_progress(0.0, tr("status.loading_cached_engine"))
-        return session
+        else:
+            require_gpu_session(session)
+            if provider == "TensorrtExecutionProvider":
+                on_progress(0.0, tr("status.loading_cached_engine"))
+            return session
+        finally:
+            if stop is not None:
+                stop.set()
+            if beater is not None:
+                beater.join(timeout=0.2)
     raise ClarityError("; ".join(errors) or "the ONNX session did not load")
 
 

@@ -60,8 +60,10 @@ def test_apply_pin_skips_uninstall_when_the_cpu_wheel_is_absent(tmp_path: Path, 
         assert required is True
         calls.append(cmd)
 
-    def providers(_python: str) -> None:
-        raise AssertionError("providers are checked only after a CPU uninstall")
+    seen: list[str] = []
+
+    def providers(python: str) -> None:
+        seen.append(python)
 
     monkeypatch.setattr(module, "_run", record)
     monkeypatch.setattr(module, "cpu_onnxruntime_installed", lambda _python: False)
@@ -70,6 +72,7 @@ def test_apply_pin_skips_uninstall_when_the_cpu_wheel_is_absent(tmp_path: Path, 
     module.apply_pin("python", lock, requirements)
     assert len(calls) == 1
     assert calls[0][:5] == ["python", "-m", "pip", "install", "-r"]
+    assert seen == ["python"]
 
 
 def test_apply_pin_uninstalls_a_cpu_wheel_and_requires_providers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

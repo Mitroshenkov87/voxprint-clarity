@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication
 
 from clarity.cli import Console
 from clarity.engine import open_restore_session
+from clarity.gpu_runtime import GpuRuntimeError
 from clarity.i18n import tr
 from clarity.progress import progress_stage
 from clarity.ui.main_window import MainWindow
@@ -97,3 +98,51 @@ def test_open_restore_session_reports_the_build(monkeypatch: pytest.MonkeyPatch,
     session = open_restore_session(tmp_path / "model.onnx", lambda _fraction, message: messages.append(message))
     assert session is not None
     assert messages == [tr("status.building_engine"), tr("status.loading_cached_engine")]
+
+
+def test_open_restore_session_refuses_a_cpu_session(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    class _Choice:
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.options = {"trt_engine_cache_path": str(tmp_path)}
+
+    class _Cpu:
+        @staticmethod
+        def get_providers() -> list[str]:
+            return ["CPUExecutionProvider"]
+
+    class _Session:
+        @staticmethod
+        def available_providers() -> list[str]:
+            return ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
+
+        @staticmethod
+        def trt_build_message(_cache: Path) -> str:
+            return "building the TensorRT engine"
+
+        @staticmethod
+        def open_session(_path: Path, choices: list[_Choice]) -> tuple[_Cpu, str]:
+            return _Cpu(), choices[0].name
+
+        class EngineBuildError(Exception):
+            """Stand-in for the engine build error."""
+
+    class _Providers:
+        @staticmethod
+        def choices_for(*_args: object, **_kwargs: object) -> list[_Choice]:
+            return [_Choice("TensorrtExecutionProvider")]
+
+        @staticmethod
+        def cuda_fallback_choices(*_args: object, **_kwargs: object) -> list[_Choice]:
+            return []
+
+    def load(name: str) -> type | None:
+        if name == "voxprint_engine.session":
+            return _Session
+        if name == "voxprint_engine.providers":
+            return _Providers
+        return None
+
+    monkeypatch.setattr("clarity.engine._load_module", load)
+    with pytest.raises(GpuRuntimeError, match="nvinfer_10.dll"):
+        open_restore_session(tmp_path / "model.onnx", lambda _fraction, _message: None)

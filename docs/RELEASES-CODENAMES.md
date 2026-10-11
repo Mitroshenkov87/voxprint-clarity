@@ -17,11 +17,13 @@ including the two historical duplicates below.
 | audiobook-builder | Tikkun, Zahav, Menuchah, Kolot, Kaporet, Shalem, Shelishi, Toledot, Achim, Nachon, Chazak |
 | enlarge | Gadol, Hagdil, Petach, Bahir |
 | movie-dubber | Hineni, Chazak, Bochan |
-| clarity | Bereshit, Tohar, Arukhah |
+| clarity | Bereshit, Tohar, Arukhah, Emet |
 | plotweaver | Sefer, Rikmah, Machashavah, Tzaruf |
 | lucent | Zohar, Ner |
 
 Historical duplicate (published, kept as is): **Chazak** (audiobook-builder and movie-dubber).
+
+Emet is truth (Tehillim 119:160). Clarity build 1004.
 
 ## Assigned next codenames (reserved)
 

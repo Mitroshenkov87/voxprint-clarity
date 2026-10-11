@@ -25,15 +25,16 @@ package index, so the install passes `--extra-index-url https://pypi.nvidia.com`
 The engine's base dependencies do not include ONNX Runtime. A CPU
 `onnxruntime` distribution shadows the GPU wheel, and the engine selftest
 fails when that distribution is present. Clarity's `pin_runtime.py` uninstalls
-it only when it is installed, then fails if CUDA or TensorRT providers are
-still missing. Torch and spandrel come from `requirements-gpu.txt` on every
-install, including a venv that already existed.
+it only when it is installed, then opens a real TensorRT session and a real
+CUDA session and fails if either does not stay active. Torch and spandrel
+come from `requirements-gpu.txt` on every install, including a venv that
+already existed.
 The engine export uses a static batch of 1. Height and width are the dynamic
 axes. `run_onnx_batch` runs a larger tile batch as slices of that declared
 size and concatenates the rows. A GPU `--selftest` refuses a venv that cannot
-import torch and spandrel. `--selftest --no-gpu` does not. The CUDA and
-TensorRT provider check stays in the engine selftest and in
-`scripts/vm_provider_check.py`.
+import torch and spandrel, then opens those same two sessions.
+`--selftest --no-gpu` does not. `scripts/vm_provider_check.py` runs the same
+session check.
 
 ## What Clarity calls
 
