@@ -17,7 +17,7 @@ is no CPU mode and no H.264 output.
 - The LGPL ffmpeg build the installer places in the shared suite folder, with
   NVDEC and NVENC. Setup downloads that build.
 - A network connection during setup. The installer downloads Python 3.14,
-  PyTorch, the LGPL ffmpeg build, the engine, and the default models.
+  PyTorch, the LGPL ffmpeg build, the inference engine, and Clarity's models.
 
 Older Windows, older Linux, a GPU below 8.9, a driver below 600, or no NVIDIA
 GPU: Clarity prints the reason and exits.
@@ -33,19 +33,21 @@ the Torah or Tanakh. Check the download against
 `SHA256SUMS` in that same release. The file is not code-signed, so SmartScreen
 can warn.
 
-Run the installer. During setup it calls the engine's `ensure_runtime` with
-holder `clarity`. That installs Python 3.14, the CUDA 13 wheels, and the
-engine's default model into `%LOCALAPPDATA%\Voxprint\shared` (or
-`%VOXPRINT_HOME%\shared` when that variable is set). Clarity then adds the
-LGPL ffmpeg build and its Clean and Strong weights. Pillow stays at 12.3.0.
-The engine pin is commit `9183489` until tag `engine-v1.2.0` is published.
-The Start menu folder is **Voxprint**. The shortcut is **Voxprint AI Clarity**.
+Run the installer. During setup it installs Python 3.14 with uv and calls
+`ensure_shared_runtime` with holder `clarity`. That installs the CUDA 13
+wheels into `%LOCALAPPDATA%\Voxprint\shared` (or `%VOXPRINT_HOME%\shared`
+when that variable is set). It does not download the engine's default upscale
+weight. Clarity then adds the LGPL ffmpeg build and the catalogue weights it
+uses. Pillow stays at 12.3.0. The engine pin is tag `engine-v1.2.1` with the
+`gpu` extra, fetched as a GitHub archive so setup does not need git. The Start menu folder is
+**Voxprint**. The shortcut is **Voxprint AI Clarity**.
 
 ### Linux
 
 The Linux package in the same release, `VoxprintClarity-linux.tar.gz`, is
-experimental. Extract it and run `voxprint-clarity-install` once. That script
-calls the same `ensure_runtime("clarity")` into
+experimental. Extract it and run `voxprint-clarity-install` once. If uv is
+missing, that script downloads it and runs `uv python install 3.14`. It then
+calls the same `ensure_shared_runtime` into
 `$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared`. See
 [INSTALL.md](INSTALL.md).
 
@@ -69,8 +71,8 @@ flags are in [CLI.md](CLI.md).
 
 ## First run
 
-Open Clarity. Setup has already run `ensure_runtime("clarity")`, so the window
-reuses the shared Python, CUDA wheels, and models. Each launch, and
+Open Clarity. Setup has already prepared the shared runtime, so the window
+reuses the shared Python, CUDA wheels, and Clarity's models. Each launch, and
 `selftest`, calls that API again. When something is missing, the engine
 repairs it and Clarity shows the progress: a dialog in the window, or
 `{"type": "progress", ...}` lines when you pass `--json`. Uninstall calls
@@ -133,7 +135,7 @@ Chunk media stays in a work folder beside the project
 
 | What | Where |
 |---|---|
-| Shared suite | `%LOCALAPPDATA%\Voxprint\shared` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared`. `VOXPRINT_HOME` replaces the Voxprint directory. The engine keeps Python 3.14, the CUDA 13 wheels, its default model, and the holder list in `manifest.json`. Clarity adds the LGPL ffmpeg binary under `shared/ffmpeg`. |
+| Shared suite | `%LOCALAPPDATA%\Voxprint\shared` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared`. `VOXPRINT_HOME` replaces the Voxprint directory. The shared folder keeps Python 3.14, the CUDA 13 wheels, and the holder list in `manifest.json`. Clarity registers its own weights there and adds the LGPL ffmpeg binary under `shared/ffmpeg`. |
 | Shared models | `%LOCALAPPDATA%\Voxprint\models` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/models` or `~/.local/share/voxprint/models`. The engine owns the folder, the hashes, and `.users.json`. |
 | Recent projects | `%LOCALAPPDATA%\Voxprint\Clarity\recent.json` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/clarity/recent.json` or `~/.local/share/voxprint/clarity/recent.json`. |
 | Scene chunks and the journal | `<project>.vxclarity.work` beside the project (`plan.json`, `journal.jsonl`, `chunks/`). |
@@ -151,9 +153,8 @@ there is no NVIDIA GPU, compute capability is below 8.9, or the driver is
 below the 600 series. Clarity will not start a CPU job. A driver older than
 the R600 series includes a link to
 <https://www.nvidia.com/Download/index.aspx>. Update the driver or use an
-RTX 40 series GPU or newer. A missing engine package prints the
-`voxprint-engine @ git+https://...@9183489`
-install line instead.
+RTX 40 series GPU or newer. A missing engine package says
+`Voxprint inference engine missing, run repair.`
 
 **The status says the GPU is busy.** Another suite job holds the shared lock.
 Clarity waits and retries. It does not cancel your restore for that wait.

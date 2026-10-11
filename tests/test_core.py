@@ -11,13 +11,13 @@ import pytest
 
 from clarity.appinfo import release_title, version_label
 from clarity.bench import Sample, main as bench_main, render_report, save_crops, tensorrt_providers, write_report
-from clarity.bench import conditioned_nchw
+from clarity.bench import conditioned_nchw, network_module
 from clarity.engine import assess_launch, gpu_busy_text, submit_restore
 from clarity.errors import Cancelled
 from clarity.i18n import tr
 from clarity.models import CATALOG, get_model, licence_allowed
 from clarity.pipeline.colour import grey_world
-from clarity.pipeline.condition import deblock_level, sigma_level
+from clarity.pipeline.condition import deblock_level, noise_map, sigma_level
 from clarity.pipeline.encode import (
     Container,
     VideoCodec,
@@ -454,6 +454,59 @@ def test_conditioned_preview_adds_the_deblock_channel() -> None:
     nchw = conditioned_nchw(model, np.zeros((4, 4, 3), dtype=np.float32))
     assert nchw.shape == (1, 4, 4, 4)
     assert nchw[0, 3, 0, 0] == pytest.approx(deblock_level(40))
+
+
+def test_drunet_noise_map_matches_a_batch_of_two() -> None:
+    level = deblock_level(40)
+    extra = noise_map(2, 8, 8, level)
+    assert extra.shape == (2, 1, 8, 8)
+    assert float(extra[0, 0, 0, 0]) == pytest.approx(level)
+    assert np.allclose(extra[0], extra[1])
+    with pytest.raises(ValueError):
+        noise_map(0, 8, 8, level)
+    seen: list[tuple[int, ...]] = []
+    levels: list[float] = []
+
+    def infer(_model: object, nchw: np.ndarray) -> np.ndarray:
+        seen.append(tuple(int(part) for part in nchw.shape))
+        levels.append(float(nchw[0, 3, 0, 0]))
+        assert np.allclose(nchw[0, 3], nchw[1, 3])
+        return nchw[:, :3]
+
+    frames = np.zeros((2, 8, 8, 3), dtype=np.float32)
+    settings = Settings(
+        mode="clean",
+        upscale=False,
+        sharpen=0,
+        white_balance=False,
+        levels=False,
+        tile=8,
+        overlap=0,
+        batch=2,
+    )
+    out = process_frames(frames, settings, infer, tile=8, batch=2, use_engine=False)
+    assert out.shape == (2, 8, 8, 3)
+    assert seen == [(2, 4, 8, 8), (2, 4, 8, 8)]
+    assert levels[0] == pytest.approx(deblock_level(40))
+    assert levels[1] == pytest.approx(sigma_level(15))
+
+
+def test_bench_times_the_raw_module() -> None:
+    class Raw:
+        def forward(self, tensor: object) -> object:
+            return tensor
+
+    raw = Raw()
+
+    class Descriptor:
+        def __init__(self) -> None:
+            self.model = raw
+
+        def __call__(self, _tensor: object) -> object:
+            raise AssertionError("descriptor")
+
+    assert network_module(Descriptor()) is raw
+    assert network_module(raw) is raw
 
 
 def test_version_label_reads_build_json() -> None:

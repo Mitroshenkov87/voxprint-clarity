@@ -81,7 +81,9 @@ RuntimeFailed=The Python environment could not be installed.%n%nDetails: %1
 Source: "install-runtime.ps1"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "install-runtime.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements.txt"; DestDir: "{tmp}"; Flags: dontcopy
+Source: "..\requirements-gpu.txt"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "runtime_lock.json"; DestDir: "{tmp}"; Flags: dontcopy
+Source: "pin_runtime.py"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "..\main.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements-gpu.txt"; DestDir: "{app}"; Flags: ignoreversion
@@ -149,7 +151,9 @@ begin
   Result := '';
   ExtractTemporaryFile('install-runtime.ps1');
   ExtractTemporaryFile('requirements.txt');
+  ExtractTemporaryFile('requirements-gpu.txt');
   ExtractTemporaryFile('runtime_lock.json');
+  ExtractTemporaryFile('pin_runtime.py');
   Script := ExpandConstant('{tmp}\install-runtime.ps1');
   LogFile := ExpandConstant('{%TEMP}\VoxprintClarity-setup.log');
   if CompareText(CmdParam('RUNTIME', 'install'), 'skip') = 0 then
@@ -158,7 +162,9 @@ begin
     Skip := '';
   Params := '-NoProfile -ExecutionPolicy Bypass -File "' + Script + '" -AppDir "' + ExpandConstant('{app}') +
             '" -Requirements "' + ExpandConstant('{tmp}\requirements.txt') +
+            '" -GpuRequirements "' + ExpandConstant('{tmp}\requirements-gpu.txt') +
             '" -Lock "' + ExpandConstant('{tmp}\runtime_lock.json') +
+            '" -PinScript "' + ExpandConstant('{tmp}\pin_runtime.py') +
             '" -Log "' + LogFile + '"' + Skip;
   if WizardSilent then Show := SW_HIDE else Show := SW_SHOWNORMAL;
   Page := CreateOutputMarqueeProgressPage('Installing', CustomMessage('RuntimeStatus'));

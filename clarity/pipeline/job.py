@@ -30,7 +30,7 @@ from clarity.engine import (
 from clarity.errors import ClarityError
 from clarity.models import ClarityModel, clean_models, get_model, strong_model, upscale_model
 from clarity.pipeline.colour import cleanup
-from clarity.pipeline.condition import deblock_level, sigma_level
+from clarity.pipeline.condition import deblock_level, noise_map, sigma_level
 from clarity.pipeline.encode import (
     Container,
     VideoCodec,
@@ -147,7 +147,7 @@ def _with_condition(model: ClarityModel, nchw: np.ndarray, settings: Settings) -
         level = sigma_level(settings.sigma)
     else:
         raise ClarityError(f"unknown condition {model.condition}")
-    extra = np.full((count, 1, height, width), level, dtype=np.float32)
+    extra = noise_map(count, height, width, level)
     return np.concatenate([nchw.astype(np.float32, copy=False), extra], axis=1)
 
 

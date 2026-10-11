@@ -46,8 +46,12 @@ EXIT_NO_GPU = 3
 RAM_BOUND_MIB = 8192
 VRAM_BOUND_MIB = 16384
 SMOKE_SECONDS = 15
-ENGINE_COMMIT = "9183489"
-ENGINE_URL = f"voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@{ENGINE_COMMIT}"
+ENGINE_TAG = "engine-v1.2.1"
+ENGINE_URL = (
+    "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge"
+    "/archive/refs/tags/engine-v1.2.1.tar.gz"
+)
+NVIDIA_INDEX = "https://pypi.nvidia.com"
 CLIP_URL = "https://archive.org/download/ElephantsDream/ed_1024_512kb.mp4"
 CLIP_SHA256 = "fd6dc0e9da3a2f63487957325983f197f23c6ff1cd2b29bb71e64db567e0994c"
 CLIP_NAME = "elephants-dream-ed_1024_512kb.mp4"
@@ -139,25 +143,75 @@ class _Run:
     ffprobe: str = ""
     steps: list[dict[str, Any]] = field(default_factory=list)
     bounds: dict[str, float] = field(default_factory=dict)
+    install_seconds: float = 0.0
 
 
-def release_tag(meta: dict[str, Any]) -> str:
-    """Return the results folder name for a BUILD.json object.
+def ref_label(exact_tag: str, sha: str) -> str:
+    """Return the results folder name for a checkout.
+
+    An exact git tag is kept. Any other commit is ``main-`` plus the short
+    sha. ``BUILD.json`` is not a ref: two checkouts can share a build number.
 
     Args:
-        meta: The parsed BUILD.json object.
+        exact_tag: ``git describe --exact-match --tags``, or empty.
+        sha: ``git rev-parse --short=7 HEAD``.
 
     Returns:
-        ``v`` plus the version and build, for example ``v1.0.0-rc.1002``.
+        The tag, or ``main-`` plus the hex sha.
+
+    Raises:
+        ValueError: When an untagged sha is not at least 7 hex characters.
     """
-    return f"v{meta['version']}.{meta['build']}"
+    tag = exact_tag.strip()
+    if tag:
+        if any(char.isspace() for char in tag):
+            raise ValueError("the tag must be one token")
+        return tag
+    short = sha.strip().lower()
+    if len(short) < 7 or any(char not in "0123456789abcdef" for char in short):
+        raise ValueError("sha must be hex")
+    return f"main-{short}"
+
+
+def source_ref(root: Path) -> str:
+    """Name HEAD as a tag, or ``main-`` plus the short sha.
+
+    Args:
+        root: The Clarity checkout.
+
+    Returns:
+        The label stored in ``summary.json`` and the done-marker key.
+
+    Raises:
+        _VmError: When git cannot name HEAD.
+    """
+    described = subprocess.run(
+        ["git", "-C", str(root), "describe", "--exact-match", "--tags", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    exact = (described.stdout or "").strip() if described.returncode == 0 else ""
+    parsed = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--short=7", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    sha = (parsed.stdout or "").strip()
+    if parsed.returncode != 0 or not sha:
+        raise _VmError("git could not name HEAD", EXIT_SETUP, "setup")
+    try:
+        return ref_label(exact, sha)
+    except ValueError as exc:
+        raise _VmError(str(exc), EXIT_SETUP, "setup") from exc
 
 
 def marker_path(tag: str, step: str) -> Path:
     """Return the resume marker for one step of one tag.
 
     Args:
-        tag: Results folder name from :func:`release_tag`.
+        tag: Results folder name from :func:`source_ref`.
         step: Step name such as ``restore-clean``.
 
     Returns:
@@ -293,7 +347,11 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         code = exc.code
         return int(code) if isinstance(code, int) else EXIT_SETUP
-    run = _make_run(parsed)
+    try:
+        run = _make_run(parsed)
+    except _VmError as exc:
+        print(f"FAILED: step {exc.step or 'setup'}: {exc}", file=sys.stderr)
+        return exc.code
     try:
         _check_os(run)
         status = probe_gpu(allow_other=run.allow_other_gpu)
@@ -346,8 +404,7 @@ class _Parser(argparse.ArgumentParser):
 
 def _make_run(parsed: argparse.Namespace) -> _Run:
     root = Path(__file__).resolve().parents[1]
-    meta = json.loads((root / "BUILD.json").read_text(encoding="utf-8"))
-    tag = release_tag(meta)
+    tag = source_ref(root)
     results = parsed.results if parsed.results is not None else _default_results(root, tag)
     results = results.resolve()
     for folder in ("logs", "crops", "cache", "clips", "outputs", "tools"):
@@ -409,11 +466,11 @@ def _run_steps(run: _Run) -> int:
         try:
             handler(run)
         except _VmError as exc:
-            seconds = round(time.perf_counter() - started, 3)
+            seconds = _step_seconds(name, started, run)
             run.steps.append({"name": name, "status": "fail", "seconds": seconds, "error": str(exc)})
             _emit(run, {"type": "step", "name": name, "status": "fail", "seconds": seconds, "error": str(exc)})
             return _finish(run, exc.code, name, str(exc))
-        seconds = round(time.perf_counter() - started, 3)
+        seconds = _step_seconds(name, started, run)
         _write_marker(run.tag, name)
         run.steps.append({"name": name, "status": "pass", "seconds": seconds, "error": ""})
         _emit(run, {"type": "step", "name": name, "status": "pass", "seconds": seconds})
@@ -452,11 +509,30 @@ def _step_gpu(run: _Run) -> None:
         raise _VmError(status.message, EXIT_NO_GPU)
 
 
+def _step_seconds(name: str, started: float, run: _Run) -> float:
+    """Return the step duration, including the parent wheel install for ``install``.
+
+    Args:
+        name: Step name.
+        started: ``time.perf_counter`` when the child step began.
+        run: The current invocation. ``install_seconds`` is the parent elapsed time.
+
+    Returns:
+        Seconds rounded to three places.
+    """
+    elapsed = time.perf_counter() - started
+    if name == "install":
+        elapsed += run.install_seconds
+    return round(elapsed, 3)
+
+
 def _step_install(run: _Run) -> None:
+    run.install_seconds = _take_install_seconds(run)
     try:
         if not _clarity_imports():
             raise _VmError("the virtualenv does not import clarity", EXIT_SETUP)
         _locate_ffmpeg(run)
+        _check_providers(run, "install")
     except _VmError:
         marker_path(run.tag, "install").unlink(missing_ok=True)
         raise
@@ -469,11 +545,7 @@ def _step_selftest(run: _Run) -> None:
     if completed.returncode != 0:
         code = EXIT_SETUP if completed.returncode == EXIT_SETUP else EXIT_FAIL
         raise _VmError(f"python -m clarity --selftest exited {completed.returncode}", code)
-    provider = _python(run, [str(run.root / "scripts" / "vm_provider_check.py")], "selftest", 180)
-    (run.logs / "providers.log").write_text((provider.stdout or "") + (provider.stderr or ""), encoding="utf-8")
-    if provider.returncode != 0:
-        detail = (provider.stdout or provider.stderr or "").strip()
-        raise _VmError(detail or "CUDAExecutionProvider or TensorrtExecutionProvider did not load", EXIT_FAIL)
+    _check_providers(run, "selftest")
 
 
 def _step_info(run: _Run) -> None:
@@ -764,10 +836,94 @@ def _install_ready(run: _Run) -> bool:
     return marker_path(run.tag, "install").is_file() and _venv_python(run.results).is_file()
 
 
+def _install_stamp(run: _Run) -> Path:
+    """Return the file that carries the parent install duration to the child."""
+    return run.logs / "install-seconds.json"
+
+
+def _take_install_seconds(run: _Run) -> float:
+    """Read and delete the parent install duration so a resume does not add it twice.
+
+    Args:
+        run: The current invocation.
+
+    Returns:
+        The recorded seconds, or 0 when the file is missing or not a number.
+    """
+    stamp = _install_stamp(run)
+    if not stamp.is_file():
+        return 0.0
+    try:
+        body = json.loads(stamp.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        body = {}
+    stamp.unlink(missing_ok=True)
+    seconds = body.get("seconds", 0.0) if isinstance(body, dict) else 0.0
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
+        return 0.0
+    return float(seconds)
+
+
+def _check_providers(run: _Run, step: str) -> None:
+    """Fail the step unless CUDA and TensorRT execution providers load.
+
+    The install marker is written after this returns, so a CPU-only wheel
+    cannot count as a finished install.
+
+    Args:
+        run: The current invocation.
+        step: ``install`` or ``selftest``.
+
+    Raises:
+        _VmError: When the provider script exits non-zero.
+    """
+    script = run.root / "scripts" / "vm_provider_check.py"
+    provider = _python(run, [str(script)], step, 180)
+    (run.logs / "providers.log").write_text((provider.stdout or "") + (provider.stderr or ""), encoding="utf-8")
+    if provider.returncode != 0:
+        detail = (provider.stdout or provider.stderr or "").strip()
+        raise _VmError(detail or "CUDAExecutionProvider or TensorrtExecutionProvider did not load", EXIT_FAIL)
+
+
+def _pin_runtime(run: _Run, uv: str, python: Path) -> None:
+    """Install torch and spandrel, then drop a CPU ONNX Runtime wheel if one is present.
+
+    The engine ``gpu`` extra installs ``onnxruntime-gpu``. The CPU distribution
+    named ``onnxruntime`` is uninstalled only when that distribution is
+    installed. ``uv pip`` is required because this virtualenv is created
+    without pip. The provider check after this step fails the install when
+    CUDA or TensorRT is still missing.
+
+    Args:
+        run: The current invocation.
+        uv: The uv executable.
+        python: The virtualenv interpreter.
+    """
+    script = run.root / "installer" / "pin_runtime.py"
+    lock = run.root / "installer" / "runtime_lock.json"
+    requirements = run.root / "requirements-gpu.txt"
+    _checked(
+        [
+            sys.executable,
+            str(script),
+            "--uv",
+            uv,
+            "--python",
+            str(python),
+            "--lock",
+            str(lock),
+            "--requirements",
+            str(requirements),
+        ],
+        900,
+        "the runtime pin failed",
+        setup=True,
+    )
+
+
 def _install(run: _Run) -> None:
+    started = time.perf_counter()
     uv = _ensure_uv(run.tools)
-    git = _ensure_git(run.tools)
-    os.environ["PATH"] = str(git.parent) + os.pathsep + os.environ.get("PATH", "")
     _checked([uv, "python", "install", "3.14"], 600, "uv could not install CPython 3.14", setup=True)
     found = _checked([uv, "python", "find", "3.14"], 120, "Python 3.14 was not found", setup=True)
     base = (found.stdout or "").strip()
@@ -799,9 +955,17 @@ def _install(run: _Run) -> None:
         "requirements failed to install",
         setup=True,
     )
-    _checked([uv, "pip", "install", "--python", str(py), ENGINE_URL], 900, "the public engine install failed", setup=True)
+    _checked(
+        [uv, "pip", "install", "--python", str(py), "--extra-index-url", NVIDIA_INDEX, ENGINE_URL],
+        900,
+        "the inference engine install failed",
+        setup=True,
+    )
+    _pin_runtime(run, uv, py)
     _ensure_ffmpeg(run.tools)
-    (run.logs / "install.log").write_text("install ok\n", encoding="utf-8")
+    elapsed = round(time.perf_counter() - started, 3)
+    _install_stamp(run).write_text(json.dumps({"seconds": elapsed}) + "\n", encoding="utf-8")
+    (run.logs / "install.log").write_text(f"install ok\nseconds {elapsed}\n", encoding="utf-8")
 
 
 def _reexec(run: _Run, args: list[str]) -> int:
@@ -832,34 +996,6 @@ def _ensure_uv(tools: Path) -> str:
         local.chmod(local.stat().st_mode | 0o755)
     archive.unlink(missing_ok=True)
     return str(local)
-
-
-def _ensure_git(tools: Path) -> Path:
-    found = shutil.which("git")
-    if found:
-        return Path(found)
-    if os.name != "nt":
-        raise _VmError("git was not found. The engine install is a git URL.", EXIT_SETUP)
-    git = tools / "mingit" / "cmd" / "git.exe"
-    if git.is_file():
-        return git
-    release = _read_json("https://api.github.com/repos/git-for-windows/git/releases/latest")
-    assets = release.get("assets") if isinstance(release, dict) else None
-    url = ""
-    if isinstance(assets, list):
-        for asset in assets:
-            if isinstance(asset, dict) and str(asset.get("name") or "").startswith("MinGit-") and str(asset.get("name")).endswith("-64-bit.zip"):
-                url = str(asset.get("browser_download_url") or "")
-                break
-    if not url.startswith("https://"):
-        raise _VmError("GitHub did not list a MinGit 64-bit zip", EXIT_SETUP)
-    archive = tools / "mingit.zip"
-    _download(url, archive, 80 * 1024 * 1024)
-    _extract_zip_tree(archive, tools / "mingit")
-    archive.unlink(missing_ok=True)
-    if not git.is_file():
-        raise _VmError("MinGit did not contain cmd/git.exe", EXIT_SETUP)
-    return git
 
 
 def _ensure_ffmpeg(tools: Path) -> None:
@@ -950,18 +1086,6 @@ def _download(url: str, dest: Path, limit: int) -> None:
         raise _VmError(f"download failed: {exc}", EXIT_SETUP) from exc
 
 
-def _read_json(url: str) -> Any:
-    if not url.startswith("https://"):
-        raise _VmError("downloads must use https", EXIT_SETUP)
-    _install_trust()
-    request = urllib.request.Request(url, headers={"User-Agent": "voxprint-clarity", "Accept": "application/vnd.github+json"})
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise _VmError(f"could not read {url} ({exc})", EXIT_SETUP) from exc
-
-
 class _HttpsRedirect(urllib.request.HTTPRedirectHandler):
     """Refuse a redirect that leaves https."""
 
@@ -1019,22 +1143,6 @@ def _extract_named(archive: Path, wanted: str, target: Path) -> None:
             raise _VmError(f"the archive has no {wanted}", EXIT_SETUP)
         with extracted, target.open("wb") as handle:
             shutil.copyfileobj(extracted, handle)
-
-
-def _extract_zip_tree(archive: Path, dest: Path) -> None:
-    if dest.exists():
-        shutil.rmtree(dest)
-    dest.mkdir(parents=True)
-    root = dest.resolve()
-    with zipfile.ZipFile(archive) as bundle:
-        for member in bundle.infolist():
-            path = Path(member.filename)
-            if path.is_absolute() or ".." in path.parts:
-                raise _VmError("the archive tried to write outside its folder", EXIT_SETUP)
-            target = (dest / path).resolve()
-            if target != root and not str(target).startswith(str(root) + os.sep):
-                raise _VmError("the archive tried to write outside its folder", EXIT_SETUP)
-        bundle.extractall(dest)
 
 
 def _named_member(names: list[str], wanted: str) -> str | None:

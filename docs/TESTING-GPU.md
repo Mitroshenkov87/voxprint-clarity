@@ -35,18 +35,23 @@ summary is always written to `summary.json`.
 
 ```json
 {"type":"step","name":"restore-clean","status":"pass","seconds":12.4}
-{"type":"summary","app":"clarity","mode":"smoke","tag":"v1.0.0-rc.1002","ok":false,"exit":1,"step":"restore-clean","error":"...","results":"...","steps":[]}
+{"type":"summary","app":"clarity","mode":"smoke","tag":"main-b01cd6c","ok":false,"exit":1,"step":"restore-clean","error":"...","results":"...","steps":[]}
 ```
 
-`status` is `pass`, `fail`, or `skip`. `tag` is `v` plus the version and build
-from `BUILD.json`. The driver always writes `summary.json`. On Windows, a
-failed GPU gate prints that summary and exits 3 before Python is installed.
+`status` is `pass`, `fail`, or `skip`. `tag` is the git tag when HEAD is
+exactly that tag, otherwise `main-` plus `git rev-parse --short=7 HEAD`
+(for example `main-b01cd6c`). It is not taken from `BUILD.json`. The `info`
+step still compares version and build with `BUILD.json`. The driver always
+writes `summary.json`. On Windows, a failed GPU gate prints that summary and
+exits 3 before Python is installed.
 
 ## Resume
 
 A finished step writes `~/.done/<tag>--<step>`. The next run skips that step.
-`gpu` always runs. Delete one marker to repeat that step. A new tag does not
-reuse an older tag's markers.
+`gpu` always runs. `install` always runs its check too: the wheel install is
+skipped when the install marker exists, and that marker is written only after
+`CUDAExecutionProvider` and `TensorrtExecutionProvider` have loaded. Delete
+one marker to repeat that step. A new tag does not reuse an older tag's markers.
 
 ## Results
 
@@ -67,8 +72,8 @@ can take several minutes, and each smoke restore is allowed 20 minutes before
 that step fails.
 
 1. `gpu` — driver 600+, compute capability 8.9+, RTX 4090 unless `--allow-other-gpu`.
-2. `install` — uv, CPython 3.14, this checkout, `torch==2.14.1` from the CUDA 13.0 index, `requirements.txt`, `requirements-bench.txt`, and `voxprint-engine` at commit `9183489`.
-3. `selftest` — `python -m clarity --selftest` with no `--no-gpu`, then `scripts/vm_provider_check.py`. `CUDAExecutionProvider` and `TensorrtExecutionProvider` both have to load.
+2. `install` — uv, CPython 3.14, this checkout, `torch==2.14.1` from the CUDA 13.0 index, `requirements.txt`, `requirements-bench.txt`, and `voxprint-engine[gpu]` at tag `engine-v1.2.1` (the GitHub archive, so git is not required). The engine install passes `--extra-index-url https://pypi.nvidia.com`. The `gpu` extra installs the ONNX Runtime GPU wheel and the TensorRT libraries. The engine's base dependencies do not include ONNX Runtime. After the engine, `installer/pin_runtime.py` installs `torch==2.14.1` from `requirements-gpu.txt` plus spandrel. If the CPU `onnxruntime` distribution is present, the pin uninstalls it and fails when CUDA or TensorRT providers are still missing. The child process checks the providers before the done marker is written. The step's seconds include that install, not only the re-exec check. The done-marker key is the git tag, or `main-` plus the short sha. It is not `BUILD.json`.
+3. `selftest` — `python -m clarity --selftest` with no `--no-gpu`. A missing torch or spandrel fails this step. Then `scripts/vm_provider_check.py`. `CUDAExecutionProvider` and `TensorrtExecutionProvider` both have to load.
 4. `info` — `python -m clarity info --json` matches `BUILD.json`.
 5. `clip` — 15 seconds of the pinned Elephants Dream file, stream-copied.
 6. `restore-clean` — Clean (DRUNet) with 2x off. Progress must name `building_engine` or `loading_cached_engine`.
@@ -105,10 +110,10 @@ ffmpeg is the BtbN LGPL build (`ffmpeg-master-latest-win64-lgpl.zip` on
 Windows, `ffmpeg-master-latest-linux64-lgpl.tar.xz` on Linux). A build whose
 configuration contains `--enable-gpl`, `--enable-libx264`, or
 `--enable-libx265` is rejected. `--disable-libx264` is the LGPL build and is
-kept. `av1_nvenc` must be present. `git` has to be on `PATH`; a Windows VM
-without it gets MinGit. The engine line is
+kept. `av1_nvenc` must be present. The engine archive does not need git.
+The engine line is
 
-`voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489`
+`voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz`
 
 ## `scripts/test-gpu.ps1`
 
@@ -116,7 +121,7 @@ This remains the one-archive Windows run: install, `python -m clarity.bench`,
 one Clean restore of the first `-SampleFrames` frames (default 48), and
 `gpu-results\clarity-gpu-test.tar.gz`. It uses the same helpers as
 `scripts/vm_test.ps1` (`scripts/gpu-common.ps1`): the engine URL, the LGPL
-check, uv, MinGit, and the GPU gate. Its own failures still exit 1.
+check, uv, and the GPU gate. Its own failures still exit 1.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\test-gpu.ps1
@@ -124,4 +129,4 @@ powershell -ExecutionPolicy Bypass -File .\scripts\test-gpu.ps1
 
 Pass `-AllowOtherOs` when the image caption is not exactly Windows Server 2025,
 and `-AllowOtherGpu` when the card is another RTX 40 series GPU.
-A second run reuses uv, the virtualenv, ffmpeg, git, and the clip cache.
+A second run reuses uv, the virtualenv, ffmpeg, and the clip cache.

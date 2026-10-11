@@ -1,10 +1,10 @@
 #!/bin/sh
-# Install Clarity by calling the engine's shared runtime.
-# Python 3.14, the CUDA 13 wheels, and the engine's default model come from
-# voxprint_engine.suite_runtime.ensure_runtime (holder "clarity").
-# The engine pin is commit 9183489 (package 1.2.0, API 1).
-# TODO: switch the engine pin to tag engine-v1.2.0 when it is published.
-# It installs ONNX Runtime GPU and TensorRT.
+# Install Clarity into the shared suite folder.
+# Python 3.14 comes from uv. uv is downloaded when it is not already on PATH.
+# The engine pin is tag engine-v1.2.1 as a GitHub archive, with the gpu extra.
+# pyproject.toml is at the repository root, so the URL has no subdirectory.
+# tensorrt-cu13-libs is installed from the NVIDIA package index.
+# Clarity does not download the engine's default upscale weight.
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
@@ -26,9 +26,55 @@ else
   esac
 fi
 
-engine="voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489"
-if ! command -v python3.14 >/dev/null 2>&1; then
-  echo "Python 3.14 was not found. Install the Enlarge bundle, which carries that runtime." >&2
+engine="voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz"
+
+uv_bin=$(command -v uv || true)
+uv_dir=""
+if [ -z "$uv_bin" ]; then
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "curl is required to download uv." >&2
+    exit 1
+  fi
+  if ! command -v tar >/dev/null 2>&1; then
+    echo "tar is required to unpack uv." >&2
+    exit 1
+  fi
+  case $(uname -m) in
+    x86_64) uv_arch=x86_64-unknown-linux-gnu ;;
+    aarch64|arm64) uv_arch=aarch64-unknown-linux-gnu ;;
+    *)
+      echo "uv has no Linux build for $(uname -m)." >&2
+      exit 1
+      ;;
+  esac
+  uv_dir=$(mktemp -d)
+  curl -fsSL -o "$uv_dir/uv.tar.gz" "https://github.com/astral-sh/uv/releases/latest/download/uv-${uv_arch}.tar.gz"
+  tar -xzf "$uv_dir/uv.tar.gz" -C "$uv_dir"
+  for candidate in "$uv_dir"/*/uv "$uv_dir"/uv; do
+    if [ -f "$candidate" ]; then
+      uv_bin=$candidate
+      break
+    fi
+  done
+  if [ -z "$uv_bin" ]; then
+    echo "uv was not in the downloaded archive." >&2
+    rm -rf "$uv_dir"
+    exit 1
+  fi
+  chmod +x "$uv_bin"
+fi
+
+set +e
+"$uv_bin" python install 3.14
+install_status=$?
+python=$("$uv_bin" python find 3.14)
+find_status=$?
+set -e
+if [ -n "$uv_dir" ]; then
+  rm -rf "$uv_dir"
+fi
+if [ "$install_status" -ne 0 ] || [ "$find_status" -ne 0 ] || [ -z "$python" ] || [ ! -x "$python" ]; then
+  echo "Python 3.14 was not found after uv python install." >&2
   exit 1
 fi
 
@@ -36,10 +82,26 @@ shared=$suite_home/shared
 venv=$shared/venv
 mkdir -p "$shared"
 if [ ! -x "$venv/bin/python" ]; then
-  python3.14 -m venv "$venv"
+  "$python" -m venv "$venv"
+fi
+if ! "$venv/bin/python" -c "import pip"; then
+  "$venv/bin/python" -m ensurepip --upgrade
 fi
 "$venv/bin/python" -m pip install -r "$app/requirements.txt"
-"$venv/bin/python" -m pip install "$engine"
+"$venv/bin/python" -m pip install --extra-index-url "https://pypi.nvidia.com" "$engine"
 "$venv/bin/python" -m pip install "Pillow==12.3.0"
 VOXPRINT_HOME=$suite_home PYTHONPATH="$app${PYTHONPATH:+:$PYTHONPATH}" "$venv/bin/python" -m clarity --install-suite
+if [ -f "$app/installer/pin_runtime.py" ]; then
+  pin=$app/installer/pin_runtime.py
+  lock=$app/installer/runtime_lock.json
+else
+  pin=$app/pin_runtime.py
+  lock=$app/runtime_lock.json
+fi
+reqs=$app/requirements-gpu.txt
+if [ ! -f "$pin" ] || [ ! -f "$lock" ] || [ ! -f "$reqs" ]; then
+  echo "pin_runtime.py, the runtime lock, or requirements-gpu.txt is missing" >&2
+  exit 1
+fi
+"$venv/bin/python" "$pin" --python "$venv/bin/python" --lock "$lock" --requirements "$reqs"
 "$venv/bin/python" -m pip install "Pillow==12.3.0"

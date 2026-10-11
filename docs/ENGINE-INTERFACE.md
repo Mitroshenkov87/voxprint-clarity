@@ -1,28 +1,39 @@
 # Engine interface
 
 Clarity uses the shared package `voxprint_engine` (distribution name
-`voxprint-engine`) from Voxprint AI Enlarge.
+`voxprint-engine`).
 
 | | |
 |---|---|
-| Commit | `9183489` (package 1.2.0, API 1). TODO: tag `engine-v1.2.0` when it is published. |
-| Requirement | `voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489` |
-| CI install | the same `git+https` requirement. Enlarge is public, so there is no deploy key. |
+| Tag | `engine-v1.2.1` |
+| Requirement | `voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz` |
+| Layout | `pyproject.toml` is at the repository root, so the archive URL has no `#subdirectory` fragment. pip does not need git. |
+| CI install | the same archive URL, with `--extra-index-url https://pypi.nvidia.com`. The repository is public, so there is no deploy key. |
 | Import package | `voxprint_engine` |
 | Video names | `voxprint_engine.api` |
 
-The video API is in that commit. Clarity does not vendor a copy of the engine.
+The video API is in that tag. Clarity does not vendor a copy of the engine.
 
 `iter_tile_frames` yields one restored frame. The accumulator stays one frame.
 Clarity still limits the source window with `host_batch_count` (512 MiB for the
 three full-resolution float32 buffers). A 720p frame at 4x is restored alone.
 Stacking the yields would allocate the chunk again.
 
-`install_gpu_wheels` pins `onnxruntime-gpu==1.31.0` and
-`tensorrt-cu13-libs==10.14.1.48` and removes the CPU `onnxruntime` wheel.
-Clarity's installers leave that pin to the engine. The engine selftest asserts
-`CUDAExecutionProvider` and `TensorrtExecutionProvider`. Clarity's `--selftest`
-checks the window, the import, and the default plan.
+The `gpu` extra pins `onnxruntime-gpu==1.31.0` and
+`tensorrt-cu13-libs==10.14.1.48`. The TensorRT libraries are on the NVIDIA
+package index, so the install passes `--extra-index-url https://pypi.nvidia.com`.
+The engine's base dependencies do not include ONNX Runtime. A CPU
+`onnxruntime` distribution shadows the GPU wheel, and the engine selftest
+fails when that distribution is present. Clarity's `pin_runtime.py` uninstalls
+it only when it is installed, then fails if CUDA or TensorRT providers are
+still missing. Torch and spandrel come from `requirements-gpu.txt` on every
+install, including a venv that already existed.
+The engine export uses a static batch of 1. Height and width are the dynamic
+axes. `run_onnx_batch` runs a larger tile batch as slices of that declared
+size and concatenates the rows. A GPU `--selftest` refuses a venv that cannot
+import torch and spandrel. `--selftest --no-gpu` does not. The CUDA and
+TensorRT provider check stays in the engine selftest and in
+`scripts/vm_provider_check.py`.
 
 ## What Clarity calls
 

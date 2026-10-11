@@ -4,6 +4,11 @@
   "cuda": "cu130",
   "pillow": "12.3.0",
   "index": "https://download.pytorch.org/whl/cu130",
+  "engine": "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz",
+  "onnxruntime-gpu": "1.31.0",
+  "tensorrt-cu13-libs": "10.14.1.48",
+  "tensorrt-cu13": "10.14.1.48",
+  "nvidia_index": "https://pypi.nvidia.com",
   "driver_major_min": 600,
   "compute_capability_min": "8.9"
 }

@@ -18,14 +18,26 @@ runs `installer/install-runtime.ps1`, which:
 1. Reads `installer/runtime_lock.json` (Pillow 12.3.0).
 2. Creates a venv under `%LOCALAPPDATA%\Voxprint\shared\venv`
    (`%VOXPRINT_HOME%\shared\venv` when `VOXPRINT_HOME` is set). An existing
-   venv is reused.
-3. Installs `requirements.txt` and the engine at commit `9183489`
-   (`voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489`).
-   The pin moves to tag `engine-v1.2.0` when that tag is published.
-4. Calls `ensure_runtime("clarity")`. The engine installs Python 3.14, the
-   CUDA 13 wheels, `onnxruntime-gpu==1.31.0`, TensorRT 10.14.1.48, and its
-   default model into the shared folder. It removes the CPU `onnxruntime` wheel.
-5. Installs `Pillow==$pillow` from the lock after that step.
+   venv is reused. Reuse still installs Clarity's torch and spandrel into
+   that venv, and it installs the engine extra again.
+3. Installs `requirements.txt` when the venv is new, and the engine at tag
+   `engine-v1.2.1`
+   (`voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz`)
+   for a new venv and a reused one. The archive has no subdirectory, and the
+   install does not need git. The `gpu` extra is installed with
+   `--extra-index-url https://pypi.nvidia.com`. The engine's base dependencies
+   do not include ONNX Runtime. The GPU pins are that extra.
+4. Calls the engine runtime install for holder `clarity` and skips the
+   engine's default upscale weight. This step runs before `{app}` exists, so
+   it does not import the Clarity package. It drops Clarity's holder on that
+   component. `--install-suite`, after the files are copied, repeats the skip
+   and fetches the catalogue weights Clarity uses.
+5. Runs `installer/pin_runtime.py` with the venv interpreter, including when
+   the venv already existed. That installs `torch==2.14.1` from
+   `requirements-gpu.txt` and `spandrel`. If the CPU `onnxruntime`
+   distribution is present, the pin uninstalls it and fails when CUDA or
+   TensorRT providers are still missing. `Pillow==$pillow` from the lock is
+   installed after that.
 6. Creates `{app}` if needed and junctions the venv to `{app}\runtime`. The
    link is checked: a failed `mklink` stops the install, and a `runtime` path
    that is not a junction is refused.
@@ -50,9 +62,10 @@ VoxprintClarity-Setup.exe /VERYSILENT /RUNTIME=skip
 ```
 
 A real install omits `/RUNTIME=skip`. After the runtime step the setup runs
-`python main.py --install-suite`, which calls `ensure_runtime("clarity")`
+`python main.py --install-suite`, which calls `ensure_shared_runtime`
 again, downloads the LGPL ffmpeg build when one is missing, and fetches
-Clarity's Clean and Strong weights through the engine registry. It then runs
+every catalogue weight Clarity uses. It does not download the engine's
+default upscale weight. It then runs
 `python main.py --register-models-user`. Uninstall runs
 `--unregister-models-user`, which calls `release_runtime("clarity")` and
 unregisters the models user.
@@ -78,11 +91,19 @@ appimagetool can be downloaded. The package includes
 `usr/bin/voxprint-clarity`, and `usr/bin/voxprint-clarity-install`.
 
 Run `voxprint-clarity-install` once after extracting the package, and once
-for an AppImage before the first restore. The script needs Python 3.14,
-installs the engine at commit `9183489` and Pillow 12.3.0, and runs
-`--install-suite`. That calls `ensure_runtime("clarity")`, which installs the
-ONNX Runtime GPU and TensorRT pins, repairs ffmpeg, and fetches Clarity's
-Clean and Strong weights. A second run reuses the venv.
+for an AppImage before the first restore. When Python 3.14 or uv is missing,
+the script downloads uv and runs `uv python install 3.14`. It installs the
+engine at tag `engine-v1.2.1`
+(`voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz`)
+with `--extra-index-url https://pypi.nvidia.com`, and Pillow 12.3.0, and runs
+`--install-suite`. That calls `ensure_shared_runtime`, which skips the
+engine's default upscale weight, repairs ffmpeg, and fetches every catalogue
+weight Clarity uses. It then runs `pin_runtime.py`, so an existing venv still
+receives `torch==2.14.1` and spandrel. If the CPU `onnxruntime` distribution
+is present, the pin uninstalls it and fails when CUDA or TensorRT providers
+are still missing. A second run reuses the venv, installs the engine again,
+and pins torch again.
+
 The launcher and `AppRun` prepend `shared/ffmpeg` to `PATH`.
 
 After extracting onto a prefix, update the MIME and desktop databases.
@@ -114,8 +135,9 @@ QT_QPA_PLATFORM=offscreen python -m clarity --selftest --no-gpu
 `--no-gpu` is the selftest CI and the release workflow both run. It checks
 the window, the engine import, and the restore plan. For that process the
 engine skips the suite download. `assess_launch` still refuses
-`VOXPRINT_CI_LANCZOS` for a restore. The CUDA and TensorRT provider check
-belongs to the engine selftest. Clarity does not repeat it.
+`VOXPRINT_CI_LANCZOS` for a restore. A GPU selftest also refuses a venv that
+cannot import torch and spandrel. `--no-gpu` does not. The CUDA and TensorRT
+provider check belongs to the engine selftest. Clarity does not repeat it.
 
 CI is GitHub Actions on `ubuntu-latest` and `windows-latest` (lint and unit
 tests, with the public engine installed), plus an installer job and an

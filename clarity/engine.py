@@ -15,6 +15,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
+import numpy as np
+
 from clarity.errors import Cancelled, ClarityError
 from clarity.i18n import tr
 from clarity.progress import progress_stage
@@ -24,13 +26,22 @@ try:
 except ImportError:
     torch = None
 
+try:
+    import spandrel
+except ImportError:
+    spandrel = None
+
 OWNER = "clarity"
 NVIDIA_DRIVER_URL = "https://www.nvidia.com/Download/index.aspx"
-# TODO: switch to tag engine-v1.2.0 when it is published.
-# Commit 9183489 is package 1.2.0, API 1, and accepts in_channels 1-16.
-ENGINE_COMMIT = "9183489"
+# Tag engine-v1.2.1. pyproject.toml is at the repository root, so this
+# archive URL has no subdirectory. The gpu extra needs the NVIDIA package index.
+ENGINE_TAG = "engine-v1.2.1"
+ENGINE_REQUIREMENT = (
+    "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge"
+    "/archive/refs/tags/engine-v1.2.1.tar.gz"
+)
+_ENGINE_MISSING = "Voxprint inference engine missing, run repair."
 _DRIVER_VERSION = re.compile(r"driver ([0-9][0-9.]*)")
-ENGINE_REQUIREMENT = f"voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@{ENGINE_COMMIT}"
 _GPU_BUSY = "the GPU is busy"
 _GPU_CANCELLED = "cancelled while waiting for the GPU"
 
@@ -92,10 +103,7 @@ def engine_ready() -> bool:
 
 def _require() -> Any:
     if _engine_api is None:
-        raise EngineUnavailable(
-            "Clarity needs the shared voxprint-engine package from Voxprint AI Enlarge. "
-            f"Install {ENGINE_REQUIREMENT}."
-        )
+        raise EngineUnavailable(_ENGINE_MISSING)
     return _engine_api
 
 
@@ -159,6 +167,21 @@ def annotate_driver_message(message: str) -> str:
     return f"{message} Download a current driver from {NVIDIA_DRIVER_URL}"
 
 
+def gpu_stack_error() -> str:
+    """Return why a GPU restore cannot start, or an empty string when torch and spandrel import.
+
+    The shared venv can exist without Clarity's CUDA torch. A restore then
+    fails at the first Clean or Strong frame. ``--selftest`` without
+    ``--no-gpu`` reports that here. ``--selftest --no-gpu`` does not call this.
+
+    Returns:
+        An empty string when both packages import.
+    """
+    if torch is None or spandrel is None:
+        return "PyTorch and spandrel are required. Install requirements-gpu.txt."
+    return ""
+
+
 def assess_launch() -> Gate:
     """RTX 40 series (compute capability 8.9) and a 600-series driver."""
     if os.environ.get("VOXPRINT_CI_LANCZOS", "").strip() == "1":
@@ -182,15 +205,151 @@ def shared_directory() -> Path:
     """
     paths = _load_module("voxprint_engine.paths")
     if paths is None:
-        raise EngineUnavailable(f"Install {ENGINE_REQUIREMENT}.")
+        raise EngineUnavailable(_ENGINE_MISSING)
     return Path(paths.shared_dir())
+
+
+def _public_text(text: str) -> str:
+    """Stand-alone wording for an engine message that names another app."""
+    if "Enlarge" not in text:
+        return text
+    if "3.14" in text:
+        return "Python 3.14 was not found. Clarity installs Python 3.14 with uv during setup."
+    return _ENGINE_MISSING
+
+
+def _guard_progress(progress: Callable[[str], None] | None) -> Callable[[str], None] | None:
+    if progress is None:
+        return None
+
+    def emit(message: str) -> None:
+        progress(_public_text(message))
+
+    return emit
+
+
+def _model_already_satisfied(_root: Path) -> bool:
+    """The default upscale weight is not one of Clarity's models."""
+    return True
+
+
+def _leave_model(_root: Path, _progress: Callable[[str], None]) -> None:
+    """Do not download the engine's default upscale weight."""
+    return
+
+
+def _drop_default_model_hold(module: Any) -> None:
+    """Remove Clarity from the default-model component.
+
+    Other holders stay, and their files stay. When Clarity is the only holder
+    the component is removed and the weight is deleted if no other program is
+    registered in the shared models folder. Clarity stays in ``.users.json``.
+    """
+    read_manifest = getattr(module, "read_manifest", None)
+    write_manifest = getattr(module, "_write_manifest", None)
+    shared = getattr(module, "shared_dir", None)
+    if not callable(read_manifest) or not callable(write_manifest) or not callable(shared):
+        return
+    try:
+        manifest = read_manifest()
+        root = Path(shared())
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return
+    if not isinstance(manifest, dict):
+        return
+    components = manifest.get("components")
+    if not isinstance(components, dict):
+        return
+    entry = components.get("model")
+    if not isinstance(entry, dict):
+        return
+    holders = entry.get("holders")
+    if not isinstance(holders, list) or OWNER not in holders:
+        return
+    remaining = [name for name in holders if name != OWNER]
+    if remaining:
+        entry["holders"] = remaining
+    else:
+        components.pop("model", None)
+    try:
+        write_manifest(manifest, root)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return
+    if not remaining:
+        _delete_default_weight()
+
+
+def _delete_default_weight() -> None:
+    store = _load_module("voxprint_engine.store")
+    registry = _load_module("voxprint_engine.registry")
+    if store is None or registry is None:
+        return
+    model_id = getattr(registry, "DEFAULT_MODEL_ID", "")
+    load_builtin = getattr(registry, "load_builtin", None)
+    delete_weight = getattr(store, "delete_weight", None)
+    error = getattr(store, "StoreError", RuntimeError)
+    if not isinstance(model_id, str) or not model_id or not callable(load_builtin) or not callable(delete_weight):
+        return
+    try:
+        catalog = load_builtin(release=True)
+        model = catalog.get(model_id)
+    except (OSError, RuntimeError, TypeError, ValueError, AttributeError):
+        return
+    if model is None:
+        return
+    try:
+        delete_weight(model, user=OWNER)
+    except error:
+        return
+    onnx_export = _load_module("voxprint_engine.onnx_export")
+    cached = getattr(onnx_export, "cached_onnx", None) if onnx_export is not None else None
+    if not callable(cached):
+        return
+    try:
+        path = cached(model)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return
+    if path is not None:
+        Path(path).unlink(missing_ok=True)
+
+
+def _present_report(report: Any) -> Any:
+    """Drop Clarity's default-model hold from the report and rewrite other-app text."""
+    components = list(getattr(report, "components", ()) or ())
+    rewritten: list[Any] = []
+    changed = False
+    for item in components:
+        detail = _public_text(str(getattr(item, "detail", "") or ""))
+        holders = tuple(getattr(item, "holders", ()) or ())
+        original_detail = str(getattr(item, "detail", "") or "")
+        original_holders = tuple(getattr(item, "holders", ()) or ())
+        if getattr(item, "id", "") == "model":
+            holders = tuple(name for name in holders if name != OWNER)
+            if not holders:
+                changed = True
+                continue
+        if detail != original_detail or holders != original_holders:
+            changed = True
+            try:
+                item = type(item)(item.id, item.version, item.state, holders, detail)
+            except (TypeError, AttributeError):
+                return report
+        rewritten.append(item)
+    if not changed:
+        return report
+    try:
+        return type(report)(bool(report.ok), bool(getattr(report, "skipped", False)), tuple(rewritten))
+    except TypeError:
+        return report
 
 
 def ensure_shared_runtime(progress: Callable[[str], None] | None = None) -> Any:
     """Hold Clarity on the shared runtime and repair anything the engine finds missing.
 
-    The engine installs Python 3.14, the CUDA 13 wheels, and its default model.
-    The holder id is ``clarity``. API stays 1.
+    The engine installs Python 3.14 and the CUDA 13 wheels. Clarity does not
+    download the engine's default upscale weight and does not keep a holder on
+    that component. Catalogue weights are fetched separately, under ``clarity``
+    in the shared models folder. The holder id is ``clarity``. API stays 1.
 
     Args:
         progress: Receives one status line per check or install step.
@@ -204,11 +363,20 @@ def ensure_shared_runtime(progress: Callable[[str], None] | None = None) -> Any:
     """
     module = _load_module("voxprint_engine.suite_runtime")
     if module is None:
-        raise EngineUnavailable(f"Install {ENGINE_REQUIREMENT}.")
+        raise EngineUnavailable(_ENGINE_MISSING)
     try:
-        return module.ensure_runtime(OWNER, progress=progress)
+        report = module.ensure_runtime(
+            OWNER,
+            progress=_guard_progress(progress),
+            probes={"model": _model_already_satisfied},
+            installers={"model": _leave_model},
+        )
     except module.SuiteInstallError as exc:
-        raise ClarityError(str(exc)) from exc
+        raise ClarityError(_public_text(str(exc))) from exc
+    if not bool(getattr(report, "skipped", False)):
+        _drop_default_model_hold(module)
+        report = _present_report(report)
+    return report
 
 
 def release_shared_runtime(progress: Callable[[str], None] | None = None) -> Any:
@@ -228,11 +396,11 @@ def release_shared_runtime(progress: Callable[[str], None] | None = None) -> Any
     """
     module = _load_module("voxprint_engine.suite_runtime")
     if module is None:
-        raise EngineUnavailable(f"Install {ENGINE_REQUIREMENT}.")
+        raise EngineUnavailable(_ENGINE_MISSING)
     try:
-        return module.release_runtime(OWNER, progress=progress)
+        return module.release_runtime(OWNER, progress=_guard_progress(progress))
     except module.SuiteInstallError as exc:
-        raise ClarityError(str(exc)) from exc
+        raise ClarityError(_public_text(str(exc))) from exc
 
 
 def hold_gpu(
@@ -393,7 +561,7 @@ def open_restore_session(onnx_path: Path, on_progress: Callable[[float, str], No
     session_mod = _load_module("voxprint_engine.session")
     providers_mod = _load_module("voxprint_engine.providers")
     if session_mod is None or providers_mod is None:
-        raise EngineUnavailable(f"Install {ENGINE_REQUIREMENT}.")
+        raise EngineUnavailable(_ENGINE_MISSING)
     installed = session_mod.available_providers()
     labels = ("clarity", "driver", "trt")
     attempts = [providers_mod.choices_for(installed, "auto", gpu=labels[0], driver=labels[1], trt=labels[2])]
@@ -418,8 +586,41 @@ def open_restore_session(onnx_path: Path, on_progress: Callable[[float, str], No
     raise ClarityError("; ".join(errors) or "the ONNX session did not load")
 
 
+def graph_batch_limit(session: Any) -> int | None:
+    """Return the session's fixed batch size, or None when that axis is dynamic.
+
+    The engine export marks height and width dynamic and traces a batch of 1.
+    A string or missing dimension means the graph accepts the batch it is given.
+
+    Args:
+        session: An ONNX Runtime session, or a test double with ``get_inputs``.
+
+    Returns:
+        A positive integer, or None.
+    """
+    getter = getattr(session, "get_inputs", None)
+    if not callable(getter):
+        return None
+    try:
+        specs = getter()
+    except (TypeError, RuntimeError, OSError, ValueError):
+        return None
+    if not specs:
+        return None
+    shape = getattr(specs[0], "shape", None)
+    if not shape:
+        return None
+    dim = shape[0]
+    if isinstance(dim, bool) or not isinstance(dim, int) or dim < 1:
+        return None
+    return int(dim)
+
+
 def run_onnx_batch(session: Any, nchw: Any) -> Any:
     """Run one NCHW batch on an ONNX Runtime session from the engine.
+
+    A tile batch larger than the graph's fixed batch is run in slices and
+    concatenated. A dynamic batch axis is one call.
 
     Args:
         session: A session from :func:`open_restore_session`.
@@ -430,8 +631,17 @@ def run_onnx_batch(session: Any, nchw: Any) -> Any:
     """
     video = _load_module("voxprint_engine.video")
     if video is None:
-        raise EngineUnavailable(f"Install {ENGINE_REQUIREMENT}.")
-    return video.run_batch(session, nchw)
+        raise EngineUnavailable(_ENGINE_MISSING)
+    array = np.asarray(nchw)
+    limit = graph_batch_limit(session)
+    count = int(array.shape[0]) if array.ndim == 4 else 0
+    if limit is None or count <= limit:
+        return video.run_batch(session, nchw)
+    parts = [
+        np.asarray(video.run_batch(session, array[start : start + limit]), dtype=np.float32)
+        for start in range(0, count, limit)
+    ]
+    return np.concatenate(parts, axis=0)
 
 
 def thermal_decide(elapsed_s: float, median_c: float | None, throttling_s: float, paused: bool) -> Any:

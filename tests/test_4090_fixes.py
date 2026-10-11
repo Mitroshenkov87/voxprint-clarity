@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from clarity.bench import export_example_shape, export_with_engine, tensorrt_providers
+from clarity.engine import run_onnx_batch
 from clarity.cli import main
 from clarity.errors import ClarityError
 from clarity.models import CATALOG, clean_models, strong_model
@@ -318,6 +319,10 @@ def test_onnx_and_pillow_stay_pinned() -> None:
     assert "onnxruntime-gpu==1.31.0" in bench
     lock = json.loads((_ROOT / "installer" / "runtime_lock.json").read_text(encoding="utf-8"))
     assert lock["pillow"] == "12.3.0"
+    assert lock["onnxruntime-gpu"] == "1.31.0"
+    assert lock["tensorrt-cu13-libs"] == "10.14.1.48"
+    assert lock["tensorrt-cu13"] == "10.14.1.48"
+    assert str(lock["nvidia_index"]).startswith("https://")
     assert "onnxruntime_gpu" not in lock
     assert "tensorrt_cu13" not in lock
     assert "torch.onnx" not in bench_source
@@ -327,6 +332,47 @@ def test_onnx_and_pillow_stay_pinned() -> None:
 def test_tensorrt_fp32_leaves_fp16_off(tmp_path: Path) -> None:
     _name, options = tensorrt_providers(tmp_path, precision="fp32")[0]
     assert options["trt_fp16_enable"] is False
+
+
+def test_static_batch_graph_is_run_in_slices(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[int, ...]] = []
+
+    class _Spec:
+        shape = [1, 4, "height", "width"]
+
+    class _Session:
+        def get_inputs(self) -> list[_Spec]:
+            return [_Spec()]
+
+    def run_batch(_session: object, batch: np.ndarray) -> np.ndarray:
+        calls.append(tuple(int(part) for part in batch.shape))
+        assert int(batch.shape[0]) == 1
+        return batch[:, :3]
+
+    monkeypatch.setattr("clarity.engine._load_module", lambda _name: type("Video", (), {"run_batch": staticmethod(run_batch)})())
+    out = run_onnx_batch(_Session(), np.zeros((2, 4, 8, 8), np.float32))
+    assert out.shape == (2, 3, 8, 8)
+    assert calls == [(1, 4, 8, 8), (1, 4, 8, 8)]
+
+
+def test_dynamic_batch_graph_is_one_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[int, ...]] = []
+
+    class _Spec:
+        shape = ["batch", 4, "height", "width"]
+
+    class _Session:
+        def get_inputs(self) -> list[_Spec]:
+            return [_Spec()]
+
+    def run_batch(_session: object, batch: np.ndarray) -> np.ndarray:
+        calls.append(tuple(int(part) for part in batch.shape))
+        return batch[:, :3]
+
+    monkeypatch.setattr("clarity.engine._load_module", lambda _name: type("Video", (), {"run_batch": staticmethod(run_batch)})())
+    out = run_onnx_batch(_Session(), np.zeros((2, 4, 8, 8), np.float32))
+    assert out.shape == (2, 3, 8, 8)
+    assert calls == [(2, 4, 8, 8)]
 
 
 def test_lgpl_check_ignores_disabled_gpl_libraries() -> None:
@@ -339,7 +385,9 @@ def test_lgpl_check_ignores_disabled_gpl_libraries() -> None:
     assert "python -c $providerCheck" not in script
     assert "provider_check.py" not in script
     assert "provider_check.py" not in shared
-    assert "9183489" in shared
+    assert "engine-v1.2.1" in shared
+    assert "MinGit" not in shared
+    assert "Get-ClarityGit" not in script
     assert "--no-deps" not in script
     assert "--no-deps" not in shared
 
@@ -372,8 +420,25 @@ def test_runtime_junction_is_created_after_the_files_exist() -> None:
     assert "--no-deps" not in windows
     assert "onnxruntime-gpu" not in linux
     assert "--no-deps" not in linux
-    assert "9183489" in windows
-    assert "9183489" in linux
+    assert "$PinScript" in windows
+    pin_call = "& $venvPython $PinScript --python $venvPython"
+    assert windows.index("ensuring the shared runtime") < windows.index(pin_call)
+    assert windows.index("reusing $venvRoot") < windows.index(pin_call)
+    assert "pin_runtime.py" in linux
+    assert "requirements-gpu.txt" in linux
+    assert "engine-v1.2.1" in windows
+    assert "engine-v1.2.1" in linux
+    assert "MinGit" not in windows
+    assert "python install 3.14" in linux
+    assert "ExtractTemporaryFile('pin_runtime.py')" in iss
+    assert "ExtractTemporaryFile('requirements-gpu.txt')" in iss
+    assert "-PinScript" in iss
+    assert "-GpuRequirements" in iss
+    package = (_ROOT / "installer" / "linux" / "build-package.sh").read_text(encoding="utf-8")
+    shared = (_ROOT / "scripts" / "gpu-common.ps1").read_text(encoding="utf-8")
+    assert "pin_runtime.py" in package
+    assert "pin_runtime.py" in shared
+    assert "--no-deps" not in shared
     link_lines = [line for line in iss.splitlines() if "LinkOnly" in line]
     assert link_lines
     assert all("RuntimeInstalled" not in line for line in link_lines)

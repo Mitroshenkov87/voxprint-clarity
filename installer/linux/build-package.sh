@@ -19,6 +19,7 @@ chmod 755 "$stage/usr/bin/voxprint-clarity-uninstall"
 cp "$root/installer/linux/install-shared.sh" "$stage/usr/bin/voxprint-clarity-install"
 chmod 755 "$stage/usr/bin/voxprint-clarity-install"
 cp "$root/installer/runtime_lock.json" "$stage/usr/bin/runtime_lock.json"
+cp "$root/installer/pin_runtime.py" "$stage/usr/bin/pin_runtime.py"
 cat > "$stage/usr/bin/voxprint-clarity" << 'EOF'
 #!/bin/sh
 here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
