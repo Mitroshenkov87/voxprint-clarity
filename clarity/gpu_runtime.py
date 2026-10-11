@@ -186,9 +186,15 @@ def require_tensorrt_and_cuda() -> None:
         GpuRuntimeError: Either provider failed to stay active.
     """
     prepare_gpu_runtime()
+    # The pinned tag's session module has no session_providers. getattr keeps
+    # mypy quiet when that name is absent and the package is installed.
     try:
-        from voxprint_engine.session import session_providers
+        import voxprint_engine.session as session_mod
     except ImportError:
+        _require_with_identity_model()
+        return
+    session_providers = getattr(session_mod, "session_providers", None)
+    if not callable(session_providers):
         _require_with_identity_model()
         return
     missing: list[str] = []
@@ -215,10 +221,17 @@ def main() -> int:
 
 
 def _engine_prepare() -> Callable[[], object]:
-    """Return the engine helper. ImportError when this pin does not have it."""
-    from voxprint_engine.trt_libs import prepare_native_runtime
+    """Return the engine helper. ImportError when this pin does not have it.
 
-    return prepare_native_runtime
+    ``getattr`` is required: engine-v1.4.0 installs, and mypy then sees that
+    ``prepare_native_runtime`` is not on that tag.
+    """
+    import voxprint_engine.trt_libs as trt_libs
+
+    prepare = getattr(trt_libs, "prepare_native_runtime", None)
+    if not callable(prepare):
+        raise ImportError("prepare_native_runtime")
+    return prepare
 
 
 def _add_dir(found: list[Path], seen: set[Path], folder: Path) -> None:
