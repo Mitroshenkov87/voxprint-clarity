@@ -35,6 +35,9 @@ python -m clarity selftest --json
 
 With `--json`, a failure still prints one result line on stdout:
 `{"type":"result","ok":false,"error":"..."}`. The same message is on stderr.
+The line is written by `voxprint_common.cli_protocol`, so it also carries
+`code` (the exit code from the table above) and `message` (the same text as
+`error` on a failure). The exit codes themselves are unchanged.
 Progress, when a live job reports it, is `{"type":"progress","fraction":0.25,"message":"12/48"}`
 on stdout. A TensorRT build or cache load adds `"stage":"building_engine"` or
 `"stage":"loading_cached_engine"`. The message says the first build can take

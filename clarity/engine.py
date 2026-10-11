@@ -17,6 +17,8 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from voxprint_common.gpu_probe import assess as assess_gpu
+
 from clarity.errors import Cancelled, ClarityError
 from clarity.i18n import tr
 from clarity.progress import progress_stage
@@ -69,7 +71,6 @@ def _load_attr(module_name: str, attr: str) -> Any:
 
 
 _engine_api = _load_module("voxprint_engine.api")
-_hardware = _load_module("voxprint_engine.hardware")
 _vram = _load_module("voxprint_engine.vram")
 _Manifest = _load_attr("voxprint_engine.registry.schema", "ModelManifest")
 _LockTimeout = _load_attr("voxprint_engine.gpu_lock", "GpuLockTimeout")
@@ -152,7 +153,7 @@ def annotate_driver_message(message: str) -> str:
     """Add the driver download page when the engine refused an old driver.
 
     Args:
-        message: Text from ``voxprint_engine.hardware.assess_gpu``.
+        message: Text from ``voxprint_common.gpu_probe.assess``.
 
     Returns:
         ``message`` unchanged, or :func:`driver_refusal` when it names an old driver.
@@ -183,15 +184,18 @@ def gpu_stack_error() -> str:
 
 
 def assess_launch() -> Gate:
-    """RTX 40 series (compute capability 8.9) and a 600-series driver."""
+    """RTX 40 series (compute capability 8.9) and a 600-series driver.
+
+    The probe is ``voxprint_common.gpu_probe.assess``. ``VOXPRINT_CI_LANCZOS``
+    is refused before that call. The engine package is still required, because
+    a launch that passes the probe then uses it.
+    """
     if os.environ.get("VOXPRINT_CI_LANCZOS", "").strip() == "1":
         return Gate(False, _LANCZOS_REFUSAL)
     _require()
-    if _hardware is None:
-        raise EngineUnavailable("voxprint_engine.hardware is not installed")
-    gate = _hardware.assess_gpu(refuse_below=(8, 9))
-    message = annotate_driver_message(str(getattr(gate, "message", "") or ""))
-    return Gate(bool(gate.ok), message, str(getattr(gate, "warning", "") or ""))
+    gate = assess_gpu("Clarity", refuse_below=(8, 9))
+    message = annotate_driver_message(gate.message)
+    return Gate(gate.ok, message, gate.warning)
 
 
 def shared_directory() -> Path:

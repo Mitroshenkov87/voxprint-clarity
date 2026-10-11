@@ -10,5 +10,7 @@
   "tensorrt-cu13": "10.14.1.48",
   "nvidia_index": "https://pypi.nvidia.com",
   "driver_major_min": 600,
-  "compute_capability_min": "8.9"
+  "compute_capability_min": "8.9",
+  "voxprint-common": "0.1.*",
+  "voxprint-common_requirement": "voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/archive/refs/tags/v0.1.0.tar.gz"
 }

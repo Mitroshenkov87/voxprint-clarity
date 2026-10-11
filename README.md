@@ -24,8 +24,9 @@ Download the pre-release recorded in `BUILD.json` (published tag
 the source of truth. A codename is a Hebrew word from the Torah or Tanakh.
 The Windows file is `VoxprintClarity-Setup.exe`.
 Check `SHA256SUMS` in that release. Setup downloads Python 3.14, the CUDA 13.0
-PyTorch wheel, the restore libraries, and the public engine. The installer is
-not code-signed.
+PyTorch wheel, the restore libraries, `voxprint-common` 0.1.* from its v0.1.0
+tag archive, and the public engine. The installer is not code-signed. The
+shared library is not a git clone.
 
 The Start menu folder is **Voxprint**. Put ffmpeg on `PATH` before the first
 restore. Linux is the experimental tarball in the same release. Details:

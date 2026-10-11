@@ -4,6 +4,7 @@
 # Runtime GPU, and TensorRT are installed for holder "clarity". Clarity does
 # not download the engine's default upscale weight.
 # The engine pin is tag engine-v1.2.1 as a GitHub archive, with the gpu extra.
+# voxprint-common 0.1.* comes from the v0.1.0 tag archive, for a new venv and a reused one.
 # pyproject.toml is at the repository root, so the URL has no subdirectory.
 # The extra's NVIDIA wheels come from the NVIDIA package index.
 # A new venv and a reused venv both install that extra. pin_runtime.py then
@@ -18,6 +19,7 @@ param(
     [string]$PinScript = "",
     [string]$Log = "",
     [string]$EngineRequirement = "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz",
+    [string]$CommonRequirement = "voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/archive/refs/tags/v0.1.0.tar.gz",
     [switch]$SkipRuntime,
     [switch]$LinkOnly
 )
@@ -98,6 +100,9 @@ if ($LASTEXITCODE -ne 0) {
     & $venvPython -m ensurepip --upgrade
     if ($LASTEXITCODE -ne 0) { throw "pip is missing from the shared venv" }
 }
+Write-Log "installing voxprint-common 0.1.*"
+& $venvPython -m pip install "$CommonRequirement"
+if ($LASTEXITCODE -ne 0) { throw "voxprint-common install failed" }
 Write-Log "installing the shared engine"
 & $venvPython -m pip install --extra-index-url "https://pypi.nvidia.com" "$EngineRequirement"
 if ($LASTEXITCODE -ne 0) { throw "engine install failed" }

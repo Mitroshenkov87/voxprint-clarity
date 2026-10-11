@@ -9,7 +9,12 @@ English in the README, docs, comments, and commits. Imperative commit subjects.
   not need git. Install that extra with
   `--extra-index-url https://pypi.nvidia.com`. The GPU pins live in the extra.
   Import the video names from `voxprint_engine.api`. Do not reimplement the
-  GPU lock, VRAM budget, thermal rule, model store, hardware query, or ONNX session.
+  GPU lock, VRAM budget, thermal rule, model store, or ONNX session.
+  The GPU probe is `voxprint_common.gpu_probe`.
+- Depend on `voxprint-common==0.1.*` (0.1.0 "Yesod", API 1) from the v0.1.0
+  tag archive, never a git clone. Hashing, BUILD.json, the licence gate, the
+  theme, the splash, the `--json` line, and the GPU probe come from that
+  package.
 - The parent GPU lock and the restore worker use the owner string `clarity`.
   A `GpuLockTimeout` from `restore_batch` is an error line: wait, tell the
   user, and retry. Do not kill the worker for that line.

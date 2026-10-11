@@ -7,8 +7,8 @@ Rule (2026-10-10): every new release codename is a Hebrew word from the Torah or
 the new codename here in the same commit as the `BUILD.json` change. Published past releases keep their names,
 including the two historical duplicates below.
 
-`BUILD.json` (`offset`, `codename`) is the single source of truth. The release title, About box, splash and
-`--version` all show `X.Y.Z RC · build N "Codename"`.
+`BUILD.json` (`offset`, `codename`) is the single source of truth. The release title, the window footer, the splash and
+`--version` all show the `voxprint_common.buildinfo` label, `X.Y.Z RC build N "Codename"`.
 
 ## Used codenames
 

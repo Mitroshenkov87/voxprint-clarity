@@ -1,12 +1,13 @@
 """Per-chunk resume. A finished chunk is renamed into place; the journal records it."""
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from voxprint_common.hashing import sha256_bytes, sha256_file
 
 
 @dataclass(frozen=True)
@@ -29,7 +30,7 @@ def settings_digest(payload: dict[str, Any]) -> str:
         Lowercase SHA-256 hex.
     """
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(raw).hexdigest()
+    return sha256_bytes(raw)
 
 
 def write_json_atomic(path: Path, payload: object) -> None:
@@ -138,14 +139,7 @@ def file_sha256(path: Path) -> str:
     Returns:
         Lowercase SHA-256 hex.
     """
-    hasher = hashlib.sha256()
-    with path.open("rb") as handle:
-        while True:
-            block = handle.read(1024 * 1024)
-            if not block:
-                break
-            hasher.update(block)
-    return hasher.hexdigest()
+    return sha256_file(path)
 
 
 def load_plan(path: Path) -> dict[str, Any] | None:

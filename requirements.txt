@@ -5,3 +5,5 @@ numpy>=2,<3
 Pillow>=12.3.0,<13
 truststore>=0.10,<1
 onnx>=1.21,<2
+# voxprint-common==0.1.* (Yesod). Tag archive so install does not need git.
+voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/archive/refs/tags/v0.1.0.tar.gz

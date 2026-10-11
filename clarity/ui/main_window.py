@@ -107,6 +107,7 @@ class MainWindow(QMainWindow):
         self.resize(880, 640)
         self.setStyleSheet(build_style())
         root = QWidget()
+        root.setObjectName("root")
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
         layout.setContentsMargins(20, 20, 20, 16)

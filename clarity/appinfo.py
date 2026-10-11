@@ -1,19 +1,23 @@
 """Version, build number, and the release codename.
 
-``BUILD.json`` is the single source of truth for ``version``, ``build``, and
-``codename``. A codename is one Hebrew word from the Torah or Tanakh, written
-in ASCII transliteration. It describes the state of that build.
+``voxprint_common.buildinfo`` reads ``BUILD.json``. A codename is one Hebrew
+word from the Torah or Tanakh, written in ASCII transliteration. It describes
+the state of that build.
 """
 from __future__ import annotations
 
 import json
 import os
+from collections.abc import Mapping
 from pathlib import Path
+
+from voxprint_common.buildinfo import BuildInfo, label, load
 
 APP_NAME = "Voxprint AI Clarity"
 USER_KEY = "clarity"
 
 _ROOT = Path(__file__).resolve().parents[1]
+_BUILD_PATH = _ROOT / "BUILD.json"
 
 
 def repo_root() -> Path:
@@ -21,56 +25,70 @@ def repo_root() -> Path:
     return _ROOT
 
 
-def _load_build() -> dict[str, object]:
-    path = _ROOT / "BUILD.json"
+def _build_env(env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Environment for ``load``, including Clarity's older build-number name.
+
+    ``VOXPRINT_BUILD`` wins. When it is unset, ``VOXPRINT_BUILD_NUMBER`` is
+    copied into that name so an existing CI variable still selects the build.
+    """
+    source = dict(os.environ if env is None else env)
+    legacy = source.get("VOXPRINT_BUILD_NUMBER", "").strip()
+    if legacy.isdigit() and not source.get("VOXPRINT_BUILD", "").strip():
+        source["VOXPRINT_BUILD"] = legacy
+    return source
+
+
+def build_info(env: Mapping[str, str] | None = None) -> BuildInfo:
+    """Return the identity parsed from this checkout's ``BUILD.json``.
+
+    Args:
+        env: Environment for the build-number override. Defaults to the
+            process environment.
+
+    Returns:
+        The shared build identity. ``app`` is ``clarity`` when the file
+        omits it.
+    """
+    return load(_BUILD_PATH, app="clarity", env=_build_env(env))
+
+
+def _raw_version() -> str:
+    """Return the ``version`` string as it is written in ``BUILD.json``."""
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(_BUILD_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise RuntimeError(f"BUILD.json could not be read: {exc}") from exc
     if not isinstance(data, dict):
         raise RuntimeError("BUILD.json must be an object")
-    return data
-
-
-def _require_str(data: dict[str, object], key: str) -> str:
-    value = data.get(key)
+    value = data.get("version")
     if not isinstance(value, str) or not value.strip():
-        raise RuntimeError(f"BUILD.json {key} must be a non-empty string")
+        raise RuntimeError("BUILD.json version must be a non-empty string")
     return value
 
 
-def _require_int(data: dict[str, object], key: str) -> int:
-    value = data.get(key)
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise RuntimeError(f"BUILD.json {key} must be an integer")
-    return value
-
-
-_BUILD = _load_build()
-APP_VERSION = _require_str(_BUILD, "version")
-APP_BUILD = _require_int(_BUILD, "build")
-CODENAME = _require_str(_BUILD, "codename")
+_FILE = load(_BUILD_PATH, app="clarity", env={})
+APP_VERSION = _raw_version()
+APP_BUILD = 0 if _FILE.build is None else _FILE.build
+CODENAME = _FILE.codename
 
 
 def app_build() -> int:
-    """GitHub run number when CI sets it, otherwise the build in ``BUILD.json``."""
-    env = os.environ.get("VOXPRINT_BUILD_NUMBER", "").strip()
-    if env.isdigit():
-        return int(env)
-    if APP_BUILD > 0:
-        return APP_BUILD
-    offset = _BUILD.get("offset", 0)
-    return int(offset) if isinstance(offset, int) and not isinstance(offset, bool) else 0
+    """Build number from ``VOXPRINT_BUILD``, otherwise the number in ``BUILD.json``.
+
+    A JSON null build with no run number is ``0`` here, so callers that print
+    an integer keep a number. ``version_label`` still says ``dev`` for that case.
+    """
+    info = build_info()
+    return 0 if info.build is None else info.build
 
 
 def version_label() -> str:
-    """Human version, for example ``1.0.0 RC · build 999 "Codename"``."""
-    pretty = APP_VERSION[:-3] + " RC" if APP_VERSION.endswith("-rc") else APP_VERSION
-    label = f"{pretty} · build {app_build()}"
-    name = CODENAME.strip()
-    if name:
-        label += f' "{name}"'
-    return label
+    """Human version from ``voxprint_common.buildinfo.label``.
+
+    Returns:
+        Text such as ``1.0.0 RC build 1002 "Codename"``.
+    """
+    return label(build_info())
 
 
 def release_title() -> str:

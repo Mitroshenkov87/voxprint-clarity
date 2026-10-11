@@ -7,7 +7,6 @@ different major. Clarity-only video fingerprints live under ``x_clarity``.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -16,6 +15,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from voxprint_common.hashing import sha256_bytes, sha256_file
 
 from clarity.appinfo import APP_NAME, APP_VERSION
 from clarity.errors import ClarityError
@@ -110,7 +111,7 @@ def _stamp() -> str:
 
 
 def _sha256(payload: bytes) -> str:
-    return hashlib.sha256(payload).hexdigest()
+    return sha256_bytes(payload)
 
 
 def fingerprint(path: Path, *, project: Path | None = None, full: bool = False) -> dict[str, Any]:
@@ -123,16 +124,7 @@ def fingerprint(path: Path, *, project: Path | None = None, full: bool = False) 
             tail = handle.read(MIB)
         else:
             tail = head
-        digest = ""
-        if full:
-            handle.seek(0)
-            hasher = hashlib.sha256()
-            while True:
-                block = handle.read(MIB)
-                if not block:
-                    break
-                hasher.update(block)
-            digest = hasher.hexdigest()
+        digest = sha256_file(path) if full else ""
     relative = path.name
     if project is not None:
         try:
@@ -235,7 +227,7 @@ def _read_json_bytes(payload: bytes, name: str) -> dict[str, Any]:
 
 
 def _file_record(payload: bytes) -> dict[str, Any]:
-    return {"sha256": hashlib.sha256(payload).hexdigest(), "size": len(payload)}
+    return {"sha256": sha256_bytes(payload), "size": len(payload)}
 
 
 def _safe_entry_name(name: str) -> None:
@@ -337,7 +329,7 @@ def _verify_files(payloads: dict[str, bytes], manifest: dict[str, Any], names: l
         if name not in names or name not in payloads:
             raise ProjectFormatError(f"{name} is listed in files but missing from the archive")
         payload = payloads[name]
-        if len(payload) != size or hashlib.sha256(payload).hexdigest() != digest:
+        if len(payload) != size or sha256_bytes(payload) != digest:
             raise ProjectFormatError(f"{name} does not match the files checksum")
         checked[name] = payload
     for required in (_SETTINGS, _RESUME):

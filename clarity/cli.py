@@ -14,8 +14,12 @@ from clarity.net import install_system_trust
 install_system_trust()
 
 from PySide6.QtWidgets import QApplication
+from voxprint_common.cli_protocol import emit
+from voxprint_common.cli_protocol import progress as protocol_progress
+from voxprint_common.cli_protocol import result as protocol_result
+from voxprint_common.ui.splash import Splash
 
-from clarity.appinfo import APP_BUILD, APP_NAME, APP_VERSION, CODENAME, version_label
+from clarity.appinfo import APP_BUILD, APP_NAME, APP_VERSION, CODENAME, build_info, version_label
 from clarity.engine import (
     EngineUnavailable,
     assess_launch,
@@ -39,6 +43,7 @@ from clarity.project import ProjectFormatError, load_project, work_dir_for
 from clarity.ui.main_window import MainWindow
 from clarity.ui.platform import gui_qt_platform, require_windows_platform_plugin, selftest_qt_platform
 from clarity.ui.suite_dialog import RepairProgress
+from clarity.ui.theme import IDENTITY, splash_art
 
 CommandName = Literal["restore", "project", "info", "version", "models", "selftest"]
 ProjectAction = Literal["open", "resume"]
@@ -84,7 +89,7 @@ class Console:
             The integer value of ``code``.
         """
         if self.json_mode:
-            print(json.dumps({"type": "result", "ok": False, "error": message}), flush=True)
+            emit(protocol_result(False, code=int(code), message=message, error=message))
         print(message, file=sys.stderr)
         return int(code)
 
@@ -97,11 +102,12 @@ class Console:
         Returns:
             ``ExitCode.OK``.
         """
-        body = {"type": "result", "ok": True, **payload}
         if self.json_mode:
-            print(json.dumps(body), flush=True)
+            extra = {key: value for key, value in payload.items() if key not in {"type", "ok", "code", "message"}}
+            note = str(payload["message"]) if "message" in payload else ""
+            emit(protocol_result(True, code=int(ExitCode.OK), message=note, **extra))
         else:
-            _human(body)
+            _human({"type": "result", "ok": True, **payload})
         return int(ExitCode.OK)
 
     def progress(self, fraction: float, message: str) -> None:
@@ -112,11 +118,11 @@ class Console:
             message: Short status, such as a chunk count.
         """
         if self.json_mode:
-            body: dict[str, Any] = {"type": "progress", "fraction": fraction, "message": message}
             stage = progress_stage(message)
-            if stage is not None:
-                body["stage"] = stage
-            print(json.dumps(body), flush=True)
+            body = protocol_progress(stage or "status", fraction, message)
+            if stage is None:
+                body.pop("stage", None)
+            emit(body)
         else:
             print(message, file=sys.stderr)
 
@@ -673,15 +679,20 @@ def _gui(argv: list[str]) -> int:
         print(exc)
         return int(ExitCode.ENVIRONMENT)
     application = QApplication.instance() or QApplication(sys.argv)
+    splash = Splash(splash_art(), IDENTITY, build_info())
+    splash.set_stage("Loading")
     try:
         _ensure_shared(RepairProgress())
     except (ClarityError, OSError) as exc:
+        splash.finish()
         print(exc)
         return int(ExitCode.ENVIRONMENT)
     window = MainWindow()
     if args.project is not None:
         window.open_project(args.project)
     window.show()
+    application.processEvents()
+    splash.finish()
     return int(application.exec())
 
 

@@ -2,6 +2,7 @@
 # Install Clarity into the shared suite folder.
 # Python 3.14 comes from uv. uv is downloaded when it is not already on PATH.
 # The engine pin is tag engine-v1.2.1 as a GitHub archive, with the gpu extra.
+# voxprint-common 0.1.* comes from the v0.1.0 tag archive.
 # pyproject.toml is at the repository root, so the URL has no subdirectory.
 # tensorrt-cu13-libs is installed from the NVIDIA package index.
 # Clarity does not download the engine's default upscale weight.
@@ -27,6 +28,7 @@ else
 fi
 
 engine="voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz"
+common="voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/archive/refs/tags/v0.1.0.tar.gz"
 
 uv_bin=$(command -v uv || true)
 uv_dir=""
@@ -88,6 +90,7 @@ if ! "$venv/bin/python" -c "import pip"; then
   "$venv/bin/python" -m ensurepip --upgrade
 fi
 "$venv/bin/python" -m pip install -r "$app/requirements.txt"
+"$venv/bin/python" -m pip install "$common"
 "$venv/bin/python" -m pip install --extra-index-url "https://pypi.nvidia.com" "$engine"
 "$venv/bin/python" -m pip install "Pillow==12.3.0"
 VOXPRINT_HOME=$suite_home PYTHONPATH="$app${PYTHONPATH:+:$PYTHONPATH}" "$venv/bin/python" -m clarity --install-suite

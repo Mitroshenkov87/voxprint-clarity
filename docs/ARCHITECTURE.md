@@ -17,8 +17,9 @@ and optionally upscale. They do not invent a new picture.
 | `clarity.pipeline.resume` | `plan.json`, `journal.jsonl`, and the published chunk files. |
 | `clarity.project` | Read and write a `.vxclarity` file. |
 | `clarity.models` | The six permissive catalogue weights. |
-| `clarity.engine` | The only module that imports `voxprint_engine`. |
+| `clarity.engine` | The only module that imports `voxprint_engine`. The GPU probe is `voxprint_common.gpu_probe`. |
 | `clarity.platform_gate` | Windows 11 24H2+ and the 2025 Linux releases. |
+| `clarity.ui.theme` | Re-exports the shared theme and holds Clarity's splash identity colour. |
 | `clarity.bench` | Times the catalogue on CUDA and TensorRT. |
 
 ## Data flow
@@ -35,7 +36,7 @@ A live restore runs these steps in order:
 
 ## Engine
 
-Clarity does not reimplement the GPU lock, the VRAM budget, the thermal rule, the model store, the hardware query, or the shared runtime. Those live in `voxprint_engine` at tag `engine-v1.2.1`. The package metadata is at the repository root, so the archive URL has no subdirectory. The `gpu` extra holds the ONNX Runtime GPU and TensorRT pins. Installing it needs `--extra-index-url https://pypi.nvidia.com`.
+Clarity does not reimplement the GPU lock, the VRAM budget, the thermal rule, the model store, or the shared runtime. Those live in `voxprint_engine` at tag `engine-v1.2.1`. The package metadata is at the repository root, so the archive URL has no subdirectory. The `gpu` extra holds the ONNX Runtime GPU and TensorRT pins. Installing it needs `--extra-index-url https://pypi.nvidia.com`. The launch GPU probe is `voxprint_common.gpu_probe`, not a second copy of the engine query.
 
 ```text
 voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz
@@ -51,7 +52,31 @@ The folder is `%LOCALAPPDATA%\Voxprint\shared` on Windows and `$XDG_DATA_HOME/vo
 
 Clarity's Clean and Strong weights go through the engine registry (`ensure_weight`, `register`, `unregister`). ffmpeg is the one suite piece the engine does not install: Clarity downloads the LGPL build into `shared/ffmpeg` when the machine does not already have one. A repair shows a Qt dialog. `--selftest --json` prints the engine report (`ok`, `skipped`, `components`) and `{"type": "progress"}` lines for each step.
 
-A driver older than the R600 series is refused by `assess_launch`. The engine message does not include a download page, so Clarity adds <https://www.nvidia.com/Download/index.aspx>.
+A driver older than the R600 series is refused by `assess_launch`, which calls `voxprint_common.gpu_probe.assess` with `refuse_below=(8, 9)`. The probe message does not include a download page, so Clarity adds <https://www.nvidia.com/Download/index.aspx>. `VOXPRINT_CI_LANCZOS` is still refused before the probe runs.
+
+## Shared library
+
+`voxprint-common` 0.1.0 "Yesod" (import `voxprint_common`, API 1) supplies the pieces that used to be copied in this repository:
+
+| Piece | Module |
+|---|---|
+| SHA-256 of files and byte strings | `voxprint_common.hashing` |
+| `BUILD.json` | `voxprint_common.buildinfo` |
+| Licence gate | `voxprint_common.licence` |
+| Theme tokens and stylesheet | `voxprint_common.ui.theme` |
+| Splash window | `voxprint_common.ui.splash` |
+| `--json` progress and result lines | `voxprint_common.cli_protocol` |
+| NVIDIA probe and VRAM tier | `voxprint_common.gpu_probe` |
+
+The install is the v0.1.0 tag archive. pip does not need git, and Clarity does not clone the repository:
+
+```text
+voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/archive/refs/tags/v0.1.0.tar.gz
+```
+
+`installer/runtime_lock.json` records the series as `0.1.*`. Project files, the journal, and the catalogue stay in Clarity. Only the hash function moved. The fetch gate still accepts MIT, Apache-2.0, and BSD after the shared check. ISC, CC-BY, and CC0 pass the shared release list and are not fetched here.
+
+The GUI opens `voxprint_common.ui.splash.Splash` on `assets/splash/clarity.jpg`. The progress bar uses Clarity's identity colour `#86efac` (the palette's `GREEN` token). The rest of the window uses the shared yellow primary and soft blue accents. A missing art file paints `#0b1020`. The splash stays up at least 0.6 seconds, then fades for 200 ms.
 
 ## GPU lock, VRAM, and thermals
 
