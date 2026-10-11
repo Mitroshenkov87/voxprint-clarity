@@ -16,10 +16,25 @@ cp "$root/installer/linux/voxprint-clarity.desktop" "$stage/voxprint-clarity.des
 cp "$root/installer/linux/voxprint-clarity.xml" "$stage/usr/share/mime/packages/voxprint-clarity.xml"
 cp "$root/installer/linux/uninstall.sh" "$stage/usr/bin/voxprint-clarity-uninstall"
 chmod 755 "$stage/usr/bin/voxprint-clarity-uninstall"
+cp "$root/installer/linux/install-shared.sh" "$stage/usr/bin/voxprint-clarity-install"
+chmod 755 "$stage/usr/bin/voxprint-clarity-install"
+cp "$root/installer/runtime_lock.json" "$stage/usr/bin/runtime_lock.json"
 cat > "$stage/usr/bin/voxprint-clarity" << 'EOF'
 #!/bin/sh
 here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 export PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}"
+if [ -n "${VOXPRINT_HOME:-}" ]; then
+  suite_home=$VOXPRINT_HOME
+else
+  case ${XDG_DATA_HOME:-} in
+    /*) suite_home=$XDG_DATA_HOME/voxprint ;;
+    *) suite_home=$HOME/.local/share/voxprint ;;
+  esac
+fi
+if [ -d "$suite_home/shared/ffmpeg" ]; then
+  PATH="$suite_home/shared/ffmpeg:$PATH"
+  export PATH
+fi
 exec python3 "$here/main.py" "$@"
 EOF
 chmod 755 "$stage/usr/bin/voxprint-clarity"
@@ -27,6 +42,18 @@ cat > "$stage/AppRun" << 'EOF'
 #!/bin/sh
 here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 export PYTHONPATH="$here/usr/bin${PYTHONPATH:+:$PYTHONPATH}"
+if [ -n "${VOXPRINT_HOME:-}" ]; then
+  suite_home=$VOXPRINT_HOME
+else
+  case ${XDG_DATA_HOME:-} in
+    /*) suite_home=$XDG_DATA_HOME/voxprint ;;
+    *) suite_home=$HOME/.local/share/voxprint ;;
+  esac
+fi
+if [ -d "$suite_home/shared/ffmpeg" ]; then
+  PATH="$suite_home/shared/ffmpeg:$PATH"
+  export PATH
+fi
 exec python3 "$here/usr/bin/main.py" "$@"
 EOF
 chmod 755 "$stage/AppRun"

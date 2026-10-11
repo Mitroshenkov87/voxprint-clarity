@@ -28,7 +28,7 @@ $Archive = Join-Path $ResultsDir "$BundleName.tar.gz"
 
 $FfmpegUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip"
 $UvUrl = "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip"
-$EngineUrl = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0"
+$EngineUrl = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@d11d60921448b697d832b2699e6e3e04c62c6dfd"
 
 function Fail([string]$Reason) {
     Write-Host ""
@@ -199,7 +199,7 @@ Invoke-Native { & $uv pip install --python $python -r (Join-Path $Root "requirem
 Write-Host "installing TensorRT"
 Invoke-Native { & $uv pip install --python $python "tensorrt" } "tensorrt failed to install"
 
-Write-Host "installing the shared engine from engine-v1.0.0"
+Write-Host "installing the shared engine from d11d609"
 Invoke-Native { & $uv pip install --python $python $EngineUrl } "the public engine install failed"
 Write-Host "putting onnxruntime-gpu back over the engine's CPU wheel"
 Invoke-Native { & $uv pip install --python $python --upgrade "onnxruntime-gpu" "tensorrt" } "onnxruntime-gpu failed to install"

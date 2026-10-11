@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-engine = ["voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0"]
+engine = ["voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@d11d60921448b697d832b2699e6e3e04c62c6dfd"]
 
 [project.scripts]
 voxprint-clarity = "clarity.__main__:main"

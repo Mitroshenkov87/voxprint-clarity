@@ -14,10 +14,10 @@ is no CPU mode and no H.264 output.
 - Windows 11 24H2 or newer (build 26100), or a 2025-or-newer Linux distribution.
 - An NVIDIA GPU from the RTX 40 series (compute capability 8.9) or newer.
 - An NVIDIA driver from the 600 series or newer.
-- An LGPL ffmpeg on `PATH`, with NVDEC and NVENC. Clarity does not ship ffmpeg,
-  x264, or x265.
-- A network connection the first time a model is needed, and during setup on
-  Windows, because the installer downloads Python and PyTorch.
+- The LGPL ffmpeg build the installer places in the shared suite folder, with
+  NVDEC and NVENC. Setup downloads that build.
+- A network connection during setup. The installer downloads Python 3.14,
+  PyTorch, the LGPL ffmpeg build, the engine, and the default models.
 
 Older Windows, older Linux, a GPU below 8.9, a driver below 600, or no NVIDIA
 GPU: Clarity prints the reason and exits.
@@ -33,19 +33,21 @@ the Torah or Tanakh. Check the download against
 `SHA256SUMS` in that same release. The file is not code-signed, so SmartScreen
 can warn.
 
-Run the installer. It downloads Python 3.14, PyTorch 2.14.1 for CUDA 13.0, the
-restore libraries, and the public engine
-`voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0`.
-The Start menu folder is **Voxprint**, shared with the other suite apps. The
-shortcut is **Voxprint AI Clarity**.
-
-Put an LGPL ffmpeg on `PATH` before the first restore.
+Run the installer. During setup it calls the engine's `ensure_runtime` with
+holder `clarity`. That installs Python 3.14, the CUDA 13 wheels, and the
+engine's default model into `%LOCALAPPDATA%\Voxprint\shared` (or
+`%VOXPRINT_HOME%\shared` when that variable is set). Clarity then adds the
+LGPL ffmpeg build and its Clean and Strong weights. Pillow stays at 12.3.0.
+The engine pin is commit `d11d609` until tag `engine-v1.1.0` is published.
+The Start menu folder is **Voxprint**. The shortcut is **Voxprint AI Clarity**.
 
 ### Linux
 
 The Linux package in the same release, `VoxprintClarity-linux.tar.gz`, is
-experimental. Extract it, install Python 3.14, PyTorch for CUDA 13.0, and the
-engine line above, and put ffmpeg on `PATH`. See [INSTALL.md](INSTALL.md).
+experimental. Extract it and run `voxprint-clarity-install` once. That script
+calls the same `ensure_runtime("clarity")` into
+`$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared`. See
+[INSTALL.md](INSTALL.md).
 
 ### Version and codename
 
@@ -67,9 +69,19 @@ flags are in [CLI.md](CLI.md).
 
 ## First run
 
-Open Clarity. The window does not download weights until you press Start.
-The first Start for a mode fetches that mode’s weights into the shared models
-folder and checks each file’s SHA-256. Later runs reuse the files.
+Open Clarity. Setup has already run `ensure_runtime("clarity")`, so the window
+reuses the shared Python, CUDA wheels, and models. Each launch, and
+`selftest`, calls that API again. When something is missing, the engine
+repairs it and Clarity shows the progress: a dialog in the window, or
+`{"type": "progress", ...}` lines when you pass `--json`. Uninstall calls
+`release_runtime("clarity")`.
+
+A driver older than the R600 series is refused. The message names the driver
+that was found and links to NVIDIA's driver download page,
+<https://www.nvidia.com/Download/index.aspx>.
+
+Optional 2x weights are still fetched the first time you turn 2x on. The
+shared models folder checks each file’s SHA-256. Later runs reuse the files.
 
 Weights are only MIT, Apache-2.0, or BSD. The catalogue is in the table at
 the end of this guide.
@@ -111,6 +123,7 @@ Chunk media stays in a work folder beside the project
 
 | What | Where |
 |---|---|
+| Shared suite | `%LOCALAPPDATA%\Voxprint\shared` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared`. `VOXPRINT_HOME` replaces the Voxprint directory. The engine keeps Python 3.14, the CUDA 13 wheels, its default model, and the holder list in `manifest.json`. Clarity adds the LGPL ffmpeg binary under `shared/ffmpeg`. |
 | Shared models | `%LOCALAPPDATA%\Voxprint\models` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/models` or `~/.local/share/voxprint/models`. The engine owns the folder, the hashes, and `.users.json`. |
 | Recent projects | `%LOCALAPPDATA%\Voxprint\Clarity\recent.json` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/clarity/recent.json` or `~/.local/share/voxprint/clarity/recent.json`. |
 | Scene chunks and the journal | `<project>.vxclarity.work` beside the project (`plan.json`, `journal.jsonl`, `chunks/`). |
@@ -125,9 +138,12 @@ is the record of the current job. The setup log is the record of the install.
 **The program prints a GPU or system message and exits.** The machine failed
 the gate. The text names the cause: the Windows or Linux version is too old,
 there is no NVIDIA GPU, compute capability is below 8.9, or the driver is
-below the 600 series. Clarity will not start a CPU job. Update the driver or
-use an RTX 40 series GPU or newer. A missing engine package prints the
-`voxprint-engine @ git+https://...@engine-v1.0.0` install line instead.
+below the 600 series. Clarity will not start a CPU job. A driver older than
+the R600 series includes a link to
+<https://www.nvidia.com/Download/index.aspx>. Update the driver or use an
+RTX 40 series GPU or newer. A missing engine package prints the
+`voxprint-engine @ git+https://...@d11d60921448b697d832b2699e6e3e04c62c6dfd`
+install line instead. That pin moves to tag `engine-v1.1.0` when the tag is published.
 
 **The status says the GPU is busy.** Another suite job holds the shared lock.
 Clarity waits and retries. It does not cancel your restore for that wait.
@@ -141,9 +157,10 @@ on disk. You do not need to press Start again.
 **A chunk is redone.** The chunk file is missing, or its bytes no longer match
 the journal. That chunk runs again. The others stay.
 
-**ffmpeg is missing, or AV1 encode fails.** Install an LGPL ffmpeg that
-includes `av1_nvenc` and put it on `PATH`. A GPL build is not what this
-project ships or asks for.
+**ffmpeg is missing, or AV1 encode fails.** Setup places an LGPL ffmpeg build
+in the shared suite folder and puts that directory on `PATH`. Launch repairs
+the binary when it is missing. The build needs `av1_nvenc`. Clarity downloads
+the LGPL build.
 
 ## Model licences
 

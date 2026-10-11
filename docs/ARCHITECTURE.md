@@ -35,13 +35,23 @@ A live restore runs these steps in order:
 
 ## Engine
 
-Clarity does not reimplement the GPU lock, the VRAM budget, the thermal rule, the model store, or the hardware query. Those live in `voxprint_engine` from Voxprint AI Enlarge, tag `engine-v1.0.0`.
+Clarity does not reimplement the GPU lock, the VRAM budget, the thermal rule, the model store, the hardware query, or the shared runtime. Those live in `voxprint_engine` from Voxprint AI Enlarge, commit `d11d609`. The pin switches to tag `engine-v1.1.0` when that tag is published.
 
 ```text
-voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0
+voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@d11d60921448b697d832b2699e6e3e04c62c6dfd
 ```
 
-`clarity.engine` loads that package with `importlib` and forwards the calls. The requirement string is `ENGINE_REQUIREMENT`. The lock owner is `OWNER` (`clarity`).
+`clarity.engine` loads that package with `importlib` and forwards the calls. The requirement string is `ENGINE_REQUIREMENT`. The lock owner and the runtime holder are `OWNER` (`clarity`). API stays 1.
+
+## Shared dependencies
+
+The installer, every launch, and `selftest` call `ensure_runtime("clarity")`. Uninstall calls `release_runtime("clarity")`. The engine installs Python 3.14, the CUDA 13 torch, ONNX Runtime GPU, and TensorRT wheels, and its default model. Holders are a list in `shared/manifest.json`. A payload is removed when that list is empty.
+
+The folder is `%LOCALAPPDATA%\Voxprint\shared` on Windows and `$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared` on Linux. `VOXPRINT_HOME` replaces the Voxprint directory.
+
+Clarity's Clean and Strong weights go through the engine registry (`ensure_weight`, `register`, `unregister`). ffmpeg is the one suite piece the engine does not install: Clarity downloads the LGPL build into `shared/ffmpeg` when the machine does not already have one. A repair shows a Qt dialog. `--selftest --json` prints the engine report (`ok`, `skipped`, `components`) and `{"type": "progress"}` lines for each step.
+
+A driver older than the R600 series is refused by `assess_launch`. The engine message does not include a download page, so Clarity adds <https://www.nvidia.com/Download/index.aspx>.
 
 ## GPU lock, VRAM, and thermals
 
@@ -55,7 +65,7 @@ Between chunks, while `device` is set:
 - `read_shared_usage` and `sysmem_spill` watch shared GPU memory. A spill empties the CUDA cache, asks `note_spill` for a smaller batch, and may `halve_tile`.
 - `thermal_decide` (`api.decide`) says whether to pause. `wait_for_thermal` sleeps between chunks while the engine says to pause. Finished chunks stay on disk.
 
-There is no CPU restore path and no honouring of `VOXPRINT_CI_LANCZOS`.
+There is no CPU restore path. `assess_launch` refuses `VOXPRINT_CI_LANCZOS`. The engine's `ensure_runtime` treats that same flag as a skip so a test run does not download the suite.
 
 ## `.vxclarity`
 

@@ -15,18 +15,22 @@ from clarity.appinfo import APP_BUILD, APP_NAME, APP_VERSION, CODENAME, version_
 from clarity.engine import (
     EngineUnavailable,
     assess_launch,
+    ensure_shared_runtime,
     models_directory,
     register_user,
+    release_shared_runtime,
     unregister_user,
 )
 from clarity.errors import Cancelled, ClarityError
-from clarity.models import catalogue_rows, fetch_weights
+from clarity.ffmpeg_setup import FfmpegMissing, ensure_ffmpeg
+from clarity.models import catalogue_rows, clean_models, fetch_weights, strong_model
 from clarity.pipeline.encode import Container, VideoCodec
 from clarity.pipeline.job import Settings
 from clarity.pipeline.runner import JobSpec, dry_run_restore, run_job
 from clarity.platform_gate import assess_platform
 from clarity.project import ProjectFormatError, load_project, work_dir_for
 from clarity.ui.main_window import MainWindow
+from clarity.ui.suite_dialog import RepairProgress
 
 CommandName = Literal["restore", "project", "info", "version", "models", "selftest"]
 ProjectAction = Literal["open", "resume"]
@@ -165,6 +169,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Remove Clarity from the shared models folder",
     )
+    parser.add_argument("--install-suite", action="store_true", help="Install or repair the shared suite dependencies")
     parser.add_argument("--out", type=Path, default=None, help="Write the models-folder report here")
     parser.epilog = "Headless commands: restore, project, info, version, models, selftest. See docs/CLI.md."
     return parser
@@ -433,17 +438,25 @@ def _selftest_command(args: argparse.Namespace, console: Console) -> int:
             {
                 "command": "selftest",
                 "dry_run": True,
-                "checks": ["offscreen window", "start label"],
+                "checks": ["shared runtime", "ffmpeg", "offscreen window", "start label"],
                 "gpu_used": False,
             }
         )
     try:
+        report = _ensure_shared(lambda message: console.progress(0.0, message))
         code = _selftest_window()
     except (ImportError, ClarityError, OSError) as exc:
         return console.fail(str(exc), ExitCode.USAGE)
     if code != 0:
         return console.fail("the Start button has no label", ExitCode.USAGE)
-    return console.ok({"command": "selftest", "dry_run": False, "message": "selftest ok"})
+    return console.ok(
+        {
+            "command": "selftest",
+            "dry_run": False,
+            "message": "selftest ok",
+            "runtime": report.as_dict(),
+        }
+    )
 
 
 def _dispatch(command: CommandName, args: argparse.Namespace) -> int:
@@ -488,10 +501,13 @@ def _gui(argv: list[str]) -> int:
     if args.version:
         print(version_label())
         return 0
+    if args.install_suite:
+        return _install_suite()
     if args.register_models_user or args.unregister_models_user:
         return _register(args.out, remove=bool(args.unregister_models_user))
     if args.selftest:
         try:
+            _ensure_shared(lambda message: print(message, file=sys.stderr))
             code = _selftest_window()
         except (ImportError, ClarityError, OSError) as exc:
             print(exc)
@@ -516,6 +532,11 @@ def _gui(argv: list[str]) -> int:
         print(gate.warning)
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen" if not sys.stdout.isatty() else "")
     application = QApplication.instance() or QApplication(sys.argv)
+    try:
+        _ensure_shared(RepairProgress())
+    except (ClarityError, OSError) as exc:
+        print(exc)
+        return int(ExitCode.ENVIRONMENT)
     window = MainWindow()
     if args.project is not None:
         window.open_project(args.project)
@@ -523,7 +544,62 @@ def _gui(argv: list[str]) -> int:
     return int(application.exec())
 
 
+def _ensure_shared(progress: Any) -> Any:
+    """Ask the engine to repair the shared runtime, then install ffmpeg if it is missing.
+
+    Args:
+        progress: Called with one status line. The engine and the ffmpeg helper
+            both use that shape.
+
+    Returns:
+        The engine runtime report.
+
+    Raises:
+        ClarityError: When the runtime or ffmpeg repair fails.
+    """
+    report = ensure_shared_runtime(progress)
+    ensure_ffmpeg(progress)
+    if not bool(getattr(report, "ok", False)):
+        raise ClarityError(_runtime_failure(report))
+    return report
+
+
+def _runtime_failure(report: Any) -> str:
+    parts = [
+        f"{item.id}: {item.detail}"
+        for item in getattr(report, "components", ())
+        if getattr(item, "state", "") in {"failed", "missing"}
+    ]
+    return "; ".join(parts) or "shared suite install is incomplete"
+
+
+def _install_suite() -> int:
+    """Install the shared runtime, ffmpeg, and Clarity's Clean and Strong weights.
+
+    Returns:
+        ``0`` when the engine report is ok, ``2`` when a repair fails.
+    """
+
+    def progress(message: str) -> None:
+        print(message, file=sys.stderr)
+
+    try:
+        _ensure_shared(progress)
+        ids = [model.id for model in (*clean_models(), strong_model())]
+        fetch_weights(ids, dry_run=False)
+    except (FfmpegMissing, EngineUnavailable, ClarityError, OSError) as exc:
+        print(exc, file=sys.stderr)
+        return int(ExitCode.ENVIRONMENT)
+    return int(ExitCode.OK)
+
+
 def _register(out: Path | None, *, remove: bool) -> int:
+    if remove:
+        try:
+            release_shared_runtime(lambda message: print(message, file=sys.stderr))
+        except (EngineUnavailable, ClarityError) as exc:
+            print(exc)
+            return int(ExitCode.ENVIRONMENT)
     try:
         if remove:
             others = unregister_user("clarity")

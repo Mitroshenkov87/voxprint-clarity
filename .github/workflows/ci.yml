@@ -25,7 +25,7 @@ jobs:
       - name: Install the shared engine
         shell: bash
         run: |
-          python -m pip install "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0"
+          python -m pip install "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@d11d60921448b697d832b2699e6e3e04c62c6dfd"
           python -c "import voxprint_engine"
       - name: Lint
         run: |
@@ -41,6 +41,8 @@ jobs:
       - name: Window self-test
         env:
           QT_QPA_PLATFORM: offscreen
+          VOXPRINT_HOME: ${{ runner.temp }}/voxprint-suite
+          VOXPRINT_CI_LANCZOS: "1"
         run: python -m clarity --selftest
 
   installer:

@@ -15,17 +15,17 @@ no fallback for a GPU below compute capability 8.9 or a driver below 600.
 Compile `installer/VoxprintClarity.iss` with Inno Setup 6. A normal install
 runs `installer/install-runtime.ps1`, which:
 
-1. Reads `installer/runtime_lock.json` (Python 3.14, torch 2.14.1, CUDA 13.0,
-   Pillow 12.3.0, driver 600, compute capability 8.9).
-2. Creates a venv under `%LOCALAPPDATA%\Voxprint\runtime-<lock hash>`.
-3. Installs torch from `https://download.pytorch.org/whl/cu130`.
-4. Installs `requirements.txt`, then Pillow at the locked version, then
-   `requirements-bench.txt` (spandrel and `onnxruntime-gpu`).
-5. Installs the public engine
-   `voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0`,
-   then installs `onnxruntime-gpu` again so the engine's CPU wheel does not
-   replace it.
-6. Junctions that venv to `{app}\runtime`.
+1. Reads `installer/runtime_lock.json` and requires Pillow 12.3.0.
+2. Creates a venv under `%LOCALAPPDATA%\Voxprint\shared\venv`
+   (`%VOXPRINT_HOME%\shared\venv` when `VOXPRINT_HOME` is set). An existing
+   venv is reused.
+3. Installs `requirements.txt` and the engine at commit `d11d609`
+   (`voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@d11d60921448b697d832b2699e6e3e04c62c6dfd`).
+   The pin moves to tag `engine-v1.1.0` when that tag is published.
+4. Calls `ensure_runtime("clarity")`. The engine installs Python 3.14, the
+   CUDA 13 wheels, and its default model into the shared folder.
+5. Installs `Pillow==$pillow` from the lock after that step.
+6. Junctions the venv to `{app}\runtime`.
 
 The Start menu folder is `Voxprint`. The shortcut is **Voxprint AI Clarity**.
 
@@ -41,14 +41,13 @@ receive the files):
 VoxprintClarity-Setup.exe /VERYSILENT /RUNTIME=skip
 ```
 
-A real install omits `/RUNTIME=skip`. After a runtime install the setup runs
+A real install omits `/RUNTIME=skip`. After the runtime step the setup runs
+`python main.py --install-suite`, which calls `ensure_runtime("clarity")`
+again, downloads the LGPL ffmpeg build when one is missing, and fetches
+Clarity's Clean and Strong weights through the engine registry. It then runs
 `python main.py --register-models-user`. Uninstall runs
-`--unregister-models-user`. Both use the engine package at tag
-`engine-v1.0.0`, which the runtime step installs from the public Enlarge
-repository.
-
-ffmpeg must be an LGPL build on `PATH` (NVDEC and NVENC). Clarity does not
-ship ffmpeg.
+`--unregister-models-user`, which calls `release_runtime("clarity")` and
+unregisters the models user.
 
 ## Linux
 
@@ -67,13 +66,27 @@ bash installer/linux/build-package.sh
 That writes `dist/VoxprintClarity-linux.tar.gz`. An AppImage is attempted when
 appimagetool can be downloaded. The package includes
 `usr/share/mime/packages/voxprint-clarity.xml`, a `.desktop` file whose
-`MimeType` is `application/vnd.voxprint.clarity+zip`, and
-`usr/bin/voxprint-clarity`. After extracting onto a prefix, update the MIME
-and desktop databases. `voxprint-clarity-uninstall` removes the association,
-the desktop file, and the icon from that prefix (default `/usr`).
+`MimeType` is `application/vnd.voxprint.clarity+zip`,
+`usr/bin/voxprint-clarity`, and `usr/bin/voxprint-clarity-install`.
+
+Run `voxprint-clarity-install` once after extracting the package, and once
+for an AppImage before the first restore. The script needs Python 3.14,
+installs the engine at commit `d11d609` and Pillow 12.3.0, and runs
+`--install-suite`. That calls `ensure_runtime("clarity")`, repairs ffmpeg,
+and fetches Clarity's Clean and Strong weights. A second run reuses the venv.
+The launcher and `AppRun` prepend `shared/ffmpeg` to `PATH`.
+
+After extracting onto a prefix, update the MIME and desktop databases.
+`voxprint-clarity-uninstall` drops Clarity's suite references when `main.py`
+is beside the script, and removes the association, the desktop file, and the
+icon from that prefix (default `/usr`).
 
 ## Shared folders
 
+- Suite runtime: `%LOCALAPPDATA%\Voxprint\shared` on Windows,
+  `$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared` on Linux.
+  `VOXPRINT_HOME` replaces the Voxprint directory. The engine owns
+  `manifest.json` and the holder list.
 - Models: `%LOCALAPPDATA%\Voxprint\models` on Windows,
   `$XDG_DATA_HOME/voxprint/models` or `~/.local/share/voxprint/models` on Linux.
   The engine owns the path, the SHA-256 manifests, and `.users.json`.
@@ -86,8 +99,11 @@ python -m pip install -r requirements-dev.txt
 python -m ruff check clarity main.py tests
 python -m mypy
 python -m pytest
-QT_QPA_PLATFORM=offscreen python -m clarity --selftest
+VOXPRINT_CI_LANCZOS=1 QT_QPA_PLATFORM=offscreen python -m clarity --selftest
 ```
+
+`VOXPRINT_CI_LANCZOS=1` makes `ensure_runtime` skip the network, which is how
+CI runs `--selftest`. `assess_launch` still refuses that flag for a restore.
 
 CI is GitHub Actions on `ubuntu-latest` and `windows-latest` (lint and unit
 tests, with the public engine installed), plus an installer job and an

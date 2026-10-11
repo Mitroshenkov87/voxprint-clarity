@@ -3,6 +3,10 @@
 # The default prefix is /usr.
 set -eu
 prefix=${1:-/usr}
+here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+if [ -f "$here/main.py" ]; then
+  PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" python3 "$here/main.py" --unregister-models-user || true
+fi
 rm -f "$prefix/share/mime/packages/voxprint-clarity.xml"
 rm -f "$prefix/share/applications/voxprint-clarity.desktop"
 rm -f "$prefix/share/icons/hicolor/256x256/apps/voxprint-clarity.png"

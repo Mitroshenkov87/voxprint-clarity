@@ -5,8 +5,8 @@ Clarity uses the shared package `voxprint_engine` (distribution name
 
 | | |
 |---|---|
-| Tag | `engine-v1.0.0` (`26b7807`) |
-| Requirement | `voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0` |
+| Commit | `d11d609` (`d11d60921448b697d832b2699e6e3e04c62c6dfd`). TODO: tag `engine-v1.1.0` when it is published. |
+| Requirement | `voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@d11d60921448b697d832b2699e6e3e04c62c6dfd` |
 | CI install | the same `git+https` requirement. Enlarge is public, so there is no deploy key. |
 | Import package | `voxprint_engine` |
 | Video names | `voxprint_engine.api` |
@@ -25,7 +25,8 @@ carry `docs/engine-patches`.
 | Weights and users | `api.ensure_weight`, `api.register`, `api.unregister`, `api.models_dir` |
 | Frames | `api.restore_frames`, `api.temporal_windows`, `api.tile_frames` |
 | Restore worker | `api.RestoreBatchRequest` with `owner="clarity"`, then `api.WorkerClient` |
-| Startup gate | `voxprint_engine.hardware.assess_gpu(refuse_below=(8, 9))` |
+| Startup gate | `voxprint_engine.hardware.assess_gpu(refuse_below=(8, 9))`. An old driver message gains NVIDIA's download page in Clarity. |
+| Shared runtime | `suite_runtime.ensure_runtime("clarity")` and `release_runtime("clarity")` |
 | VRAM measurement | `voxprint_engine.vram.measure` |
 
 `clarity/engine.py` is the only application module that imports

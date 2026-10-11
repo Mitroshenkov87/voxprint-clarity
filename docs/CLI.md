@@ -106,9 +106,19 @@ The Start button and **Download models** call the same catalogue and the same
 
 ## selftest
 
-`selftest` opens the window offscreen and checks that Start has a label.
-`--dry-run` lists those checks and does not open a window. `python -m clarity --selftest`
-is the same window check the installer CI runs.
+`selftest` calls `ensure_runtime("clarity")`, repairs ffmpeg when it is
+missing, then opens the window offscreen and checks that Start has a label.
+`--json` prints each step as a `{"type": "progress"}` line and includes the
+engine report (`ok`, `skipped`, `components`) on the result. `--dry-run`
+lists the checks and does not repair or open a window.
+`python -m clarity --selftest` is the same check the CI job runs.
+
+## install-suite
+
+`python -m clarity --install-suite` calls `ensure_runtime("clarity")`, repairs
+ffmpeg, and fetches the Clean and Strong weights through the engine registry.
+The Windows setup and `voxprint-clarity-install` run it. Uninstall calls
+`release_runtime("clarity")` from `--unregister-models-user`.
 
 ## What the window still does
 
