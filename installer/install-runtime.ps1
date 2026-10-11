@@ -5,11 +5,15 @@
 # voxprint_engine.suite_runtime.ensure_runtime (holder "clarity").
 # The engine pin is commit 9183489 (package 1.2.0, API 1).
 # TODO: switch the engine pin to tag engine-v1.2.0 when it is published.
+# An existing shared venv is reused, then pin_runtime.py still installs
+# requirements-gpu.txt, spandrel, and the lock's GPU runtime into that venv.
 # -SkipRuntime is only for the installer compile check.
 param(
     [Parameter(Mandatory = $true)][string]$AppDir,
     [string]$Requirements = "",
+    [string]$GpuRequirements = "",
     [string]$Lock = "",
+    [string]$PinScript = "",
     [string]$Log = "",
     [string]$EngineRequirement = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489",
     [switch]$SkipRuntime,
@@ -57,7 +61,9 @@ if ($LinkOnly) {
     Write-Log "runtime junction ready"
     exit 0
 }
-if (-not $Requirements -or -not $Lock) { throw "Requirements and Lock are required" }
+if (-not $Requirements -or -not $Lock -or -not $GpuRequirements -or -not $PinScript) {
+    throw "Requirements, GpuRequirements, Lock, and PinScript are required"
+}
 if (-not (Test-Path -LiteralPath $Lock)) { throw "runtime lock missing: $Lock" }
 $lockJson = Get-Content -Raw -LiteralPath $Lock | ConvertFrom-Json
 $pillow = [string]$lockJson.pillow
@@ -98,9 +104,20 @@ if (Test-Path -LiteralPath $venvPython) {
     & $uv.FullName pip install --python $venvPython $EngineRequirement
     if ($LASTEXITCODE -ne 0) { throw "engine install failed" }
 }
+& $venvPython -c "import pip"
+if ($LASTEXITCODE -ne 0) {
+    & $venvPython -m ensurepip --upgrade
+    if ($LASTEXITCODE -ne 0) { throw "pip is missing from the shared venv" }
+}
 Write-Log "ensuring the shared runtime for clarity"
 & $venvPython -c "from voxprint_engine.suite_runtime import ensure_runtime; report = ensure_runtime('clarity', progress=lambda message: print(message, flush=True)); raise SystemExit(0 if report.ok else 1)"
 if ($LASTEXITCODE -ne 0) { throw "shared runtime install failed" }
+Write-Log "installing Pillow $pillow"
+& $venvPython -m pip install "Pillow==$pillow"
+if ($LASTEXITCODE -ne 0) { throw "Pillow install failed" }
+Write-Log "pinning torch, spandrel, and the GPU runtime into the shared venv"
+& $venvPython $PinScript --python $venvPython --lock $Lock --requirements $GpuRequirements
+if ($LASTEXITCODE -ne 0) { throw "runtime pin failed" }
 Write-Log "installing Pillow $pillow"
 & $venvPython -m pip install "Pillow==$pillow"
 if ($LASTEXITCODE -ne 0) { throw "Pillow install failed" }

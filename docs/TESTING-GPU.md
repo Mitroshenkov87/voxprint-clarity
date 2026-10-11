@@ -35,18 +35,23 @@ summary is always written to `summary.json`.
 
 ```json
 {"type":"step","name":"restore-clean","status":"pass","seconds":12.4}
-{"type":"summary","app":"clarity","mode":"smoke","tag":"v1.0.0-rc.1002","ok":false,"exit":1,"step":"restore-clean","error":"...","results":"...","steps":[]}
+{"type":"summary","app":"clarity","mode":"smoke","tag":"main-b01cd6c","ok":false,"exit":1,"step":"restore-clean","error":"...","results":"...","steps":[]}
 ```
 
-`status` is `pass`, `fail`, or `skip`. `tag` is `v` plus the version and build
-from `BUILD.json`. The driver always writes `summary.json`. On Windows, a
-failed GPU gate prints that summary and exits 3 before Python is installed.
+`status` is `pass`, `fail`, or `skip`. `tag` is the git tag when HEAD is
+exactly that tag, otherwise `main-` plus `git rev-parse --short=7 HEAD`
+(for example `main-b01cd6c`). It is not taken from `BUILD.json`. The `info`
+step still compares version and build with `BUILD.json`. The driver always
+writes `summary.json`. On Windows, a failed GPU gate prints that summary and
+exits 3 before Python is installed.
 
 ## Resume
 
 A finished step writes `~/.done/<tag>--<step>`. The next run skips that step.
-`gpu` always runs. Delete one marker to repeat that step. A new tag does not
-reuse an older tag's markers.
+`gpu` always runs. `install` always runs its check too: the wheel install is
+skipped when the install marker exists, and that marker is written only after
+`CUDAExecutionProvider` and `TensorrtExecutionProvider` have loaded. Delete
+one marker to repeat that step. A new tag does not reuse an older tag's markers.
 
 ## Results
 
@@ -67,8 +72,8 @@ can take several minutes, and each smoke restore is allowed 20 minutes before
 that step fails.
 
 1. `gpu` — driver 600+, compute capability 8.9+, RTX 4090 unless `--allow-other-gpu`.
-2. `install` — uv, CPython 3.14, this checkout, `torch==2.14.1` from the CUDA 13.0 index, `requirements.txt`, `requirements-bench.txt`, and `voxprint-engine` at commit `9183489`.
-3. `selftest` — `python -m clarity --selftest` with no `--no-gpu`, then `scripts/vm_provider_check.py`. `CUDAExecutionProvider` and `TensorrtExecutionProvider` both have to load.
+2. `install` — uv, CPython 3.14, this checkout, `torch==2.14.1` from the CUDA 13.0 index, `requirements.txt`, `requirements-bench.txt`, and `voxprint-engine` at commit `9183489`. After the engine, `installer/pin_runtime.py` removes the CPU `onnxruntime` wheel, installs `onnxruntime-gpu==1.31.0`, `tensorrt-cu13-libs==10.14.1.48`, and `tensorrt-cu13==10.14.1.48` (`--no-deps`) from the runtime lock, and installs `torch==2.14.1` from `requirements-gpu.txt` plus spandrel. The child process checks the providers before the done marker is written. The step's seconds include that wheel install, not only the re-exec check.
+3. `selftest` — `python -m clarity --selftest` with no `--no-gpu`. A missing torch or spandrel fails this step. Then `scripts/vm_provider_check.py`. `CUDAExecutionProvider` and `TensorrtExecutionProvider` both have to load.
 4. `info` — `python -m clarity info --json` matches `BUILD.json`.
 5. `clip` — 15 seconds of the pinned Elephants Dream file, stream-copied.
 6. `restore-clean` — Clean (DRUNet) with 2x off. Progress must name `building_engine` or `loading_cached_engine`.

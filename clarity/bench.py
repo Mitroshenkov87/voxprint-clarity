@@ -28,7 +28,7 @@ import numpy as np
 from PIL import Image
 
 from clarity.models import ClarityModel, get_model
-from clarity.pipeline.condition import deblock_level, sigma_level
+from clarity.pipeline.condition import deblock_level, noise_map, sigma_level
 
 # Torch and spandrel are optional GPU extras. The import stays at module scope
 # so the benchmark module still loads in CI without the CUDA wheel.
@@ -262,7 +262,7 @@ def conditioned_nchw(model: ClarityModel, rgb: np.ndarray) -> np.ndarray:
         level = sigma_level(15)
     else:
         raise ValueError(f"unknown condition {model.condition}")
-    extra = np.full((1, 1, rgb.shape[0], rgb.shape[1]), level, dtype=np.float32)
+    extra = noise_map(int(image.shape[0]), int(rgb.shape[0]), int(rgb.shape[1]), level)
     return np.concatenate([image, extra], axis=1)
 
 
@@ -342,13 +342,33 @@ def _load_torch(weight: Path, precision: str) -> Any:
     return apply_precision(ModelLoader().load_from_file(str(weight)).eval().cuda(), precision)
 
 
+def network_module(network: Any) -> Any:
+    """Return the raw module when ``network`` is a spandrel descriptor.
+
+    The descriptor call builds a batch-1 noise map and concatenates it.
+    DRUNet then fails for a batch of N, and a tensor that already has the
+    noise channel gains a fifth channel. Timing uses ``network.model``.
+
+    Args:
+        network: A loaded module or a descriptor.
+
+    Returns:
+        ``network.model`` when that object has a callable ``forward``.
+    """
+    module = getattr(network, "model", None)
+    forward = getattr(module, "forward", None)
+    if callable(forward):
+        return module
+    return network
+
+
 def _torch_forward(network: Any, nchw: np.ndarray, precision: str) -> np.ndarray:
     if torch is None:
         raise RuntimeError("torch is not installed")
     dtype = getattr(torch, torch_dtype_name(precision))
     tensor = torch.from_numpy(np.ascontiguousarray(nchw)).to(device="cuda", dtype=dtype)
     with torch.inference_mode():
-        output = network(tensor)
+        output = network_module(network)(tensor)
     return np.asarray(output.detach().float().cpu().numpy(), dtype=np.float32)
 
 

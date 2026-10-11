@@ -20,6 +20,7 @@ from clarity.engine import (
     EngineUnavailable,
     assess_launch,
     ensure_shared_runtime,
+    gpu_stack_error,
     models_directory,
     register_user,
     release_shared_runtime,
@@ -527,7 +528,8 @@ def _execute_selftest(progress: Any, *, no_gpu: bool) -> _SelftestOutcome:
     ``--no-gpu`` sets ``VOXPRINT_CI_LANCZOS`` only while this function runs, so
     the engine and the ffmpeg helper skip their downloads. The variable is
     removed afterwards. A restore still refuses it. The CUDA and TensorRT
-    provider check belongs to the engine selftest.
+    provider check belongs to the engine selftest. A GPU selftest also
+    refuses a venv that cannot import torch and spandrel.
 
     Args:
         progress: Called with one status line.
@@ -542,6 +544,10 @@ def _execute_selftest(progress: Any, *, no_gpu: bool) -> _SelftestOutcome:
         os.environ[key] = "1"
     try:
         report = _ensure_shared(progress)
+        if not no_gpu:
+            missing = gpu_stack_error()
+            if missing:
+                raise ClarityError(missing)
         plan = _selftest_plan()
         code = _selftest_window()
         return _SelftestOutcome(report, plan, code)

@@ -175,5 +175,10 @@ function Install-ClarityGpuPython {
     Invoke-Native { & $Uv pip install --python $python -r (Join-Path $Root "requirements.txt") -r (Join-Path $Root "requirements-bench.txt") } "requirements failed to install"
     Write-Host "installing the shared engine 9183489"
     Invoke-Native { & $Uv pip install --python $python $script:ClarityEngineUrl } "the public engine install failed"
+    $pin = Join-Path $Root "installer\pin_runtime.py"
+    $lock = Join-Path $Root "installer\runtime_lock.json"
+    $gpuReq = Join-Path $Root "requirements-gpu.txt"
+    Write-Host "pinning torch, spandrel, and the GPU runtime"
+    Invoke-Native { & $python $pin --uv $Uv --python $python --lock $lock --requirements $gpuReq } "the runtime pin failed"
     return $python
 }

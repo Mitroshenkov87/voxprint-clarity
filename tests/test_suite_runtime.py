@@ -146,6 +146,7 @@ def test_selftest_json_includes_the_engine_report(
     monkeypatch.setattr("clarity.cli.ensure_shared_runtime", ensure)
     monkeypatch.setattr("clarity.cli.ensure_ffmpeg", ffmpeg)
     monkeypatch.setattr("clarity.cli._selftest_window", lambda: 0)
+    monkeypatch.setattr("clarity.cli.gpu_stack_error", lambda: "")
     assert main(["selftest", "--json"]) == 0
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()]
     progress = [row for row in lines if row.get("type") == "progress"]
@@ -234,6 +235,7 @@ def test_selftest_leaves_execution_providers_to_the_engine(
         return 0
 
     monkeypatch.setattr("clarity.cli._selftest_window", window)
+    monkeypatch.setattr("clarity.cli.gpu_stack_error", lambda: "")
     assert main(["selftest", "--json"]) == 0
     assert seen["lanczos"] == ""
     assert opened["window"] == 1
@@ -242,6 +244,40 @@ def test_selftest_leaves_execution_providers_to_the_engine(
     assert result["no_gpu"] is False
     assert main(["--no-gpu"]) == 1
     assert "--no-gpu applies only to --selftest" in capsys.readouterr().err
+
+
+def test_gpu_selftest_refuses_a_missing_torch_stack(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _ready_runtime(monkeypatch)
+
+    def window() -> int:
+        raise AssertionError("window")
+
+    monkeypatch.setattr("clarity.cli._selftest_window", window)
+    monkeypatch.setattr(
+        "clarity.cli.gpu_stack_error",
+        lambda: "PyTorch and spandrel are required. Install requirements-gpu.txt.",
+    )
+    assert main(["selftest", "--json"]) == 1
+    assert "PyTorch and spandrel are required" in capsys.readouterr().err
+
+
+def test_no_gpu_selftest_does_not_require_torch(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _ready_runtime(monkeypatch)
+
+    def window() -> int:
+        return 0
+
+    def boom() -> str:
+        raise AssertionError("gpu stack")
+
+    monkeypatch.setattr("clarity.cli._selftest_window", window)
+    monkeypatch.setattr("clarity.cli.gpu_stack_error", boom)
+    assert main(["selftest", "--no-gpu", "--json"]) == 0
+    assert "gpu stack" not in capsys.readouterr().err
 
 
 def test_selftest_stops_when_the_runtime_is_incomplete(

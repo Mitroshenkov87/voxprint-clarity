@@ -110,7 +110,8 @@ The Start button and **Download models** call the same catalogue and the same
 
 `selftest` calls `ensure_runtime("clarity")`, repairs ffmpeg when it is
 missing, builds the default Clean restore plan, then opens the window
-offscreen and checks that Start has a label. The CUDA and TensorRT provider
+offscreen and checks that Start has a label. A GPU selftest also requires
+torch and spandrel. `--no-gpu` does not. The CUDA and TensorRT provider
 check belongs to the engine selftest.
 
 `--no-gpu` is the check for a machine with no GPU. It still imports the

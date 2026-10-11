@@ -15,6 +15,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
+import numpy as np
+
 from clarity.errors import Cancelled, ClarityError
 from clarity.i18n import tr
 from clarity.progress import progress_stage
@@ -23,6 +25,11 @@ try:
     import torch
 except ImportError:
     torch = None
+
+try:
+    import spandrel
+except ImportError:
+    spandrel = None
 
 OWNER = "clarity"
 NVIDIA_DRIVER_URL = "https://www.nvidia.com/Download/index.aspx"
@@ -157,6 +164,21 @@ def annotate_driver_message(message: str) -> str:
     if NVIDIA_DRIVER_URL in message:
         return message
     return f"{message} Download a current driver from {NVIDIA_DRIVER_URL}"
+
+
+def gpu_stack_error() -> str:
+    """Return why a GPU restore cannot start, or an empty string when torch and spandrel import.
+
+    The shared venv can exist without Clarity's CUDA torch. A restore then
+    fails at the first Clean or Strong frame. ``--selftest`` without
+    ``--no-gpu`` reports that here. ``--selftest --no-gpu`` does not call this.
+
+    Returns:
+        An empty string when both packages import.
+    """
+    if torch is None or spandrel is None:
+        return "PyTorch and spandrel are required. Install requirements-gpu.txt."
+    return ""
 
 
 def assess_launch() -> Gate:
@@ -418,8 +440,41 @@ def open_restore_session(onnx_path: Path, on_progress: Callable[[float, str], No
     raise ClarityError("; ".join(errors) or "the ONNX session did not load")
 
 
+def graph_batch_limit(session: Any) -> int | None:
+    """Return the session's fixed batch size, or None when that axis is dynamic.
+
+    The engine export marks height and width dynamic and traces a batch of 1.
+    A string or missing dimension means the graph accepts the batch it is given.
+
+    Args:
+        session: An ONNX Runtime session, or a test double with ``get_inputs``.
+
+    Returns:
+        A positive integer, or None.
+    """
+    getter = getattr(session, "get_inputs", None)
+    if not callable(getter):
+        return None
+    try:
+        specs = getter()
+    except (TypeError, RuntimeError, OSError, ValueError):
+        return None
+    if not specs:
+        return None
+    shape = getattr(specs[0], "shape", None)
+    if not shape:
+        return None
+    dim = shape[0]
+    if isinstance(dim, bool) or not isinstance(dim, int) or dim < 1:
+        return None
+    return int(dim)
+
+
 def run_onnx_batch(session: Any, nchw: Any) -> Any:
     """Run one NCHW batch on an ONNX Runtime session from the engine.
+
+    A tile batch larger than the graph's fixed batch is run in slices and
+    concatenated. A dynamic batch axis is one call.
 
     Args:
         session: A session from :func:`open_restore_session`.
@@ -431,7 +486,16 @@ def run_onnx_batch(session: Any, nchw: Any) -> Any:
     video = _load_module("voxprint_engine.video")
     if video is None:
         raise EngineUnavailable(f"Install {ENGINE_REQUIREMENT}.")
-    return video.run_batch(session, nchw)
+    array = np.asarray(nchw)
+    limit = graph_batch_limit(session)
+    count = int(array.shape[0]) if array.ndim == 4 else 0
+    if limit is None or count <= limit:
+        return video.run_batch(session, nchw)
+    parts = [
+        np.asarray(video.run_batch(session, array[start : start + limit]), dtype=np.float32)
+        for start in range(0, count, limit)
+    ]
+    return np.concatenate(parts, axis=0)
 
 
 def thermal_decide(elapsed_s: float, median_c: float | None, throttling_s: float, paused: bool) -> Any:

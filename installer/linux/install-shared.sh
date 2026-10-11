@@ -38,8 +38,24 @@ mkdir -p "$shared"
 if [ ! -x "$venv/bin/python" ]; then
   python3.14 -m venv "$venv"
 fi
+if ! "$venv/bin/python" -c "import pip"; then
+  "$venv/bin/python" -m ensurepip --upgrade
+fi
 "$venv/bin/python" -m pip install -r "$app/requirements.txt"
 "$venv/bin/python" -m pip install "$engine"
 "$venv/bin/python" -m pip install "Pillow==12.3.0"
 VOXPRINT_HOME=$suite_home PYTHONPATH="$app${PYTHONPATH:+:$PYTHONPATH}" "$venv/bin/python" -m clarity --install-suite
+if [ -f "$app/installer/pin_runtime.py" ]; then
+  pin=$app/installer/pin_runtime.py
+  lock=$app/installer/runtime_lock.json
+else
+  pin=$app/pin_runtime.py
+  lock=$app/runtime_lock.json
+fi
+reqs=$app/requirements-gpu.txt
+if [ ! -f "$pin" ] || [ ! -f "$lock" ] || [ ! -f "$reqs" ]; then
+  echo "pin_runtime.py, the runtime lock, or requirements-gpu.txt is missing" >&2
+  exit 1
+fi
+"$venv/bin/python" "$pin" --python "$venv/bin/python" --lock "$lock" --requirements "$reqs"
 "$venv/bin/python" -m pip install "Pillow==12.3.0"

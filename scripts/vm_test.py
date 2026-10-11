@@ -139,25 +139,75 @@ class _Run:
     ffprobe: str = ""
     steps: list[dict[str, Any]] = field(default_factory=list)
     bounds: dict[str, float] = field(default_factory=dict)
+    install_seconds: float = 0.0
 
 
-def release_tag(meta: dict[str, Any]) -> str:
-    """Return the results folder name for a BUILD.json object.
+def ref_label(exact_tag: str, sha: str) -> str:
+    """Return the results folder name for a checkout.
+
+    An exact git tag is kept. Any other commit is ``main-`` plus the short
+    sha. ``BUILD.json`` is not a ref: two checkouts can share a build number.
 
     Args:
-        meta: The parsed BUILD.json object.
+        exact_tag: ``git describe --exact-match --tags``, or empty.
+        sha: ``git rev-parse --short=7 HEAD``.
 
     Returns:
-        ``v`` plus the version and build, for example ``v1.0.0-rc.1002``.
+        The tag, or ``main-`` plus the hex sha.
+
+    Raises:
+        ValueError: When an untagged sha is not at least 7 hex characters.
     """
-    return f"v{meta['version']}.{meta['build']}"
+    tag = exact_tag.strip()
+    if tag:
+        if any(char.isspace() for char in tag):
+            raise ValueError("the tag must be one token")
+        return tag
+    short = sha.strip().lower()
+    if len(short) < 7 or any(char not in "0123456789abcdef" for char in short):
+        raise ValueError("sha must be hex")
+    return f"main-{short}"
+
+
+def source_ref(root: Path) -> str:
+    """Name HEAD as a tag, or ``main-`` plus the short sha.
+
+    Args:
+        root: The Clarity checkout.
+
+    Returns:
+        The label stored in ``summary.json`` and the done-marker key.
+
+    Raises:
+        _VmError: When git cannot name HEAD.
+    """
+    described = subprocess.run(
+        ["git", "-C", str(root), "describe", "--exact-match", "--tags", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    exact = (described.stdout or "").strip() if described.returncode == 0 else ""
+    parsed = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--short=7", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    sha = (parsed.stdout or "").strip()
+    if parsed.returncode != 0 or not sha:
+        raise _VmError("git could not name HEAD", EXIT_SETUP, "setup")
+    try:
+        return ref_label(exact, sha)
+    except ValueError as exc:
+        raise _VmError(str(exc), EXIT_SETUP, "setup") from exc
 
 
 def marker_path(tag: str, step: str) -> Path:
     """Return the resume marker for one step of one tag.
 
     Args:
-        tag: Results folder name from :func:`release_tag`.
+        tag: Results folder name from :func:`source_ref`.
         step: Step name such as ``restore-clean``.
 
     Returns:
@@ -293,7 +343,11 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         code = exc.code
         return int(code) if isinstance(code, int) else EXIT_SETUP
-    run = _make_run(parsed)
+    try:
+        run = _make_run(parsed)
+    except _VmError as exc:
+        print(f"FAILED: step {exc.step or 'setup'}: {exc}", file=sys.stderr)
+        return exc.code
     try:
         _check_os(run)
         status = probe_gpu(allow_other=run.allow_other_gpu)
@@ -346,8 +400,7 @@ class _Parser(argparse.ArgumentParser):
 
 def _make_run(parsed: argparse.Namespace) -> _Run:
     root = Path(__file__).resolve().parents[1]
-    meta = json.loads((root / "BUILD.json").read_text(encoding="utf-8"))
-    tag = release_tag(meta)
+    tag = source_ref(root)
     results = parsed.results if parsed.results is not None else _default_results(root, tag)
     results = results.resolve()
     for folder in ("logs", "crops", "cache", "clips", "outputs", "tools"):
@@ -409,11 +462,11 @@ def _run_steps(run: _Run) -> int:
         try:
             handler(run)
         except _VmError as exc:
-            seconds = round(time.perf_counter() - started, 3)
+            seconds = _step_seconds(name, started, run)
             run.steps.append({"name": name, "status": "fail", "seconds": seconds, "error": str(exc)})
             _emit(run, {"type": "step", "name": name, "status": "fail", "seconds": seconds, "error": str(exc)})
             return _finish(run, exc.code, name, str(exc))
-        seconds = round(time.perf_counter() - started, 3)
+        seconds = _step_seconds(name, started, run)
         _write_marker(run.tag, name)
         run.steps.append({"name": name, "status": "pass", "seconds": seconds, "error": ""})
         _emit(run, {"type": "step", "name": name, "status": "pass", "seconds": seconds})
@@ -452,11 +505,30 @@ def _step_gpu(run: _Run) -> None:
         raise _VmError(status.message, EXIT_NO_GPU)
 
 
+def _step_seconds(name: str, started: float, run: _Run) -> float:
+    """Return the step duration, including the parent wheel install for ``install``.
+
+    Args:
+        name: Step name.
+        started: ``time.perf_counter`` when the child step began.
+        run: The current invocation. ``install_seconds`` is the parent elapsed time.
+
+    Returns:
+        Seconds rounded to three places.
+    """
+    elapsed = time.perf_counter() - started
+    if name == "install":
+        elapsed += run.install_seconds
+    return round(elapsed, 3)
+
+
 def _step_install(run: _Run) -> None:
+    run.install_seconds = _take_install_seconds(run)
     try:
         if not _clarity_imports():
             raise _VmError("the virtualenv does not import clarity", EXIT_SETUP)
         _locate_ffmpeg(run)
+        _check_providers(run, "install")
     except _VmError:
         marker_path(run.tag, "install").unlink(missing_ok=True)
         raise
@@ -469,11 +541,7 @@ def _step_selftest(run: _Run) -> None:
     if completed.returncode != 0:
         code = EXIT_SETUP if completed.returncode == EXIT_SETUP else EXIT_FAIL
         raise _VmError(f"python -m clarity --selftest exited {completed.returncode}", code)
-    provider = _python(run, [str(run.root / "scripts" / "vm_provider_check.py")], "selftest", 180)
-    (run.logs / "providers.log").write_text((provider.stdout or "") + (provider.stderr or ""), encoding="utf-8")
-    if provider.returncode != 0:
-        detail = (provider.stdout or provider.stderr or "").strip()
-        raise _VmError(detail or "CUDAExecutionProvider or TensorrtExecutionProvider did not load", EXIT_FAIL)
+    _check_providers(run, "selftest")
 
 
 def _step_info(run: _Run) -> None:
@@ -764,7 +832,90 @@ def _install_ready(run: _Run) -> bool:
     return marker_path(run.tag, "install").is_file() and _venv_python(run.results).is_file()
 
 
+def _install_stamp(run: _Run) -> Path:
+    """Return the file that carries the parent install duration to the child."""
+    return run.logs / "install-seconds.json"
+
+
+def _take_install_seconds(run: _Run) -> float:
+    """Read and delete the parent install duration so a resume does not add it twice.
+
+    Args:
+        run: The current invocation.
+
+    Returns:
+        The recorded seconds, or 0 when the file is missing or not a number.
+    """
+    stamp = _install_stamp(run)
+    if not stamp.is_file():
+        return 0.0
+    try:
+        body = json.loads(stamp.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        body = {}
+    stamp.unlink(missing_ok=True)
+    seconds = body.get("seconds", 0.0) if isinstance(body, dict) else 0.0
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
+        return 0.0
+    return float(seconds)
+
+
+def _check_providers(run: _Run, step: str) -> None:
+    """Fail the step unless CUDA and TensorRT execution providers load.
+
+    The install marker is written after this returns, so a CPU-only wheel
+    cannot count as a finished install.
+
+    Args:
+        run: The current invocation.
+        step: ``install`` or ``selftest``.
+
+    Raises:
+        _VmError: When the provider script exits non-zero.
+    """
+    script = run.root / "scripts" / "vm_provider_check.py"
+    provider = _python(run, [str(script)], step, 180)
+    (run.logs / "providers.log").write_text((provider.stdout or "") + (provider.stderr or ""), encoding="utf-8")
+    if provider.returncode != 0:
+        detail = (provider.stdout or provider.stderr or "").strip()
+        raise _VmError(detail or "CUDAExecutionProvider or TensorrtExecutionProvider did not load", EXIT_FAIL)
+
+
+def _pin_runtime(run: _Run, uv: str, python: Path) -> None:
+    """Re-pin torch, spandrel, ONNX Runtime GPU, and TensorRT 10 after the engine.
+
+    The engine distribution depends on the CPU ONNX Runtime wheel. ``uv pip``
+    is required because this virtualenv is created without pip.
+
+    Args:
+        run: The current invocation.
+        uv: The uv executable.
+        python: The virtualenv interpreter.
+    """
+    script = run.root / "installer" / "pin_runtime.py"
+    lock = run.root / "installer" / "runtime_lock.json"
+    requirements = run.root / "requirements-gpu.txt"
+    _checked(
+        [
+            sys.executable,
+            str(script),
+            "--uv",
+            uv,
+            "--python",
+            str(python),
+            "--lock",
+            str(lock),
+            "--requirements",
+            str(requirements),
+        ],
+        900,
+        "the runtime pin failed",
+        setup=True,
+    )
+
+
 def _install(run: _Run) -> None:
+    started = time.perf_counter()
     uv = _ensure_uv(run.tools)
     git = _ensure_git(run.tools)
     os.environ["PATH"] = str(git.parent) + os.pathsep + os.environ.get("PATH", "")
@@ -800,8 +951,11 @@ def _install(run: _Run) -> None:
         setup=True,
     )
     _checked([uv, "pip", "install", "--python", str(py), ENGINE_URL], 900, "the public engine install failed", setup=True)
+    _pin_runtime(run, uv, py)
     _ensure_ffmpeg(run.tools)
-    (run.logs / "install.log").write_text("install ok\n", encoding="utf-8")
+    elapsed = round(time.perf_counter() - started, 3)
+    _install_stamp(run).write_text(json.dumps({"seconds": elapsed}) + "\n", encoding="utf-8")
+    (run.logs / "install.log").write_text(f"install ok\nseconds {elapsed}\n", encoding="utf-8")
 
 
 def _reexec(run: _Run, args: list[str]) -> int:

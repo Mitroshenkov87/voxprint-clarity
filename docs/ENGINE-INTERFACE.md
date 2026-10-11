@@ -20,9 +20,15 @@ Stacking the yields would allocate the chunk again.
 
 `install_gpu_wheels` pins `onnxruntime-gpu==1.31.0` and
 `tensorrt-cu13-libs==10.14.1.48` and removes the CPU `onnxruntime` wheel.
-Clarity's installers leave that pin to the engine. The engine selftest asserts
-`CUDAExecutionProvider` and `TensorrtExecutionProvider`. Clarity's `--selftest`
-checks the window, the import, and the default plan.
+The engine export uses a static batch of 1. Height and width are the dynamic
+axes. `run_onnx_batch` runs a larger tile batch as slices of that declared
+size and concatenates the rows. Clarity's installers also re-pin the venv
+the shortcut uses, from `installer/runtime_lock.json`, after the engine
+install. A shared venv created by another app can still contain the CPU
+wheel, and it does not gain Clarity's `torch==2.14.1` or spandrel until that
+pin runs. A GPU `--selftest` refuses a venv that cannot import torch and
+spandrel. `--selftest --no-gpu` does not. The CUDA and TensorRT provider
+check stays in the engine selftest and in `scripts/vm_provider_check.py`.
 
 ## What Clarity calls
 

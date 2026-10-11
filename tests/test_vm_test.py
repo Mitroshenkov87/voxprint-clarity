@@ -22,9 +22,39 @@ def _driver():
     return module
 
 
-def test_release_tag_uses_version_and_build() -> None:
+def test_ref_label_uses_the_tag_or_the_commit() -> None:
     module = _driver()
-    assert module.release_tag({"version": "1.0.0-rc", "build": 1002}) == "v1.0.0-rc.1002"
+    assert module.ref_label("", "b01cd6c") == "main-b01cd6c"
+    assert module.ref_label("v1.0.0-rc.1002", "b01cd6c") == "v1.0.0-rc.1002"
+    with pytest.raises(ValueError):
+        module.ref_label("", "abc")
+
+
+def test_source_ref_uses_the_tag_or_main_sha(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _driver()
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> object:
+        if "describe" in cmd:
+            return module.subprocess.CompletedProcess(cmd, 128, "", "not a tag")
+        return module.subprocess.CompletedProcess(cmd, 0, "b01cd6c\n", "")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    assert module.source_ref(_ROOT) == "main-b01cd6c"
+
+    def tagged(cmd: list[str], **_kwargs: object) -> object:
+        if "describe" in cmd:
+            return module.subprocess.CompletedProcess(cmd, 0, "v1.0.0-rc.1002\n", "")
+        return module.subprocess.CompletedProcess(cmd, 0, "b01cd6c\n", "")
+
+    monkeypatch.setattr(module.subprocess, "run", tagged)
+    assert module.source_ref(_ROOT) == "v1.0.0-rc.1002"
+
+    def missing(cmd: list[str], **_kwargs: object) -> object:
+        return module.subprocess.CompletedProcess(cmd, 1, "", "no git")
+
+    monkeypatch.setattr(module.subprocess, "run", missing)
+    with pytest.raises(module._VmError):
+        module.source_ref(_ROOT)
 
 
 def test_markers_live_under_done_and_gpu_is_named() -> None:
@@ -193,3 +223,96 @@ def test_finished_marker_skips_the_step(tmp_path: Path, monkeypatch: pytest.Monk
     skipped = [item for item in run.steps if item["name"] == "info"]
     assert skipped == [{"name": "info", "status": "skip", "seconds": 0.0, "error": ""}]
     assert marker("vtest", "restore-clean").is_file()
+
+
+def test_install_seconds_include_the_parent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _driver()
+    monkeypatch.setattr(module, "_locate_ffmpeg", lambda _run: None)
+    monkeypatch.setattr(module, "_clarity_imports", lambda: True)
+    monkeypatch.setattr(module, "_check_providers", lambda _run, _step: None)
+
+    def marker(tag: str, step: str) -> Path:
+        return tmp_path / "done" / f"{tag}--{step}"
+
+    monkeypatch.setattr(module, "marker_path", marker)
+
+    def handlers() -> dict:
+        names = {name: (lambda _run, name=name: None) for name in module.SMOKE_STEPS}
+        names["install"] = module._step_install
+        return names
+
+    monkeypatch.setattr(module, "_handlers", handlers)
+    logs = tmp_path / "results" / "logs"
+    logs.mkdir(parents=True)
+    (logs / "install-seconds.json").write_text(json.dumps({"seconds": 12.5}) + "\n", encoding="utf-8")
+    run = module._Run(
+        root=_ROOT,
+        results=tmp_path / "results",
+        mode="smoke",
+        tag="main-b01cd6c",
+        json_mode=False,
+        allow_other_gpu=False,
+        allow_other_os=False,
+        logs=logs,
+        crops=tmp_path / "results" / "crops",
+        cache=tmp_path / "results" / "cache",
+        clips=tmp_path / "results" / "clips",
+        outputs=tmp_path / "results" / "outputs",
+        tools=tmp_path / "results" / "tools",
+    )
+    code = module._run_steps(run)
+    assert code == 0
+    install = next(item for item in run.steps if item["name"] == "install")
+    assert install["status"] == "pass"
+    assert install["seconds"] >= 12.5
+    assert not (logs / "install-seconds.json").is_file()
+    assert marker("main-b01cd6c", "install").is_file()
+
+
+def test_provider_failure_does_not_keep_the_install_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _driver()
+    monkeypatch.setattr(module, "_locate_ffmpeg", lambda _run: None)
+    monkeypatch.setattr(module, "_clarity_imports", lambda: True)
+
+    def fail(_run: object, _step: str) -> None:
+        raise module._VmError("missing TensorrtExecutionProvider", module.EXIT_FAIL)
+
+    monkeypatch.setattr(module, "_check_providers", fail)
+
+    def marker(tag: str, step: str) -> Path:
+        return tmp_path / "done" / f"{tag}--{step}"
+
+    monkeypatch.setattr(module, "marker_path", marker)
+    stale = marker("main-b01cd6c", "install")
+    stale.parent.mkdir(parents=True)
+    stale.write_text("ok\n", encoding="utf-8")
+
+    def handlers() -> dict:
+        names = {name: (lambda _run, name=name: None) for name in module.SMOKE_STEPS}
+        names["install"] = module._step_install
+        return names
+
+    monkeypatch.setattr(module, "_handlers", handlers)
+    logs = tmp_path / "results" / "logs"
+    logs.mkdir(parents=True)
+    run = module._Run(
+        root=_ROOT,
+        results=tmp_path / "results",
+        mode="smoke",
+        tag="main-b01cd6c",
+        json_mode=True,
+        allow_other_gpu=False,
+        allow_other_os=False,
+        logs=logs,
+        crops=tmp_path / "results" / "crops",
+        cache=tmp_path / "results" / "cache",
+        clips=tmp_path / "results" / "clips",
+        outputs=tmp_path / "results" / "outputs",
+        tools=tmp_path / "results" / "tools",
+    )
+    code = module._run_steps(run)
+    assert code == 1
+    assert not stale.is_file()
+    failed = next(item for item in run.steps if item["name"] == "install")
+    assert failed["status"] == "fail"
+    assert "TensorrtExecutionProvider" in failed["error"]

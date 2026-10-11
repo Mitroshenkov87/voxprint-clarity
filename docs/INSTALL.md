@@ -18,14 +18,21 @@ runs `installer/install-runtime.ps1`, which:
 1. Reads `installer/runtime_lock.json` (Pillow 12.3.0).
 2. Creates a venv under `%LOCALAPPDATA%\Voxprint\shared\venv`
    (`%VOXPRINT_HOME%\shared\venv` when `VOXPRINT_HOME` is set). An existing
-   venv is reused.
+   venv is reused. Reuse still installs Clarity's torch and the GPU runtime
+   into that venv.
 3. Installs `requirements.txt` and the engine at commit `9183489`
-   (`voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489`).
-   The pin moves to tag `engine-v1.2.0` when that tag is published.
+   (`voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489`)
+   when the venv is new. The pin moves to tag `engine-v1.2.0` when that tag
+   is published.
 4. Calls `ensure_runtime("clarity")`. The engine installs Python 3.14, the
    CUDA 13 wheels, `onnxruntime-gpu==1.31.0`, TensorRT 10.14.1.48, and its
    default model into the shared folder. It removes the CPU `onnxruntime` wheel.
-5. Installs `Pillow==$pillow` from the lock after that step.
+5. Runs `installer/pin_runtime.py` with the venv interpreter, including when
+   the venv already existed. That installs `torch==2.14.1` from
+   `requirements-gpu.txt`, `spandrel`, `onnxruntime-gpu==1.31.0`,
+   `tensorrt-cu13-libs==10.14.1.48`, and `tensorrt-cu13==10.14.1.48`
+   (`--no-deps`). The CPU `onnxruntime` wheel is removed from the venv the
+   shortcut uses. `Pillow==$pillow` from the lock is installed after that.
 6. Creates `{app}` if needed and junctions the venv to `{app}\runtime`. The
    link is checked: a failed `mklink` stops the install, and a `runtime` path
    that is not a junction is refused.
@@ -82,7 +89,10 @@ for an AppImage before the first restore. The script needs Python 3.14,
 installs the engine at commit `9183489` and Pillow 12.3.0, and runs
 `--install-suite`. That calls `ensure_runtime("clarity")`, which installs the
 ONNX Runtime GPU and TensorRT pins, repairs ffmpeg, and fetches Clarity's
-Clean and Strong weights. A second run reuses the venv.
+Clean and Strong weights. It then runs `pin_runtime.py`, so an existing venv
+still receives `torch==2.14.1`, spandrel, and the lock's GPU runtime, and the
+CPU `onnxruntime` wheel is removed from that venv. A second run reuses the
+venv and pins it again.
 The launcher and `AppRun` prepend `shared/ffmpeg` to `PATH`.
 
 After extracting onto a prefix, update the MIME and desktop databases.
@@ -114,8 +124,9 @@ QT_QPA_PLATFORM=offscreen python -m clarity --selftest --no-gpu
 `--no-gpu` is the selftest CI and the release workflow both run. It checks
 the window, the engine import, and the restore plan. For that process the
 engine skips the suite download. `assess_launch` still refuses
-`VOXPRINT_CI_LANCZOS` for a restore. The CUDA and TensorRT provider check
-belongs to the engine selftest. Clarity does not repeat it.
+`VOXPRINT_CI_LANCZOS` for a restore. A GPU selftest also refuses a venv that
+cannot import torch and spandrel. `--no-gpu` does not. The CUDA and TensorRT
+provider check belongs to the engine selftest. Clarity does not repeat it.
 
 CI is GitHub Actions on `ubuntu-latest` and `windows-latest` (lint and unit
 tests, with the public engine installed), plus an installer job and an
