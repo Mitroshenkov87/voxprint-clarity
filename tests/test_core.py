@@ -326,6 +326,11 @@ def test_model_licences_are_permissive() -> None:
 def test_theme_contrast_and_translations() -> None:
     for foreground, background in theme.CONTRAST_PAIRS:
         assert theme.contrast_ratio(foreground, background) >= 4.5
+    assert theme.IDENTITY == "#2dd4bf"
+    assert theme.IDENTITY != theme.GREEN
+    assert theme.IDENTITY != "#86efac"
+    assert theme.IDENTITY != "#f5d76e"
+    assert theme.splash_art().is_file()
     assert tr("start", "en") == "Start"
     assert tr("start", "ru") == "Старт"
     english = json.loads(Path("locales/en.json").read_text(encoding="utf-8"))
@@ -344,6 +349,40 @@ def test_platform_gate() -> None:
     assert assess_platform(system="win32", win_build=26100).ok
     assert not assess_platform(system="win32", win_build=22000).ok
     assert not assess_platform(system="linux", os_release='ID=ubuntu\nVERSION_ID="22.04"\n').ok
+
+
+def test_launch_uses_the_common_gpu_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A card below compute capability 8.9 is refused by voxprint-common."""
+    from voxprint_common.gpu_probe import GpuDevice
+
+    monkeypatch.setattr("clarity.engine._require", lambda: object())
+    low = [
+        GpuDevice(
+            index=0,
+            name="NVIDIA GeForce RTX 3060",
+            driver="610.00",
+            compute=(8, 6),
+            memory_mib=12288,
+        )
+    ]
+    monkeypatch.setattr("voxprint_common.gpu_probe.query_gpus", lambda runner=None: low)
+    gate = assess_launch()
+    assert gate.ok is False
+    assert "8.6" in gate.message
+
+    ada = [
+        GpuDevice(
+            index=0,
+            name="NVIDIA GeForce RTX 4090",
+            driver="610.00",
+            compute=(8, 9),
+            memory_mib=24564,
+        )
+    ]
+    monkeypatch.setattr("voxprint_common.gpu_probe.query_gpus", lambda runner=None: ada)
+    allowed = assess_launch()
+    assert allowed.ok is True
+    assert allowed.warning == ""
 
 
 def test_lanczos_flag_does_not_start_clarity(monkeypatch: pytest.MonkeyPatch) -> None:

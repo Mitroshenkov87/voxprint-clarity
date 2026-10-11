@@ -11,7 +11,7 @@ import pytest
 
 from clarity.bench import export_example_shape, export_with_engine, tensorrt_providers
 from clarity.engine import run_onnx_batch
-from clarity.cli import main
+from clarity.cli import ExitCode, main
 from clarity.errors import ClarityError
 from clarity.models import CATALOG, clean_models, strong_model
 from clarity.net import install_system_trust
@@ -218,7 +218,10 @@ def test_restore_json_reports_a_job_failure(tmp_path: Path, monkeypatch: pytest.
     result = json.loads(captured.out.strip().splitlines()[-1])
     assert result["type"] == "result"
     assert result["ok"] is False
+    assert result["code"] == 3
+    assert result["code"] == int(ExitCode.JOB)
     assert "MemoryError" in result["error"]
+    assert "MemoryError" in result["message"]
     assert "22.7" in result["error"]
     assert "MemoryError" in captured.err
 

@@ -10,6 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 from PySide6.QtWidgets import QApplication
+from voxprint_common.gpu_probe import GpuDevice, old_driver_message
 
 from clarity.cli import _ensure_shared, main
 from clarity.engine import (
@@ -492,29 +493,23 @@ def test_uninstall_releases_the_clarity_holder(monkeypatch: pytest.MonkeyPatch, 
 
 def test_old_driver_includes_the_nvidia_download_page(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("VOXPRINT_CI_LANCZOS", raising=False)
-
-    class _Gate:
-        def __init__(self) -> None:
-            self.ok = False
-            self.message = (
-                "Enlarge needs an NVIDIA driver from the 600 series or newer. "
-                "This computer has driver 551.76. Update the driver, then start Enlarge again."
-            )
-            self.warning = ""
-
-    class _Hardware:
-        def assess_gpu(self, refuse_below: tuple[int, int]) -> _Gate:
-            del refuse_below
-            return _Gate()
-
+    old = [
+        GpuDevice(
+            index=0,
+            name="NVIDIA GeForce RTX 4090",
+            driver="551.76",
+            compute=(8, 9),
+            memory_mib=24564,
+        )
+    ]
     monkeypatch.setattr("clarity.engine._engine_api", object())
-    monkeypatch.setattr("clarity.engine._hardware", _Hardware())
+    monkeypatch.setattr("voxprint_common.gpu_probe.query_gpus", lambda runner=None: old)
     gate = assess_launch()
     assert gate.ok is False
     assert "551.76" in gate.message
     assert "R600" in gate.message
     assert NVIDIA_DRIVER_URL in gate.message
-    assert NVIDIA_DRIVER_URL not in _Gate().message
+    assert NVIDIA_DRIVER_URL not in old_driver_message("Clarity", "551.76")
     assert NVIDIA_DRIVER_URL in driver_refusal("551.76")
 
 
@@ -578,6 +573,21 @@ def test_engine_pin_and_pillow_stay() -> None:
     lock = json.loads((_ROOT / "installer" / "runtime_lock.json").read_text(encoding="utf-8"))
     assert lock["pillow"] == "12.3.0"
     assert lock["engine"] == ENGINE_REQUIREMENT
+    common = (
+        "voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common"
+        "/archive/refs/tags/v0.1.0.tar.gz"
+    )
+    requirements = (_ROOT / "requirements.txt").read_text(encoding="utf-8")
+    assert lock["voxprint-common"] == "0.1.*"
+    assert lock["voxprint-common_requirement"] == common
+    assert "voxprint-common==0.1.*" in requirements
+    assert common in requirements
+    assert "voxprint-common==0.1.*" in package
+    assert common in package
+    assert common in windows
+    assert common in linux
+    assert "git+" not in common
+    assert "MinGit" not in common
     assert 'Pillow==$pillow' in windows
     assert 'probes={"model": lambda _root: True}' in windows
     assert 'installers={"model": lambda _root, _progress: None}' in windows

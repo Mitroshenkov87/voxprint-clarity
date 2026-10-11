@@ -6,7 +6,8 @@ See the LICENSE file.
 
 Clarity does not bundle third-party weights, ffmpeg, x264, x265, or GPL code.
 Weights are downloaded at runtime into the shared Voxprint models folder after
-a SHA-256 check. Only MIT, Apache-2.0, and BSD weights are accepted.
+a SHA-256 check. Only MIT, Apache-2.0, and BSD weights are accepted. The shared licence
+gate also knows ISC, CC-BY, and CC0; Clarity does not fetch those.
 
 Third-party code and models
 ---------------------------
@@ -32,6 +33,12 @@ PyTorch — BSD-style licence. Clarity pins torch 2.14.1 with CUDA 13.0 wheels.
 ONNX Runtime — MIT License, used through the shared voxprint-engine package
   from Voxprint AI Enlarge. Clarity does not vendor that package.
 
+voxprint-common 0.1.0 "Yesod" — Apache License 2.0
+  Shared hashing, BUILD.json reading, licence gate, theme, splash, the
+  --json line writer, and the GPU probe. Installed from the v0.1.0 tag
+  archive. Clarity does not vendor that package.
+  https://github.com/Mitroshenkov87/voxprint-common
+
 PySide6 / Qt — GNU LGPL. Linked as a dependency, not vendored.
 
 NumPy — BSD 3-Clause License.
@@ -51,3 +58,7 @@ Suite icons
 `assets/icons/suite/` holds the shared Voxprint icons for save, save as,
 save a copy, export, and download. They are suite art (a tray and an arrow).
 They are not a floppy-disk glyph and they are not a third-party icon pack.
+
+`assets/splash/clarity.jpg` is the approved suite splash artwork for Clarity.
+The window shows it through voxprint-common's splash. It is suite art, not
+a third-party image.

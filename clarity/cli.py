@@ -14,8 +14,12 @@ from clarity.net import install_system_trust
 install_system_trust()
 
 from PySide6.QtWidgets import QApplication
+from voxprint_common.cli_protocol import EXIT_CANCELLED, EXIT_FAILED, EXIT_OK, EXIT_USAGE, emit
+from voxprint_common.cli_protocol import progress as protocol_progress
+from voxprint_common.cli_protocol import result as protocol_result
+from voxprint_common.ui.splash import Splash
 
-from clarity.appinfo import APP_BUILD, APP_NAME, APP_VERSION, CODENAME, version_label
+from clarity.appinfo import APP_BUILD, APP_NAME, APP_VERSION, CODENAME, build_info, version_label
 from clarity.engine import (
     EngineUnavailable,
     assess_launch,
@@ -39,6 +43,7 @@ from clarity.project import ProjectFormatError, load_project, work_dir_for
 from clarity.ui.main_window import MainWindow
 from clarity.ui.platform import gui_qt_platform, require_windows_platform_plugin, selftest_qt_platform
 from clarity.ui.suite_dialog import RepairProgress
+from clarity.ui.theme import IDENTITY, splash_art
 
 CommandName = Literal["restore", "project", "info", "version", "models", "selftest"]
 ProjectAction = Literal["open", "resume"]
@@ -53,6 +58,36 @@ class ExitCode(IntEnum):
     USAGE = 1
     ENVIRONMENT = 2
     JOB = 3
+
+
+def protocol_code(code: ExitCode) -> int:
+    """Map a Clarity status onto the integer ``voxprint_common.cli_protocol`` accepts.
+
+    The integers match. The names do not. ``docs/CLI.md`` is the contract, and
+    ``vm_test`` depends on it:
+
+    * ``OK`` (0) is ``EXIT_OK``.
+    * ``USAGE`` (1) is ``EXIT_USAGE``. A cancel uses this code.
+    * ``ENVIRONMENT`` (2) is ``EXIT_FAILED``.
+    * ``JOB`` (3) is the integer the shared package names ``EXIT_CANCELLED``.
+      In Clarity that integer is a live restore or model fetch that failed
+      after it started. It is not a cancel.
+
+    Args:
+        code: A status from :class:`ExitCode`.
+
+    Returns:
+        The integer written as JSON ``code`` and returned as the process status.
+    """
+    if code is ExitCode.OK:
+        return EXIT_OK
+    if code is ExitCode.USAGE:
+        return EXIT_USAGE
+    if code is ExitCode.ENVIRONMENT:
+        return EXIT_FAILED
+    if code is ExitCode.JOB:
+        return EXIT_CANCELLED
+    raise AssertionError(f"unmapped exit code {code!r}")
 
 
 class _Parser(argparse.ArgumentParser):
@@ -84,9 +119,9 @@ class Console:
             The integer value of ``code``.
         """
         if self.json_mode:
-            print(json.dumps({"type": "result", "ok": False, "error": message}), flush=True)
+            emit(protocol_result(False, code=protocol_code(code), message=message, error=message))
         print(message, file=sys.stderr)
-        return int(code)
+        return protocol_code(code)
 
     def ok(self, payload: dict[str, Any]) -> int:
         """Print a successful result and return 0.
@@ -97,11 +132,12 @@ class Console:
         Returns:
             ``ExitCode.OK``.
         """
-        body = {"type": "result", "ok": True, **payload}
         if self.json_mode:
-            print(json.dumps(body), flush=True)
+            extra = {key: value for key, value in payload.items() if key not in {"type", "ok", "code", "message"}}
+            note = str(payload["message"]) if "message" in payload else ""
+            emit(protocol_result(True, code=protocol_code(ExitCode.OK), message=note, **extra))
         else:
-            _human(body)
+            _human({"type": "result", "ok": True, **payload})
         return int(ExitCode.OK)
 
     def progress(self, fraction: float, message: str) -> None:
@@ -112,11 +148,11 @@ class Console:
             message: Short status, such as a chunk count.
         """
         if self.json_mode:
-            body: dict[str, Any] = {"type": "progress", "fraction": fraction, "message": message}
             stage = progress_stage(message)
-            if stage is not None:
-                body["stage"] = stage
-            print(json.dumps(body), flush=True)
+            body = protocol_progress(stage or "status", fraction, message)
+            if stage is None:
+                body.pop("stage", None)
+            emit(body)
         else:
             print(message, file=sys.stderr)
 
@@ -673,15 +709,20 @@ def _gui(argv: list[str]) -> int:
         print(exc)
         return int(ExitCode.ENVIRONMENT)
     application = QApplication.instance() or QApplication(sys.argv)
+    splash = Splash(splash_art(), IDENTITY, build_info())
+    splash.set_stage("Loading")
     try:
         _ensure_shared(RepairProgress())
     except (ClarityError, OSError) as exc:
+        splash.finish()
         print(exc)
         return int(ExitCode.ENVIRONMENT)
     window = MainWindow()
     if args.project is not None:
         window.open_project(args.project)
     window.show()
+    application.processEvents()
+    splash.finish()
     return int(application.exec())
 
 

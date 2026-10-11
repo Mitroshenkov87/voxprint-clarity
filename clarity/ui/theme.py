@@ -1,120 +1,124 @@
-"""Suite palette: yellow primary actions, soft blue accents, dark surfaces.
+"""Suite theme from ``voxprint_common.ui.theme``, plus Clarity's splash identity.
 
-Tokens match the Voxprint palette (Audiobook Builder is the source of truth).
-Text colours are opaque. Contrast pairs are checked in tests.
+The window uses the shared yellow primary actions and soft blue accents.
+The splash progress bar is Clarity's teal identity, not the shared ``GREEN``
+success token. ``IDENTITY`` is passed to ``voxprint_common.ui.splash.Splash``.
 """
 from __future__ import annotations
 
-PRIMARY = "#f5d76e"
-PRIMARY_HOVER = "#f9e291"
-PRIMARY_BORDER = "#fbe8a6"
-TEXT_ON_PRIMARY = "#1c1604"
-PRIMARY_DISABLED_BG = "#36321f"
-PRIMARY_DISABLED_TEXT = "#b9b08a"
+from pathlib import Path
 
-MENU_BG = "#1c2535"
-MENU_SELECTION = "#2f4c78"
-ACCENT = "#60a5fa"
-ACCENT_HOVER = "#7db9ff"
-ACCENT_SOFT = "#93c5fd"
-ACCENT_STRONG = "#2563eb"
-TEXT_ON_ACCENT = "#0b1220"
-
-TEXT = "#f2f2f5"
-TEXT_MUTED = "#c4c4d0"
-TEXT_FAINT = "#a8a8b8"
-TEXT_DISABLED = "#8e8e9e"
-
-ROOT_PLAIN = "#17171c"
-CARD_PLAIN = "#202029"
-CONTROL_BG = "#2c2c38"
-CONTROL_HOVER = "#383846"
-CONTROL_BORDER = "#4b4b5c"
-
-AMBER = "#fcd34d"
-NOTE_BG = "#2a2418"
-NOTE_BORDER = "#6b5720"
-GREEN = "#86efac"
-BADGE_GREEN_TEXT = "#0b1f12"
-BADGE_AMBER_TEXT = "#251a02"
-RED = "#fca5a5"
-
-# Clarity's splash identity. Every other control uses the shared tokens.
-SPLASH = "#f5d76e"
-WHITE = "#ffffff"
-
-
-def _channel(hex_color: str) -> tuple[int, int, int]:
-    text = hex_color.removeprefix("#")
-    return int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16)
-
-
-def _linear(channel: int) -> float:
-    value = channel / 255.0
-    if value <= 0.04045:
-        return value / 12.92
-    return ((value + 0.055) / 1.055) ** 2.4
-
-
-def luminance(hex_color: str) -> float:
-    """Return the WCAG relative luminance of a ``#RRGGBB`` colour.
-
-    Args:
-        hex_color: Six-digit hex colour.
-
-    Returns:
-        Relative luminance in 0..1.
-    """
-    red, green, blue = _channel(hex_color)
-    return 0.2126 * _linear(red) + 0.7152 * _linear(green) + 0.0722 * _linear(blue)
-
-
-def contrast_ratio(foreground: str, background: str) -> float:
-    """Return the WCAG contrast ratio of two ``#RRGGBB`` colours.
-
-    Args:
-        foreground: Text colour.
-        background: Surface colour.
-
-    Returns:
-        The ratio, from 1 to 21.
-    """
-    lighter = max(luminance(foreground), luminance(background))
-    darker = min(luminance(foreground), luminance(background))
-    return (lighter + 0.05) / (darker + 0.05)
-
-
-# Opaque pairs that must clear WCAG AA for normal text.
-CONTRAST_PAIRS: tuple[tuple[str, str], ...] = (
-    (TEXT, ROOT_PLAIN),
-    (TEXT, CARD_PLAIN),
-    (TEXT, CONTROL_BG),
-    (TEXT, MENU_BG),
-    (TEXT_MUTED, ROOT_PLAIN),
-    (TEXT_FAINT, ROOT_PLAIN),
-    (TEXT_ON_PRIMARY, PRIMARY),
-    (WHITE, MENU_SELECTION),
-    (WHITE, ACCENT_STRONG),
-    (BADGE_GREEN_TEXT, GREEN),
-    (BADGE_AMBER_TEXT, AMBER),
-    (TEXT_ON_ACCENT, ACCENT_SOFT),
+from voxprint_common.ui.theme import (
+    ACCENT,
+    ACCENT_HOVER,
+    ACCENT_SOFT,
+    ACCENT_STRONG,
+    AMBER,
+    BADGE_AMBER_TEXT,
+    BADGE_GREEN_TEXT,
+    CARD_GLASS,
+    CARD_GLASS_MORE,
+    CARD_PLAIN,
+    CONTRAST_PAIRS,
+    CONTROL_BG,
+    CONTROL_BORDER,
+    CONTROL_HOVER,
+    GREEN,
+    MENU_BG,
+    MENU_SELECTION,
+    NOTE_BG,
+    NOTE_BORDER,
+    PRIMARY,
+    PRIMARY_BORDER,
+    PRIMARY_DISABLED_BG,
+    PRIMARY_DISABLED_TEXT,
+    PRIMARY_HOVER,
+    RED,
+    ROOT_GLASS,
+    ROOT_GLASS_MORE,
+    ROOT_PLAIN,
+    TEXT,
+    TEXT_DISABLED,
+    TEXT_FAINT,
+    TEXT_MUTED,
+    TEXT_ON_ACCENT,
+    TEXT_ON_PRIMARY,
+    build_style as suite_style,
+    contrast_ratio,
 )
 
+from clarity.appinfo import repo_root
 
-def build_style() -> str:
-    """Qt stylesheet. The window fill is the plain dark token (Acrylic tints the frame on Windows)."""
-    return f"""
-    QWidget {{
-        background: {ROOT_PLAIN};
-        color: {TEXT};
-        font-size: 14px;
-    }}
-    QLabel#subtitle, QLabel#hint {{
-        color: {TEXT_MUTED};
-    }}
-    QLabel#faint {{
-        color: {TEXT_FAINT};
-    }}
+# Splash progress fill. Registered as Clarity's identity in the suite palette.
+# GREEN stays the success token, so a bar in that colour would read as done.
+IDENTITY = "#2dd4bf"
+
+
+def splash_art() -> Path:
+    """Return the approved splash image, ``assets/splash/clarity.jpg``.
+
+    Returns:
+        The path under the checkout or install root. A missing file is still
+        returned; the shared splash paints ``#0b1020`` in that case.
+    """
+    return repo_root() / "assets" / "splash" / "clarity.jpg"
+
+
+__all__ = [
+    "ACCENT",
+    "ACCENT_HOVER",
+    "ACCENT_SOFT",
+    "ACCENT_STRONG",
+    "AMBER",
+    "BADGE_AMBER_TEXT",
+    "BADGE_GREEN_TEXT",
+    "CARD_GLASS",
+    "CARD_GLASS_MORE",
+    "CARD_PLAIN",
+    "CONTRAST_PAIRS",
+    "CONTROL_BG",
+    "CONTROL_BORDER",
+    "CONTROL_HOVER",
+    "GREEN",
+    "IDENTITY",
+    "MENU_BG",
+    "MENU_SELECTION",
+    "NOTE_BG",
+    "NOTE_BORDER",
+    "PRIMARY",
+    "PRIMARY_BORDER",
+    "PRIMARY_DISABLED_BG",
+    "PRIMARY_DISABLED_TEXT",
+    "PRIMARY_HOVER",
+    "RED",
+    "ROOT_GLASS",
+    "ROOT_GLASS_MORE",
+    "ROOT_PLAIN",
+    "TEXT",
+    "TEXT_DISABLED",
+    "TEXT_FAINT",
+    "TEXT_MUTED",
+    "TEXT_ON_ACCENT",
+    "TEXT_ON_PRIMARY",
+    "build_style",
+    "contrast_ratio",
+    "splash_art",
+]
+
+
+def build_style(glass: bool = False, *, more: bool = False) -> str:
+    """Return the suite stylesheet plus Clarity's group boxes and Start button.
+
+    Args:
+        glass: Use the translucent Acrylic backgrounds from the shared theme.
+            The default stays solid. Windows still asks DWM for Acrylic.
+        more: Use the more-transparent Acrylic backgrounds. Ignored when
+            ``glass`` is false.
+
+    Returns:
+        A Qt stylesheet. Qt is not imported.
+    """
+    rules = f"""
     QGroupBox {{
         background: {CARD_PLAIN};
         border: 1px solid {CONTROL_BORDER};
@@ -128,29 +132,8 @@ def build_style() -> str:
         left: 12px;
         padding: 0 4px;
     }}
-    QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
-        background: {CONTROL_BG};
-        color: {TEXT};
-        border: 1px solid {CONTROL_BORDER};
-        border-radius: 6px;
-        padding: 6px;
-        min-height: 22px;
-    }}
-    QComboBox QAbstractItemView {{
-        background: {MENU_BG};
-        color: {TEXT};
-        selection-background-color: {MENU_SELECTION};
-        selection-color: {WHITE};
-    }}
-    QPushButton {{
-        background: {CONTROL_BG};
-        color: {TEXT};
-        border: 1px solid {CONTROL_BORDER};
-        border-radius: 8px;
-        padding: 8px 14px;
-    }}
-    QPushButton:hover {{
-        background: {CONTROL_HOVER};
+    QLabel#faint {{
+        color: {TEXT_FAINT};
     }}
     QPushButton#start {{
         background: {PRIMARY};
@@ -165,36 +148,17 @@ def build_style() -> str:
         background: {PRIMARY_DISABLED_BG};
         color: {PRIMARY_DISABLED_TEXT};
     }}
-    QCheckBox::indicator, QRadioButton::indicator {{
+    QRadioButton::indicator {{
         width: 16px;
         height: 16px;
     }}
-    QSlider::groove:horizontal {{
-        background: {CONTROL_BG};
-        height: 6px;
-        border-radius: 3px;
-    }}
-    QSlider::handle:horizontal {{
-        background: {ACCENT};
-        width: 16px;
-        margin: -6px 0;
-        border-radius: 8px;
-    }}
-    QProgressBar {{
-        background: {CONTROL_BG};
-        border: 1px solid {CONTROL_BORDER};
-        border-radius: 6px;
-        text-align: center;
-        color: {TEXT};
-    }}
-    QProgressBar::chunk {{
-        background: {ACCENT_STRONG};
-        border-radius: 5px;
-    }}
-    QPlainTextEdit {{
-        background: {CARD_PLAIN};
-        color: {TEXT};
-        border: 1px solid {CONTROL_BORDER};
-        border-radius: 8px;
-    }}
     """
+    if not glass:
+        rules = f"""
+        QWidget {{
+            background: {ROOT_PLAIN};
+            color: {TEXT};
+        }}
+        {rules}
+        """
+    return suite_style(glass, more=more) + rules

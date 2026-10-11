@@ -14,12 +14,12 @@ import pytest
 
 pytest.importorskip("voxprint_engine")
 
+from voxprint_common.gpu_probe import GpuDevice
 from voxprint_engine.api import sysmem_spill, temporal_windows, tile_frames
 from voxprint_engine.gpu_lock import try_acquire
-from voxprint_engine.hardware import assess_gpu
 from voxprint_engine.video import parse_shared_usage, run_batch
 
-from clarity.engine import OWNER, hold_gpu, restore_message
+from clarity.engine import OWNER, assess_launch, hold_gpu, restore_message
 
 
 def test_temporal_windows_cover_every_frame_once() -> None:
@@ -70,28 +70,33 @@ def test_sysmem_spill_threshold() -> None:
     assert parse_shared_usage('"counter","4096"\n') == 4096
 
 
-def test_clarity_refuses_a_card_below_ada() -> None:
-    def runner(*_args: object, **_kwargs: object) -> object:
-        class _Proc:
-            returncode = 0
-            stdout = "NVIDIA GeForce RTX 3060, 610.00, 8.6\n"
-            stderr = ""
-
-        return _Proc()
-
-    gate = assess_gpu(refuse_below=(8, 9), runner=runner)
+def test_clarity_refuses_a_card_below_ada(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The launch gate is ``voxprint_common.gpu_probe``, and 8.6 still refuses."""
+    low = [
+        GpuDevice(
+            index=0,
+            name="NVIDIA GeForce RTX 3060",
+            driver="610.00",
+            compute=(8, 6),
+            memory_mib=12288,
+        )
+    ]
+    monkeypatch.setattr("voxprint_common.gpu_probe.query_gpus", lambda runner=None: low)
+    gate = assess_launch()
     assert gate.ok is False
     assert "8.6" in gate.message
 
-    def ada(*_args: object, **_kwargs: object) -> object:
-        class _Proc:
-            returncode = 0
-            stdout = "NVIDIA GeForce RTX 4090, 610.00, 8.9\n"
-            stderr = ""
-
-        return _Proc()
-
-    allowed = assess_gpu(refuse_below=(8, 9), runner=ada)
+    ada = [
+        GpuDevice(
+            index=0,
+            name="NVIDIA GeForce RTX 4090",
+            driver="610.00",
+            compute=(8, 9),
+            memory_mib=24564,
+        )
+    ]
+    monkeypatch.setattr("voxprint_common.gpu_probe.query_gpus", lambda runner=None: ada)
+    allowed = assess_launch()
     assert allowed.ok is True
 
 

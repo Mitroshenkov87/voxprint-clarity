@@ -1,6 +1,7 @@
 """Clarity's model catalogue. Weights stay in the shared Voxprint models folder.
 
-Only MIT, Apache-2.0, and BSD. A non-commercial or missing licence is refused
+The suite gate is ``voxprint_common.licence``. Clarity still fetches only MIT,
+Apache-2.0, and BSD. A non-commercial, copyleft, or missing licence is refused
 before a download. Hashes were computed from the official release assets.
 """
 from __future__ import annotations
@@ -8,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from voxprint_common.licence import is_allowed, normalize
 
 from clarity.engine import ensure_weight
 
@@ -65,12 +68,21 @@ class ClarityModel:
 
 
 def licence_allowed(licence: str) -> bool:
-    """True only for the permissive SPDX ids Clarity will fetch."""
-    text = licence.strip().lower().replace("_", "-")
-    if "non-commercial" in text or "noncommercial" in text or "gpl" in text:
+    """True only for MIT, Apache-2.0, and BSD.
+
+    ``voxprint_common.licence.is_allowed`` rejects a missing, non-commercial,
+    or copyleft id. Clarity then keeps the three families this catalogue ships.
+    The wider suite list (ISC, CC-BY, CC0) is not fetched here.
+
+    Args:
+        licence: A licence string from a model card.
+
+    Returns:
+        True when the id is one of :data:`ALLOWED`.
+    """
+    if not is_allowed(licence):
         return False
-    folded = {"bsd-3": "bsd-3-clause", "bsd-2": "bsd-2-clause", "bsd": "bsd-3-clause"}.get(text, text)
-    return folded in ALLOWED
+    return normalize(licence) in ALLOWED
 
 
 def _model(**kwargs: Any) -> ClarityModel:

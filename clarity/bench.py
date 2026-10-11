@@ -10,13 +10,14 @@ This machine must be an NVIDIA GPU. The script refuses to pretend it ran.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import importlib
 import json
 import shutil
 import subprocess
 import time
 import urllib.request
+
+from voxprint_common.hashing import sha256_file
 
 from clarity.net import install_system_trust
 from clarity.precision import apply_precision, torch_dtype_name
@@ -80,7 +81,7 @@ def download_clip(folder: Path) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / CLIP_NAME
     if target.is_file():
-        found = hashlib.sha256(target.read_bytes()).hexdigest()
+        found = sha256_file(target)
         if found == CLIP_SHA256:
             return target
         target.unlink()
@@ -89,7 +90,6 @@ def download_clip(folder: Path) -> Path:
     partial = target.with_suffix(target.suffix + ".partial")
     install_system_trust()
     request = urllib.request.Request(CLIP_URL, headers={"User-Agent": "voxprint-clarity-bench"})
-    hasher = hashlib.sha256()
     with urllib.request.urlopen(request, timeout=120) as response:  # noqa: S310 - https is checked above
         if not str(response.geturl()).startswith("https://"):
             raise RuntimeError("the clip download left https")
@@ -98,9 +98,8 @@ def download_clip(folder: Path) -> Path:
                 block = response.read(1024 * 256)
                 if not block:
                     break
-                hasher.update(block)
                 handle.write(block)
-    if hasher.hexdigest() != CLIP_SHA256:
+    if sha256_file(partial) != CLIP_SHA256:
         partial.unlink(missing_ok=True)
         raise RuntimeError("the test clip does not match the pinned sha256")
     partial.replace(target)
@@ -462,7 +461,7 @@ def download_weight(model: ClarityModel, folder: Path) -> Path:
     """Fetch one official weight and check the catalogue SHA-256."""
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / model.filename
-    if target.is_file() and hashlib.sha256(target.read_bytes()).hexdigest() == model.sha256:
+    if target.is_file() and sha256_file(target) == model.sha256:
         return target
     if target.is_file():
         target.unlink()
@@ -471,7 +470,6 @@ def download_weight(model: ClarityModel, folder: Path) -> Path:
     partial = target.with_suffix(target.suffix + ".partial")
     install_system_trust()
     request = urllib.request.Request(model.download_url, headers={"User-Agent": "voxprint-clarity-bench"})
-    hasher = hashlib.sha256()
     with urllib.request.urlopen(request, timeout=180) as response:  # noqa: S310 - https is checked above
         if not str(response.geturl()).startswith("https://"):
             raise RuntimeError(f"{model.id} left https")
@@ -480,9 +478,8 @@ def download_weight(model: ClarityModel, folder: Path) -> Path:
                 block = response.read(1024 * 256)
                 if not block:
                     break
-                hasher.update(block)
                 handle.write(block)
-    if hasher.hexdigest() != model.sha256:
+    if sha256_file(partial) != model.sha256:
         partial.unlink(missing_ok=True)
         raise RuntimeError(f"{model.id} does not match the pinned sha256")
     partial.replace(target)

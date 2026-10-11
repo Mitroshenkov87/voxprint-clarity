@@ -19,12 +19,14 @@ runs `installer/install-runtime.ps1`, which:
 2. Creates a venv under `%LOCALAPPDATA%\Voxprint\shared\venv`
    (`%VOXPRINT_HOME%\shared\venv` when `VOXPRINT_HOME` is set). An existing
    venv is reused. Reuse still installs Clarity's torch and spandrel into
-   that venv, and it installs the engine extra again.
-3. Installs `requirements.txt` when the venv is new, and the engine at tag
-   `engine-v1.2.1`
+   that venv, and it installs `voxprint-common` and the engine extra again.
+3. Installs `requirements.txt` when the venv is new, `voxprint-common` 0.1.*
+   from the v0.1.0 tag archive
+   (`voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/archive/refs/tags/v0.1.0.tar.gz`),
+   and the engine at tag `engine-v1.2.1`
    (`voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz`)
-   for a new venv and a reused one. The archive has no subdirectory, and the
-   install does not need git. The `gpu` extra is installed with
+   for a new venv and a reused one. Neither archive has a subdirectory, and
+   neither install needs git. The `gpu` extra is installed with
    `--extra-index-url https://pypi.nvidia.com`. The engine's base dependencies
    do not include ONNX Runtime. The GPU pins are that extra.
 4. Calls the engine runtime install for holder `clarity` and skips the

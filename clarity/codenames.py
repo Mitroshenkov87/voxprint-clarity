@@ -6,9 +6,10 @@ this copy in the same commit as the ``BUILD.json`` codename.
 """
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
+
+from voxprint_common.buildinfo import load
 
 from clarity.appinfo import repo_root
 
@@ -66,13 +67,12 @@ def foreign_names(used: dict[str, list[str]], reserved: dict[str, str], app: str
 def check(root: Path | None = None) -> str:
     """Return this app's codename, or raise ``CodenameError``."""
     base = repo_root() if root is None else root
-    data = json.loads((base / "BUILD.json").read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise CodenameError("BUILD.json must be an object")
-    codename = data.get("codename")
-    if not isinstance(codename, str) or not codename.strip():
+    try:
+        codename = load(base / "BUILD.json", app="clarity").codename
+    except (OSError, ValueError) as exc:
+        raise CodenameError(f"BUILD.json could not be read: {exc}") from exc
+    if not codename:
         raise CodenameError("BUILD.json codename must be a non-empty string")
-    codename = codename.strip()
     used, reserved = parse_registry((base / REGISTRY).read_text(encoding="utf-8"))
     owned = used.get(THIS_APP, [])
     if codename not in owned:
