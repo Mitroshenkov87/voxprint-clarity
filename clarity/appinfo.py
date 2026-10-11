@@ -68,18 +68,17 @@ def _raw_version() -> str:
 
 _FILE = load(_BUILD_PATH, app="clarity", env={})
 APP_VERSION = _raw_version()
-APP_BUILD = 0 if _FILE.build is None else _FILE.build
+APP_BUILD = _FILE.build
 CODENAME = _FILE.codename
 
 
-def app_build() -> int:
+def app_build() -> int | None:
     """Build number from ``VOXPRINT_BUILD``, otherwise the number in ``BUILD.json``.
 
-    A JSON null build with no run number is ``0`` here, so callers that print
-    an integer keep a number. ``version_label`` still says ``dev`` for that case.
+    A missing recorded build stays ``None``. :func:`version_label` renders that
+    as ``dev``.
     """
-    info = build_info()
-    return 0 if info.build is None else info.build
+    return build_info().build
 
 
 def version_label() -> str:

@@ -24,9 +24,10 @@ Download the pre-release recorded in `BUILD.json` (published tag
 the source of truth. A codename is a Hebrew word from the Torah or Tanakh.
 The Windows file is `VoxprintClarity-Setup.exe`.
 Check `SHA256SUMS` in that release. Setup downloads Python 3.14, the CUDA 13.0
-PyTorch wheel, the restore libraries, `voxprint-common` 0.1.* from its v0.1.0
-tag archive, and the public engine. The installer is not code-signed. The
-shared library is not a git clone.
+PyTorch wheel, the restore libraries, `voxprint-common` 0.1.1 "Menuchah"
+from its release wheel (checked against the published `.sha256` file), and
+the public engine at tag `engine-v1.4.0`. The installer is not code-signed.
+The shared library is not a git clone.
 
 The Start menu folder is **Voxprint**. Put ffmpeg on `PATH` before the first
 restore. Linux is the experimental tarball in the same release. Details:
@@ -92,7 +93,7 @@ From a checkout, developers install with `requirements-dev.txt`,
 `requirements-gpu.txt`, and
 `pip install --extra-index-url https://pypi.nvidia.com -e ".[engine]"`.
 The engine line is
-`voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz`.
+`voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.4.0.tar.gz`.
 Model weights are MIT, Apache-2.0, or BSD only. The table is in
 [docs/USER-GUIDE.md](docs/USER-GUIDE.md).
 

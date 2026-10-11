@@ -1,11 +1,12 @@
 # App environment for Voxprint AI Clarity.
 # The venv holds PySide, the pinned Pillow wheel, and voxprint_engine so the
 # shortcut can start. Python 3.14 comes from uv. The CUDA 13 wheels, ONNX
-# Runtime GPU, and TensorRT are installed for holder "clarity". Clarity does
-# not download the engine's default upscale weight.
-# The engine pin is tag engine-v1.2.1 as a GitHub archive, with the gpu extra.
-# voxprint-common 0.1.* comes from the v0.1.0 tag archive, for a new venv and a reused one.
-# pyproject.toml is at the repository root, so the URL has no subdirectory.
+# Runtime GPU, and TensorRT are installed for app id "clarity".
+# ensure_runtime writes that ref and does not install Enlarge's default model.
+# The engine pin is tag engine-v1.4.0 as a GitHub archive, with the gpu extra.
+# voxprint-common 0.1.1 (Menuchah) is the release wheel. The installer downloads
+# that wheel and its .sha256 file and refuses a digest that does not match.
+# pyproject.toml is at the repository root, so the engine URL has no subdirectory.
 # The extra's NVIDIA wheels come from the NVIDIA package index.
 # A new venv and a reused venv both install that extra. pin_runtime.py then
 # installs requirements-gpu.txt and spandrel. A CPU onnxruntime distribution,
@@ -18,8 +19,8 @@ param(
     [string]$Lock = "",
     [string]$PinScript = "",
     [string]$Log = "",
-    [string]$EngineRequirement = "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz",
-    [string]$CommonRequirement = "voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/archive/refs/tags/v0.1.0.tar.gz",
+    [string]$EngineRequirement = "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.4.0.tar.gz",
+    [string]$CommonRequirement = "voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl",
     [switch]$SkipRuntime,
     [switch]$LinkOnly
 )
@@ -91,34 +92,48 @@ if (Test-Path -LiteralPath $venvPython) {
     if (-not $python) { throw "Python 3.14 was not found after uv python install" }
     Write-Log "creating venv $venvRoot"
     & $uv.FullName venv --python $python --seed "$venvRoot"
-    Write-Log "installing Clarity requirements"
-    & $uv.FullName pip install --python $venvPython -r $Requirements
-    if ($LASTEXITCODE -ne 0) { throw "requirements install failed" }
 }
 & $venvPython -c "import pip"
 if ($LASTEXITCODE -ne 0) {
     & $venvPython -m ensurepip --upgrade
     if ($LASTEXITCODE -ne 0) { throw "pip is missing from the shared venv" }
 }
-Write-Log "installing voxprint-common 0.1.*"
-& $venvPython -m pip install "$CommonRequirement"
+$here = $PSScriptRoot
+$fetch = Join-Path $here "fetch_common.py"
+$stage = Join-Path $here "stage_suite_runtime.py"
+if (-not (Test-Path -LiteralPath $fetch)) { throw "fetch_common.py is missing beside install-runtime.ps1" }
+if (-not (Test-Path -LiteralPath $stage)) { throw "stage_suite_runtime.py is missing beside install-runtime.ps1" }
+Write-Log "verifying $CommonRequirement"
+$commonDir = Join-Path $env:TEMP "voxprint-clarity-common"
+New-Item -ItemType Directory -Force -Path $commonDir | Out-Null
+$wheelText = & $venvPython $fetch --lock $Lock --dest $commonDir
+if ($LASTEXITCODE -ne 0) { throw "voxprint-common download failed" }
+$wheel = "$wheelText".Trim()
+if (-not $wheel) { throw "voxprint-common download did not print a wheel path" }
+Write-Log "installing verified voxprint-common wheel"
+& $venvPython -m pip install $wheel
 if ($LASTEXITCODE -ne 0) { throw "voxprint-common install failed" }
+if (-not (Test-Path -LiteralPath (Join-Path $venvRoot "runtime-key.json"))) {
+    Write-Log "installing Clarity requirements"
+    $filtered = Join-Path $env:TEMP "voxprint-clarity-requirements.txt"
+    Get-Content -LiteralPath $Requirements | Where-Object { $_ -notmatch 'voxprint-common' } | Set-Content -LiteralPath $filtered -Encoding utf8
+    & $venvPython -m pip install -r $filtered
+    if ($LASTEXITCODE -ne 0) { throw "requirements install failed" }
+}
 Write-Log "installing the shared engine"
 & $venvPython -m pip install --extra-index-url "https://pypi.nvidia.com" "$EngineRequirement"
 if ($LASTEXITCODE -ne 0) { throw "engine install failed" }
+Write-Log "staging enlarge.suite_runtime"
+& $venvPython $stage --python $venvPython --lock $Lock
+if ($LASTEXITCODE -ne 0) { throw "enlarge.suite_runtime install failed" }
 Write-Log "ensuring the shared runtime for clarity"
 # {app} does not exist yet during PrepareToInstall, so this step cannot import
-# clarity. The probes skip the engine's default upscale weight. --install-suite
-# repeats the same skip once the app files are on disk.
+# clarity. ensure_runtime("clarity") records the ref and does not install
+# Enlarge's default model. --install-suite repeats that call once the app
+# files are on disk.
 $prepare = Join-Path $env:TEMP "voxprint-clarity-prepare-runtime.py"
 @'
-from pathlib import Path
-
-from voxprint_engine.onnx_export import cached_onnx
-from voxprint_engine.paths import shared_dir
-from voxprint_engine.registry import DEFAULT_MODEL_ID, load_builtin
-from voxprint_engine.store import StoreError, delete_weight
-from voxprint_engine.suite_runtime import SuiteInstallError, _write_manifest, ensure_runtime, read_manifest
+from enlarge.suite_runtime import SuiteInstallError, ensure_runtime
 
 def _say(text):
     if "Enlarge" in text and "3.14" in text:
@@ -127,45 +142,14 @@ def _say(text):
         return "Voxprint inference engine missing, run repair."
     return text
 
-def _drop_default_model():
-    manifest = read_manifest()
-    components = manifest.get("components") if isinstance(manifest, dict) else None
-    entry = components.get("model") if isinstance(components, dict) else None
-    holders = entry.get("holders") if isinstance(entry, dict) else None
-    if not isinstance(holders, list) or "clarity" not in holders:
-        return
-    remaining = [name for name in holders if name != "clarity"]
-    if remaining:
-        entry["holders"] = remaining
-    else:
-        components.pop("model", None)
-        _delete_default_weight()
-    _write_manifest(manifest, Path(shared_dir()))
-
-def _delete_default_weight():
-    model = load_builtin(release=True).get(DEFAULT_MODEL_ID)
-    if model is None:
-        return
-    try:
-        delete_weight(model, user="clarity")
-    except StoreError:
-        return
-    path = cached_onnx(model)
-    if path is not None:
-        Path(path).unlink(missing_ok=True)
-
 try:
     report = ensure_runtime(
         "clarity",
         progress=lambda message: print(_say(message), flush=True),
-        probes={"model": lambda _root: True},
-        installers={"model": lambda _root, _progress: None},
     )
 except SuiteInstallError as exc:
     print(_say(str(exc)), flush=True)
     raise SystemExit(1)
-if not report.skipped:
-    _drop_default_model()
 if not report.ok:
     for item in report.components:
         if item.state in {"failed", "missing"}:

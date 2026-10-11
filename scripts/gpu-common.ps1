@@ -2,7 +2,7 @@
 # Windows Server 2025, RTX 4090, NVIDIA driver 600+. See docs/TESTING-GPU.md.
 #requires -Version 5.1
 
-$script:ClarityEngineUrl = "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz"
+$script:ClarityEngineUrl = "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.4.0.tar.gz"
 $script:ClarityFfmpegUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip"
 $script:ClarityUvUrl = "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip"
 
@@ -150,16 +150,28 @@ function Install-ClarityGpuPython {
     }
     $python = Join-Path $venv "Scripts\python.exe"
     if (-not (Test-Path -LiteralPath $python)) { Fail "The virtualenv has no Scripts\python.exe." }
+    $lock = Join-Path $Root "installer\runtime_lock.json"
+    $fetch = Join-Path $Root "installer\fetch_common.py"
+    $commonDir = Join-Path $ResultsDir "common-wheel"
+    Write-Host "verifying voxprint-common 0.1.1"
+    $wheelText = & $python $fetch --lock $lock --dest $commonDir
+    if ($LASTEXITCODE -ne 0) { Fail "voxprint-common download failed" }
+    $wheel = "$wheelText".Trim()
+    Invoke-Native { & $python -m pip install $wheel } "voxprint-common install failed"
     Write-Host "installing the Clarity checkout"
-    Invoke-Native { & $Uv pip install --python $python -e $Root } "the Clarity checkout failed to install"
+    Invoke-Native { & $Uv pip install --python $python --no-deps -e $Root } "the Clarity checkout failed to install"
     Write-Host "installing torch 2.14.1 cu130"
     Invoke-Native { & $Uv pip install --python $python "torch==2.14.1" --index-url "https://download.pytorch.org/whl/cu130" } "torch 2.14.1 cu130 failed to install"
     Write-Host "installing Clarity requirements"
-    Invoke-Native { & $Uv pip install --python $python -r (Join-Path $Root "requirements.txt") -r (Join-Path $Root "requirements-bench.txt") } "requirements failed to install"
-    Write-Host "installing the shared engine engine-v1.2.1"
+    $filtered = Join-Path $ResultsDir "requirements.txt"
+    Get-Content -LiteralPath (Join-Path $Root "requirements.txt") | Where-Object { $_ -notmatch 'voxprint-common' } | Set-Content -LiteralPath $filtered -Encoding utf8
+    Invoke-Native { & $Uv pip install --python $python -r $filtered -r (Join-Path $Root "requirements-bench.txt") } "requirements failed to install"
+    Write-Host "installing the shared engine engine-v1.4.0"
     Invoke-Native { & $Uv pip install --python $python --extra-index-url "https://pypi.nvidia.com" "$script:ClarityEngineUrl" } "the inference engine install failed"
+    $stage = Join-Path $Root "installer\stage_suite_runtime.py"
+    Write-Host "staging enlarge.suite_runtime"
+    Invoke-Native { & $python $stage --python $python --lock $lock } "enlarge.suite_runtime failed to install"
     $pin = Join-Path $Root "installer\pin_runtime.py"
-    $lock = Join-Path $Root "installer\runtime_lock.json"
     $gpuReq = Join-Path $Root "requirements-gpu.txt"
     Write-Host "pinning torch and spandrel"
     Invoke-Native { & $python $pin --uv $Uv --python $python --lock $lock --requirements $gpuReq } "the runtime pin failed"

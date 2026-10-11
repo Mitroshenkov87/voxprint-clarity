@@ -388,11 +388,13 @@ def test_lgpl_check_ignores_disabled_gpl_libraries() -> None:
     assert "python -c $providerCheck" not in script
     assert "provider_check.py" not in script
     assert "provider_check.py" not in shared
-    assert "engine-v1.2.1" in shared
+    assert "engine-v1.4.0" in shared
     assert "MinGit" not in shared
     assert "Get-ClarityGit" not in script
     assert "--no-deps" not in script
-    assert "--no-deps" not in shared
+    engine_lines = [line for line in shared.splitlines() if "ClarityEngineUrl" in line]
+    assert engine_lines
+    assert all("--no-deps" not in line for line in engine_lines)
 
     def rejected(build: str) -> bool:
         return bool(
@@ -429,8 +431,8 @@ def test_runtime_junction_is_created_after_the_files_exist() -> None:
     assert windows.index("reusing $venvRoot") < windows.index(pin_call)
     assert "pin_runtime.py" in linux
     assert "requirements-gpu.txt" in linux
-    assert "engine-v1.2.1" in windows
-    assert "engine-v1.2.1" in linux
+    assert "engine-v1.4.0" in windows
+    assert "engine-v1.4.0" in linux
     assert "MinGit" not in windows
     assert "python install 3.14" in linux
     assert "ExtractTemporaryFile('pin_runtime.py')" in iss
@@ -441,7 +443,7 @@ def test_runtime_junction_is_created_after_the_files_exist() -> None:
     shared = (_ROOT / "scripts" / "gpu-common.ps1").read_text(encoding="utf-8")
     assert "pin_runtime.py" in package
     assert "pin_runtime.py" in shared
-    assert "--no-deps" not in shared
+    assert all("--no-deps" not in line for line in shared.splitlines() if "ClarityEngineUrl" in line)
     link_lines = [line for line in iss.splitlines() if "LinkOnly" in line]
     assert link_lines
     assert all("RuntimeInstalled" not in line for line in link_lines)

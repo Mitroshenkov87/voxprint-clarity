@@ -2,7 +2,7 @@
 # Install the app first (`requirements.txt`) so numpy, Pillow, and the package import.
 -r requirements-gpu.txt
 spandrel
-# voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz
+# voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.4.0.tar.gz
 # The gpu extra installs onnxruntime-gpu==1.31.0. tensorrt-cu13-libs==10.14.1.48
 # is on the NVIDIA index. This line is the same GPU wheel for a bench virtualenv.
 onnxruntime-gpu==1.31.0
