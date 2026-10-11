@@ -7,7 +7,7 @@ import os
 import sys
 from enum import IntEnum
 from pathlib import Path
-from typing import Any, Literal, Never
+from typing import Any, Literal, NamedTuple, Never
 
 from clarity.net import install_system_trust
 
@@ -30,7 +30,8 @@ from clarity.ffmpeg_setup import FfmpegMissing, ensure_ffmpeg
 from clarity.models import catalogue_rows, clean_models, fetch_weights, strong_model
 from clarity.ort_check import provider_failure
 from clarity.pipeline.encode import Container, VideoCodec
-from clarity.pipeline.job import Settings
+from clarity.pipeline.job import Settings, commands_for
+from clarity.pipeline.probe import Probe
 from clarity.pipeline.runner import JobSpec, dry_run_restore, run_job
 from clarity.platform_gate import assess_platform
 from clarity.project import ProjectFormatError, load_project, work_dir_for
@@ -169,6 +170,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("project", nargs="?", type=Path, help="Open a .vxclarity project")
     parser.add_argument("--version", action="store_true", help="Print the version from BUILD.json and exit")
     parser.add_argument("--selftest", action="store_true", help="Open the window offscreen and exit")
+    parser.add_argument(
+        "--no-gpu",
+        action="store_true",
+        help="With --selftest, check the window, imports, and plan without CUDA or TensorRT",
+    )
     parser.add_argument("--register-models-user", action="store_true", help="Register Clarity in the shared models folder")
     parser.add_argument(
         "--unregister-models-user",
@@ -216,7 +222,12 @@ def _command_parser() -> argparse.ArgumentParser:
     models_sub.add_parser("list", parents=[common], help="List the catalogue")
     fetch = models_sub.add_parser("fetch", parents=[common], help="Fetch weights into the shared models folder")
     fetch.add_argument("--id", action="append", default=None, dest="ids", help="Catalogue id to fetch. Repeat for several")
-    sub.add_parser("selftest", parents=[common], help="Open the window offscreen, or describe that check")
+    selftest = sub.add_parser("selftest", parents=[common], help="Open the window offscreen, or describe that check")
+    selftest.add_argument(
+        "--no-gpu",
+        action="store_true",
+        help="Check the window, imports, and plan without CUDA or TensorRT",
+    )
     return parser
 
 
@@ -428,6 +439,15 @@ def _models_command(args: argparse.Namespace, console: Console) -> int:
     return console.fail(f"unknown models action {unknown}", ExitCode.USAGE)
 
 
+class _SelftestOutcome(NamedTuple):
+    """Shared selftest result. ``providers`` is set when the GPU stack is refused."""
+
+    report: Any
+    plan: dict[str, object]
+    window: int
+    providers: str | None
+
+
 def _selftest_window() -> int:
     os.environ["QT_QPA_PLATFORM"] = selftest_qt_platform()
     require_windows_platform_plugin()
@@ -441,32 +461,125 @@ def _selftest_window() -> int:
     return int(ExitCode.OK)
 
 
+def _selftest_plan() -> dict[str, object]:
+    """Build the default Clean plan for an 8-bit probe. No file and no GPU.
+
+    The encode command must name ``av1_nvenc`` and place ``yuv420p`` after
+    ``-c:v``. Decode still names CUDA. ``--no-gpu`` checks this plan; it does
+    not replace it with a CPU restore.
+
+    Returns:
+        Encoder, output pixel format, and chunk count.
+
+    Raises:
+        ClarityError: When the plan omits the encoder, CUDA decode, or pixel format.
+    """
+    probe = Probe(
+        codec="h264",
+        width=16,
+        height=16,
+        pix_fmt="yuv420p",
+        fps=24.0,
+        frames=8,
+        color_transfer="bt709",
+        color_space="bt709",
+        color_primaries="bt709",
+        color_range="tv",
+        field_order="progressive",
+    )
+    settings = Settings(mode="clean", upscale=False, container=Container.MKV, codec=VideoCodec.AV1)
+    planned = commands_for(
+        probe,
+        settings,
+        ffmpeg="ffmpeg",
+        source="selftest.mkv",
+        destination="selftest-out.mkv",
+        encoders={"av1_nvenc"},
+    )
+    encode = planned["encode"]
+    decode = planned["decode"]
+    chunks = planned["chunks"]
+    if not isinstance(encode, list) or not isinstance(decode, list) or not isinstance(chunks, list):
+        raise ClarityError("the restore plan did not build ffmpeg commands")
+    if not chunks:
+        raise ClarityError("the restore plan has no chunks")
+    if "av1_nvenc" not in encode:
+        raise ClarityError("the restore plan does not name av1_nvenc")
+    if "-hwaccel" not in decode or "cuda" not in decode:
+        raise ClarityError("the restore plan does not decode with cuda")
+    try:
+        video_at = encode.index("-c:v")
+        pix_at = encode.index("-pix_fmt", video_at + 1)
+    except ValueError as exc:
+        raise ClarityError("the restore plan does not place -pix_fmt after -c:v") from exc
+    pix_fmt = str(encode[pix_at + 1]) if pix_at + 1 < len(encode) else ""
+    if pix_fmt != "yuv420p":
+        raise ClarityError("the restore plan does not write an 8-bit source as yuv420p")
+    return {"encoder": "av1_nvenc", "pix_fmt": pix_fmt, "chunks": len(chunks)}
+
+
+def _execute_selftest(progress: Any, *, no_gpu: bool) -> _SelftestOutcome:
+    """Import the shared runtime, check providers, build the plan, and open the window.
+
+    ``--no-gpu`` sets ``VOXPRINT_CI_LANCZOS`` only while this function runs, so
+    the engine and the ffmpeg helper skip their downloads. The variable is
+    removed afterwards. A restore still refuses it.
+
+    Args:
+        progress: Called with one status line.
+        no_gpu: Skip the CUDA and TensorRT provider requirement.
+
+    Returns:
+        The runtime report, the plan summary, the window status, and a provider
+        error when the strict check failed.
+    """
+    key = "VOXPRINT_CI_LANCZOS"
+    previous = os.environ.get(key) if no_gpu else None
+    if no_gpu:
+        os.environ[key] = "1"
+    try:
+        report = _ensure_shared(progress)
+        providers = _provider_gate(no_gpu)
+        if providers is not None:
+            return _SelftestOutcome(report, {}, 0, providers)
+        plan = _selftest_plan()
+        code = _selftest_window()
+        return _SelftestOutcome(report, plan, code, None)
+    finally:
+        if no_gpu:
+            if previous is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
+
+
 def _selftest_command(args: argparse.Namespace, console: Console) -> int:
     if args.dry_run:
         return console.ok(
             {
                 "command": "selftest",
                 "dry_run": True,
-                "checks": ["shared runtime", "ffmpeg", "offscreen window", "start label"],
+                "no_gpu": bool(args.no_gpu),
+                "checks": ["shared runtime", "ffmpeg", "restore plan", "offscreen window", "start label"],
                 "gpu_used": False,
             }
         )
     try:
-        report = _ensure_shared(lambda message: console.progress(0.0, message))
-        providers = _provider_gate()
-        if providers is not None:
-            return console.fail(providers, ExitCode.ENVIRONMENT)
-        code = _selftest_window()
+        outcome = _execute_selftest(lambda message: console.progress(0.0, message), no_gpu=bool(args.no_gpu))
     except (ImportError, ClarityError, OSError) as exc:
         return console.fail(str(exc), ExitCode.USAGE)
-    if code != 0:
+    if outcome.providers is not None:
+        return console.fail(outcome.providers, ExitCode.ENVIRONMENT)
+    if outcome.window != 0:
         return console.fail("the Start button has no label", ExitCode.USAGE)
     return console.ok(
         {
             "command": "selftest",
             "dry_run": False,
+            "no_gpu": bool(args.no_gpu),
             "message": "selftest ok",
-            "runtime": report.as_dict(),
+            "runtime": outcome.report.as_dict(),
+            "plan": outcome.plan,
         }
     )
 
@@ -517,19 +630,23 @@ def _gui(argv: list[str]) -> int:
         return _install_suite()
     if args.register_models_user or args.unregister_models_user:
         return _register(args.out, remove=bool(args.unregister_models_user))
+    if args.no_gpu and not args.selftest:
+        print("--no-gpu applies only to --selftest", file=sys.stderr)
+        return int(ExitCode.USAGE)
     if args.selftest:
         try:
-            _ensure_shared(lambda message: print(message, file=sys.stderr))
-            providers = _provider_gate()
-            if providers is not None:
-                print(providers)
-                return int(ExitCode.ENVIRONMENT)
-            code = _selftest_window()
+            outcome = _execute_selftest(
+                lambda message: print(message, file=sys.stderr),
+                no_gpu=bool(args.no_gpu),
+            )
         except (ImportError, ClarityError, OSError) as exc:
             print(exc)
             return 1
-        if code != 0:
-            return code
+        if outcome.providers is not None:
+            print(outcome.providers)
+            return int(ExitCode.ENVIRONMENT)
+        if outcome.window != 0:
+            return outcome.window
         print("selftest ok")
         return 0
     platform = assess_platform()
@@ -567,17 +684,20 @@ def _gui(argv: list[str]) -> int:
     return int(application.exec())
 
 
-def _provider_gate() -> str | None:
-    """Return a provider error, or None when this run is allowed to skip the GPU stack.
+def _provider_gate(no_gpu: bool) -> str | None:
+    """Return a provider error, or None when ``--no-gpu`` asked to skip the GPU stack.
 
-    ``VOXPRINT_CI_LANCZOS=1`` is the CI selftest. It has no CUDA provider and must
-    stay green. A real launch and a real selftest fail when the CPU wheel or a
-    missing TensorRT EP would make Clean and Strong exports run on CPU.
+    A user-facing selftest fails when the CPU wheel is installed or CUDA and
+    TensorRT providers are missing. ``VOXPRINT_CI_LANCZOS`` does not skip this
+    check. CI and the release workflow pass ``--no-gpu``.
+
+    Args:
+        no_gpu: True when the caller passed ``--no-gpu``.
 
     Returns:
         The failure text, or None.
     """
-    if os.environ.get("VOXPRINT_CI_LANCZOS", "").strip() == "1":
+    if no_gpu:
         return None
     return provider_failure()
 
