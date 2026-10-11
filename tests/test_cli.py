@@ -145,6 +145,8 @@ def test_restore_dry_run_json_does_not_touch_the_gpu(tmp_path: Path, monkeypatch
     encode = chunks[0]["encode"]
     assert isinstance(decode, list) and "-hwaccel" in decode and "cuda" in decode
     assert isinstance(encode, list) and "av1_nvenc" in encode
+    video = encode.index("-c:v")
+    assert encode[encode.index("-pix_fmt", video) + 1] == "yuv420p"
     assert "concat" in plan and isinstance(plan["concat"], list)
     assert not (tmp_path / "out.mkv").exists()
 

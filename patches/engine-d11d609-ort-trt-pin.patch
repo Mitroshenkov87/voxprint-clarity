@@ -1,0 +1,63 @@
+--- a/voxprint_engine/suite_runtime.py
++++ b/voxprint_engine/suite_runtime.py
+@@ -51,10 +51,16 @@
+ import importlib.util as util
+ import sys
+ missing = [name for name in ("torch", "onnxruntime") if util.find_spec(name) is None]
++names = {dist.metadata["Name"].lower() for dist in meta.distributions() if dist.metadata and dist.metadata.get("Name")}
++if "onnxruntime" in names:
++    missing.append("cpu-onnxruntime")
+ try:
+-    meta.version("tensorrt-cu13")
++    libs = meta.version("tensorrt-cu13-libs")
+ except meta.PackageNotFoundError:
+-    missing.append("tensorrt-cu13")
++    missing.append("tensorrt-cu13-libs")
++else:
++    if not str(libs).startswith("10.14.1.48"):
++        missing.append("tensorrt-cu13-libs")
+ sys.exit(0 if not missing else 1)
+ """
+ 
+@@ -260,17 +266,37 @@
+ 
+ 
+ def install_gpu_wheels(python: str, progress: Progress | None = None) -> None:
+-    """Install torch for CUDA 13, then the ONNX Runtime GPU and TensorRT wheels."""
++    """Install torch for CUDA 13, then ONNX Runtime GPU 1.31 and TensorRT 10.14.
++
++    The CPU ``onnxruntime`` wheel shadows ``onnxruntime-gpu``. Unpinned
++    ``tensorrt-cu13`` is TensorRT 11 (``nvinfer_11``). ONNX Runtime 1.31 loads
++    ``nvinfer_10`` from ``tensorrt-cu13-libs`` 10.14.1.48. Bindings for that
++    TensorRT have no cp314 wheel, so the meta package is recorded with
++    ``--no-deps`` and the DLLs come from the libs wheel.
++    """
+     if getattr(sys, "frozen", False):
+         raise SuiteInstallError("install the app directory, then run voxprint-enlarge --install-gpu")
+     if not python:
+         raise SuiteInstallError("a Python executable is required")
+     _pip(python, ["install", "torch", "--index-url", TORCH_INDEX], "Installing torch for CUDA 13", progress, required=True)
+-    _pip(python, ["uninstall", "-y", "onnxruntime"], "Removing the CPU ONNX Runtime wheel", progress, required=False)
+     _pip(
+         python,
+-        ["install", "onnxruntime-gpu>=1.20,<2", "tensorrt-cu13"],
+-        "Installing ONNX Runtime GPU and TensorRT",
++        ["uninstall", "-y", "onnxruntime", "onnxruntime-gpu", "tensorrt", "tensorrt-cu13", "tensorrt-cu13-bindings", "tensorrt-cu13-libs"],
++        "Removing the CPU ONNX Runtime wheel and TensorRT 11",
++        progress,
++        required=False,
++    )
++    _pip(
++        python,
++        ["install", "--extra-index-url", "https://pypi.nvidia.com", "onnxruntime-gpu==1.31.0", "tensorrt-cu13-libs==10.14.1.48"],
++        "Installing ONNX Runtime GPU 1.31 and TensorRT 10.14",
++        progress,
++        required=True,
++    )
++    _pip(
++        python,
++        ["install", "--no-deps", "tensorrt-cu13==10.14.1.48"],
++        "Recording the TensorRT 10.14 package without its bindings",
+         progress,
+         required=True,
+     )

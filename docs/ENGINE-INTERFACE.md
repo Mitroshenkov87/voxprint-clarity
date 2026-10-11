@@ -11,8 +11,26 @@ Clarity uses the shared package `voxprint_engine` (distribution name
 | Import package | `voxprint_engine` |
 | Video names | `voxprint_engine.api` |
 
-The video API is in the tag. Clarity does not vendor a copy and does not
-carry `docs/engine-patches`.
+The video API is in that commit. Clarity does not vendor a copy of the engine.
+`patches/` holds two diffs against `d11d609` for the Enlarge repository:
+
+- `patches/engine-d11d609-stream-frames.patch` adds `iter_tile_frames`.
+  `tile_frames` keeps the accumulator, the coverage map, and the clip temporary
+  for every frame at the model scale. 138 frames of 720p at 4x is about 22.7 GiB
+  of float32. Clarity passes at most `host_batch_count` frames (512 MiB for those
+  three buffers) so the installed engine stays inside RAM, downscales 4x to 2x
+  on that batch, and stores uint8. The iterator is the upstream shape: one frame
+  in the accumulator, and stacking the yields brings the whole chunk back.
+- `patches/engine-d11d609-ort-trt-pin.patch` changes `install_gpu_wheels` and the
+  GPU probe. The engine depends on `onnxruntime>=1.20,<2` (the CPU wheel) and
+  then installs unpinned `tensorrt-cu13`, which is TensorRT 11 (`nvinfer_11`).
+  ONNX Runtime 1.31's TensorRT EP loads `nvinfer_10`. Clarity's installers
+  uninstall the CPU wheel after `ensure_runtime` and install
+  `onnxruntime-gpu==1.31.0`, `tensorrt-cu13-libs==10.14.1.48`, and
+  `tensorrt-cu13==10.14.1.48` with `--no-deps`. The 10.14 bindings have no
+  cp314 wheel. The meta package is recorded so the current probe, which only
+  checks that some `tensorrt-cu13` distribution exists, does not install
+  TensorRT 11 on the next repair.
 
 ## What Clarity calls
 

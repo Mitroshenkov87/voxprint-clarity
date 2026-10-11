@@ -159,7 +159,8 @@ function Get-Ffmpeg {
     }
     if (-not (Test-Path -LiteralPath $probe)) { Fail "ffprobe.exe is missing next to the LGPL ffmpeg." }
     $build = & $local -hide_banner -buildconf 2>&1 | Out-String
-    if ($build -match "--enable-gpl" -or $build -match "libx264" -or $build -match "libx265") {
+    # Match enabled GPL pieces. "--disable-libx264" contains "libx264" and is the LGPL build.
+    if ($build -match "--enable-gpl" -or $build -match "--enable-libx264" -or $build -match "--enable-libx265") {
         Fail "ffmpeg is not an LGPL build ($FfmpegUrl)."
     }
     $encoders = & $local -hide_banner -encoders 2>&1 | Out-String
@@ -196,22 +197,35 @@ Write-Host "installing torch 2.14.1 cu130"
 Invoke-Native { & $uv pip install --python $python "torch==2.14.1" --index-url "https://download.pytorch.org/whl/cu130" } "torch 2.14.1 cu130 failed to install"
 Write-Host "installing Clarity requirements"
 Invoke-Native { & $uv pip install --python $python -r (Join-Path $Root "requirements.txt") -r (Join-Path $Root "requirements-bench.txt") } "requirements failed to install"
-Write-Host "installing TensorRT"
-Invoke-Native { & $uv pip install --python $python "tensorrt" } "tensorrt failed to install"
-
 Write-Host "installing the shared engine from d11d609"
 Invoke-Native { & $uv pip install --python $python $EngineUrl } "the public engine install failed"
-Write-Host "putting onnxruntime-gpu back over the engine's CPU wheel"
-Invoke-Native { & $uv pip install --python $python --upgrade "onnxruntime-gpu" "tensorrt" } "onnxruntime-gpu failed to install"
+$lockPath = Join-Path $Root "installer\runtime_lock.json"
+$lockJson = Get-Content -Raw -LiteralPath $lockPath | ConvertFrom-Json
+$ortGpu = [string]$lockJson.onnxruntime_gpu
+$trtLibs = [string]$lockJson.tensorrt_cu13_libs
+$trtMeta = [string]$lockJson.tensorrt_cu13
+if (-not $ortGpu -or -not $trtLibs -or -not $trtMeta) { Fail "installer\runtime_lock.json is missing the ONNX Runtime / TensorRT pins." }
+Write-Host "replacing the CPU onnxruntime wheel and TensorRT 11 with onnxruntime-gpu $ortGpu and TensorRT $trtLibs"
+Invoke-Native { & $uv pip uninstall --python $python onnxruntime onnxruntime-gpu tensorrt tensorrt-cu13 tensorrt-cu13-bindings tensorrt-cu13-libs } "could not uninstall the ONNX Runtime wheels"
+Invoke-Native { & $uv pip install --python $python --extra-index-url "https://pypi.nvidia.com" "onnxruntime-gpu==$ortGpu" "tensorrt-cu13-libs==$trtLibs" } "onnxruntime-gpu / TensorRT libs failed to install"
+Invoke-Native { & $uv pip install --python $python --no-deps "tensorrt-cu13==$trtMeta" } "tensorrt-cu13 metadata pin failed"
 
 $providerCheck = @"
+import importlib.metadata as metadata
 import onnxruntime as ort
+
+names = {dist.metadata["Name"].lower() for dist in metadata.distributions()}
+if "onnxruntime" in names:
+    raise SystemExit("The CPU onnxruntime wheel is installed and shadows onnxruntime-gpu.")
 providers = ort.get_available_providers()
 print("providers: " + ", ".join(providers))
-if "TensorrtExecutionProvider" not in providers:
-    raise SystemExit("TensorRT EP is not available. onnxruntime-gpu did not load TensorrtExecutionProvider.")
+missing = [name for name in ("CUDAExecutionProvider", "TensorrtExecutionProvider") if name not in providers]
+if missing:
+    raise SystemExit("ONNX Runtime is missing " + ", ".join(missing) + ". onnxruntime-gpu 1.31.0 needs TensorRT 10.14 (nvinfer_10).")
 "@
-Invoke-Native { & $python -c $providerCheck } "ONNX Runtime is missing the TensorRT execution provider"
+$pcFile = Join-Path $ResultsDir "provider_check.py"
+Set-Content -LiteralPath $pcFile -Value $providerCheck -Encoding ascii
+Invoke-Native { & $python $pcFile } "ONNX Runtime is missing the TensorRT execution provider"
 
 Write-Host "running python -m clarity.bench"
 $benchOut = Join-Path $ResultsDir "benchmark"

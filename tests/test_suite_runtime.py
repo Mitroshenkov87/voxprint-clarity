@@ -146,6 +146,7 @@ def test_selftest_json_includes_the_engine_report(
     monkeypatch.setattr("clarity.cli.ensure_shared_runtime", ensure)
     monkeypatch.setattr("clarity.cli.ensure_ffmpeg", ffmpeg)
     monkeypatch.setattr("clarity.cli._selftest_window", lambda: 0)
+    monkeypatch.setattr("clarity.cli._provider_gate", lambda: None)
     assert main(["selftest", "--json"]) == 0
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line.strip()]
     progress = [row for row in lines if row.get("type") == "progress"]

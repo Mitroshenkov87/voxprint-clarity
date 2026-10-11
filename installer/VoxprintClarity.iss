@@ -109,6 +109,9 @@ Root: HKCU; Subkey: "Software\Classes\Voxprint.Clarity.Project\DefaultIcon"; Val
 Root: HKCU; Subkey: "Software\Classes\Voxprint.Clarity.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{#PyW}"" ""{app}\main.py"" ""%1"""
 
 [Run]
+; PrepareToInstall runs before {app} exists. This step runs after the files
+; are copied and creates {app}\runtime even when that earlier junction was lost.
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install-runtime.ps1"" -AppDir ""{app}"" -Log ""{tmp}\clarity-link.log"" -LinkOnly"; WorkingDir: "{app}"; StatusMsg: "Linking the shared runtime..."; Flags: runhidden waituntilterminated
 Filename: "{#Py}"; Parameters: """{app}\main.py"" --install-suite"; WorkingDir: "{app}"; StatusMsg: "Checking the shared suite runtime..."; Flags: runhidden waituntilterminated; Check: RuntimeInstalled
 Filename: "{#Py}"; Parameters: """{app}\main.py"" --register-models-user"; WorkingDir: "{app}"; StatusMsg: "Registering the shared models folder..."; Flags: runhidden waituntilterminated; Check: RuntimeInstalled
 

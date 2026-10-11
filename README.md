@@ -93,6 +93,19 @@ From a checkout, developers install with `requirements-dev.txt`,
 Model weights are MIT, Apache-2.0, or BSD only. The table is in
 [docs/USER-GUIDE.md](docs/USER-GUIDE.md).
 
+## Example
+
+Strong (SCUNet) on a darkened frame from Tears of Steel, restored on an RTX 4090.
+Tears of Steel (c) Blender Foundation, CC BY 3.0. 2x was off.
+
+Before:
+
+![Case B before Strong (SCUNet)](docs/examples/crop-caseB-scunet-strong-before.png)
+
+After:
+
+![Case B after Strong (SCUNet)](docs/examples/crop-caseB-scunet-strong-after.png)
+
 ## ☕ Support the Project
 
 If you find this project useful and would like to support its development, you can buy me a coffee!

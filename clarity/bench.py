@@ -17,6 +17,9 @@ import shutil
 import subprocess
 import time
 import urllib.request
+
+from clarity.net import install_system_trust
+from clarity.precision import apply_precision, torch_dtype_name
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -84,6 +87,7 @@ def download_clip(folder: Path) -> Path:
     if not CLIP_URL.startswith("https://"):
         raise RuntimeError("the clip URL must be https")
     partial = target.with_suffix(target.suffix + ".partial")
+    install_system_trust()
     request = urllib.request.Request(CLIP_URL, headers={"User-Agent": "voxprint-clarity-bench"})
     hasher = hashlib.sha256()
     with urllib.request.urlopen(request, timeout=120) as response:  # noqa: S310 - https is checked above
@@ -166,13 +170,21 @@ def render_report(gpu: str, samples: list[Sample], clip: str) -> tuple[str, dict
     return "\n".join(lines) + "\n", payload
 
 
-def tensorrt_providers(cache: Path) -> list[Any]:
-    """ORT providers: TensorRT EP in fp16, then CUDA EP. There is no CPU provider."""
+def tensorrt_providers(cache: Path, *, precision: str = "fp16") -> list[Any]:
+    """ORT providers: TensorRT EP, then CUDA EP. There is no CPU provider.
+
+    Args:
+        cache: Directory for the TensorRT engine cache.
+        precision: ``fp16`` turns on ``trt_fp16_enable``. DRUNet stays ``fp32``.
+
+    Returns:
+        The provider list passed to ``InferenceSession``.
+    """
     return [
         (
             "TensorrtExecutionProvider",
             {
-                "trt_fp16_enable": True,
+                "trt_fp16_enable": precision == "fp16",
                 "trt_engine_cache_enable": True,
                 "trt_engine_cache_path": str(cache),
             },
@@ -298,12 +310,23 @@ def export_with_engine(weight: Path, dest: Path) -> str | None:
     return None
 
 
-def export_torch_onnx(network: Any, dest: Path, channels: int, spatial: int = SPATIAL) -> None:
-    """Write an fp16 ONNX graph from a spandrel network already moved to CUDA."""
+def export_torch_onnx(
+    network: Any, dest: Path, channels: int, precision: str, spatial: int = SPATIAL
+) -> None:
+    """Write an ONNX graph from a spandrel network already moved to CUDA.
+
+    Args:
+        network: The loaded descriptor.
+        dest: Where the ``.onnx`` file is written.
+        channels: Input channel count, including a condition channel.
+        precision: ``fp16``, ``bf16``, or ``fp32``. DRUNet is fp32.
+        spatial: Square edge of the example tensor.
+    """
     if torch is None:
         raise RuntimeError("torch is not installed")
     module = network.model if hasattr(network, "model") else network
-    example = torch.zeros(1, channels, spatial, spatial, device="cuda", dtype=torch.float16)
+    dtype = getattr(torch, torch_dtype_name(precision))
+    example = torch.zeros(1, channels, spatial, spatial, device="cuda", dtype=dtype)
     options: dict[str, Any] = {
         "input_names": ["images"],
         "output_names": ["restored"],
@@ -317,29 +340,31 @@ def export_torch_onnx(network: Any, dest: Path, channels: int, spatial: int = SP
         torch.onnx.export(module, example, str(dest), **options)
 
 
-def _load_torch(weight: Path) -> Any:
+def _load_torch(weight: Path, precision: str) -> Any:
     if torch is None or ModelLoader is None or not torch.cuda.is_available():
         raise RuntimeError("PyTorch, spandrel, and CUDA are required. Install requirements-bench.txt.")
     torch.cuda.reset_peak_memory_stats()
-    return ModelLoader().load_from_file(str(weight)).eval().cuda().half()
+    return apply_precision(ModelLoader().load_from_file(str(weight)).eval().cuda(), precision)
 
 
-def _torch_forward(network: Any, nchw: np.ndarray) -> np.ndarray:
+def _torch_forward(network: Any, nchw: np.ndarray, precision: str) -> np.ndarray:
     if torch is None:
         raise RuntimeError("torch is not installed")
-    tensor = torch.from_numpy(np.ascontiguousarray(nchw)).to(device="cuda", dtype=torch.float16)
+    dtype = getattr(torch, torch_dtype_name(precision))
+    tensor = torch.from_numpy(np.ascontiguousarray(nchw)).to(device="cuda", dtype=dtype)
     with torch.inference_mode():
         output = network(tensor)
     return np.asarray(output.detach().float().cpu().numpy(), dtype=np.float32)
 
 
-def time_torch(network: Any, channels: int, frames: int) -> tuple[float, float]:
-    """Time fp16 CUDA inference on a blank tile.
+def time_torch(network: Any, channels: int, frames: int, precision: str) -> tuple[float, float]:
+    """Time CUDA inference on a blank tile at the model's declared precision.
 
     Args:
         network: Loaded PyTorch module already on CUDA.
         channels: Input channel count, including a condition channel.
         frames: Number of forward passes.
+        precision: ``fp16``, ``bf16``, or ``fp32``.
 
     Returns:
         Frames per second and the peak VRAM in megabytes.
@@ -347,18 +372,19 @@ def time_torch(network: Any, channels: int, frames: int) -> tuple[float, float]:
     sample = np.zeros((1, channels, SPATIAL, SPATIAL), dtype=np.float32)
 
     def step() -> None:
-        _torch_forward(network, sample)
+        _torch_forward(network, sample, precision)
 
     fps = _timed(step, frames, torch.cuda.synchronize if torch is not None else None)
     return fps, _vram_mb()
 
 
-def open_trt_session(onnx_path: Path, cache: Path) -> Any:
+def open_trt_session(onnx_path: Path, cache: Path, *, precision: str = "fp16") -> Any:
     """Open an ONNX session that must include TensorrtExecutionProvider.
 
     Args:
         onnx_path: Exported graph.
         cache: Directory for the TensorRT engine cache.
+        precision: Passed to :func:`tensorrt_providers`. DRUNet is ``fp32``.
 
     Returns:
         The ONNX Runtime inference session.
@@ -368,7 +394,7 @@ def open_trt_session(onnx_path: Path, cache: Path) -> Any:
     """
     if ort is None:
         raise RuntimeError("onnxruntime is not installed. Install requirements-bench.txt on this VM.")
-    session = ort.InferenceSession(str(onnx_path), providers=tensorrt_providers(cache))
+    session = ort.InferenceSession(str(onnx_path), providers=tensorrt_providers(cache, precision=precision))
     providers = [str(name) for name in session.get_providers()]
     if "TensorrtExecutionProvider" not in providers:
         raise RuntimeError(
@@ -428,6 +454,7 @@ def download_weight(model: ClarityModel, folder: Path) -> Path:
     if not model.download_url.startswith("https://"):
         raise RuntimeError(f"{model.id} has no https download")
     partial = target.with_suffix(target.suffix + ".partial")
+    install_system_trust()
     request = urllib.request.Request(model.download_url, headers={"User-Agent": "voxprint-clarity-bench"})
     hasher = hashlib.sha256()
     with urllib.request.urlopen(request, timeout=180) as response:  # noqa: S310 - https is checked above
@@ -570,29 +597,30 @@ def main(argv: list[str] | None = None) -> int:
     failed = False
     for model_id in MODEL_IDS:
         model = get_model(model_id)
+        trt_backend = f"onnxruntime-tensorrt-{model.precision}"
         weight = args.clip_dir / model.filename
         try:
             if not args.skip_download:
                 weight = download_weight(model, args.clip_dir)
             if not weight.is_file():
                 raise RuntimeError(f"{model.filename} is missing; run without --skip-download")
-            network = _load_torch(weight)
-            fps, vram = time_torch(network, model.channels, args.frames)
-            restored = rgb_from_nchw(_torch_forward(network, conditioned_nchw(model, preview)))
+            network = _load_torch(weight, model.precision)
+            fps, vram = time_torch(network, model.channels, args.frames, model.precision)
+            restored = rgb_from_nchw(_torch_forward(network, conditioned_nchw(model, preview), model.precision))
             before_path, after_path = save_crops(preview, restored, args.out, model.id)
         except Exception as exc:
-            samples.append(_unmeasured(model.id, "pytorch-fp16", str(exc)))
-            samples.append(_unmeasured(model.id, "onnxruntime-tensorrt-fp16", "not timed; the PyTorch path failed"))
+            samples.append(_unmeasured(model.id, f"pytorch-{model.precision}", str(exc)))
+            samples.append(_unmeasured(model.id, trt_backend, "not timed; the PyTorch path failed"))
             failed = True
             continue
         samples.append(
             Sample(
                 model.id,
-                "pytorch-fp16",
+                f"pytorch-{model.precision}",
                 fps,
                 vram,
                 args.frames,
-                "fp16 CUDA",
+                f"{model.precision} CUDA",
                 str(before_path),
                 str(after_path),
             )
@@ -601,19 +629,19 @@ def main(argv: list[str] | None = None) -> int:
         try:
             exported = export_with_engine(weight, onnx_path)
             if exported is None:
-                export_torch_onnx(network, onnx_path, model.channels)
+                export_torch_onnx(network, onnx_path, model.channels, model.precision)
                 exported = (
                     "ONNX exported with torch.onnx; "
                     "engine-v1.0.0 keeps tools/export_onnx.py out of the installed wheel"
                 )
             _reset_vram()
-            session = open_trt_session(onnx_path, args.out / "trt-cache" / model.id)
+            session = open_trt_session(onnx_path, args.out / "trt-cache" / model.id, precision=model.precision)
             trt_fps, trt_vram = time_trt(session, model.channels, args.frames)
         except Exception as exc:
-            samples.append(_unmeasured(model.id, "onnxruntime-tensorrt-fp16", str(exc)))
+            samples.append(_unmeasured(model.id, trt_backend, str(exc)))
             failed = True
             continue
-        samples.append(Sample(model.id, "onnxruntime-tensorrt-fp16", trt_fps, trt_vram, args.frames, exported))
+        samples.append(Sample(model.id, trt_backend, trt_fps, trt_vram, args.frames, exported))
     md_path, json_path = write_report(args.out, gpu, samples, str(clip_path))
     print(md_path)
     print(json_path)

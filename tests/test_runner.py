@@ -14,12 +14,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
-from clarity.errors import Cancelled
+from clarity.errors import Cancelled, ClarityError
 from clarity.i18n import tr
 from clarity.models import ClarityModel
 from clarity.pipeline.encode import Container, VideoCodec
-from clarity.pipeline.job import Settings
-from clarity.pipeline.runner import CancelToken, Control, JobSpec, run_job
+from clarity.pipeline.job import Settings, process_frames
+from clarity.pipeline.probe import Probe
+from clarity.pipeline.runner import CancelToken, Control, JobSpec, _restore_range, host_batch_count, run_job
 from clarity.ui.main_window import MainWindow
 
 _PROBE = {
@@ -69,10 +70,15 @@ class _Bytes:
 
 
 class _Proc:
-    def __init__(self, stdout: _Bytes | None = None, stdin: _Bytes | None = None) -> None:
+    def __init__(
+        self,
+        stdout: _Bytes | None = None,
+        stdin: _Bytes | None = None,
+        stderr: _Bytes | None = None,
+    ) -> None:
         self.stdout = stdout
         self.stdin = stdin
-        self.stderr = None
+        self.stderr = stderr
         self.killed = False
 
     def poll(self) -> int | None:
@@ -327,3 +333,112 @@ def test_start_button_cancel(tmp_path: Path) -> None:
     assert window.start.text() == tr("start")
     assert window.start.isEnabled()
     window.close()
+
+
+def test_host_batch_count_keeps_a_720p_4x_chunk_under_half_a_gigabyte() -> None:
+    count = host_batch_count(720, 1280, 4)
+    assert count == 1
+    pixels = 720 * 4 * 1280 * 4
+    per_frame = pixels * 3 * 4 * 3
+    assert count * per_frame <= 512 * 1024 * 1024
+    assert 138 * per_frame > 20 * (1024**3)
+
+
+def test_restore_range_never_sends_the_whole_chunk_to_the_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("clarity.pipeline.runner.host_batch_count", lambda *_args: 2)
+    sizes: list[int] = []
+    real = process_frames
+
+    def wrapped(frames: np.ndarray, settings: Settings, infer: object, *, tile: int, batch: int, use_engine: bool = True) -> np.ndarray:
+        sizes.append(int(frames.shape[0]))
+        return real(frames, settings, infer, tile=tile, batch=batch, use_engine=use_engine)
+
+    monkeypatch.setattr("clarity.pipeline.runner.process_frames", wrapped)
+    height, width, count = 2, 2, 6
+    payload = bytes(height * width * 3 * count)
+    encoded = _Bytes()
+    partial = tmp_path / "chunk.mkv.partial"
+
+    def spawn(argv: list[str]) -> _Proc:
+        if "pipe:1" in argv:
+            return _Proc(stdout=_Bytes(payload))
+        Path(argv[-1]).parent.mkdir(parents=True, exist_ok=True)
+        Path(argv[-1]).write_bytes(b"chunk")
+        return _Proc(stdin=encoded, stderr=_Bytes(b""))
+
+    probe = Probe(
+        codec="h264",
+        width=width,
+        height=height,
+        pix_fmt="yuv420p",
+        fps=1.0,
+        frames=count,
+        color_transfer="bt709",
+        color_space="",
+        color_primaries="",
+        color_range="",
+        field_order="progressive",
+    )
+    spec = JobSpec(tmp_path / "in.mkv", tmp_path / "out.mkv", _settings())
+    control = Control(infer=_identity, lock=_Lock(), spawn=spawn, run_text=lambda _argv: "", device=False)
+    _restore_range(
+        spec,
+        control,
+        CancelToken(),
+        probe=probe,
+        decode=["ffmpeg", "pipe:1"],
+        encode=["ffmpeg", "pipe:0", str(partial)],
+        start=0,
+        stop=count,
+        partial=partial,
+        tile=2,
+        batch=1,
+    )
+    assert sizes == [2, 2, 2]
+    assert len(encoded.written) == len(payload)
+
+
+def test_encoder_stderr_replaces_a_bare_broken_pipe(tmp_path: Path) -> None:
+    payload = bytes(2 * 2 * 3)
+    partial = tmp_path / "chunk.mkv.partial"
+
+    class _Closed(_Bytes):
+        def write(self, data: bytes) -> int:
+            del data
+            raise BrokenPipeError("encoder pipe closed")
+
+    def spawn(argv: list[str]) -> _Proc:
+        if "pipe:1" in argv:
+            return _Proc(stdout=_Bytes(payload))
+        return _Proc(stdin=_Closed(), stderr=_Bytes(b"YUV444P not supported\n"))
+
+    probe = Probe(
+        codec="h264",
+        width=2,
+        height=2,
+        pix_fmt="yuv420p",
+        fps=1.0,
+        frames=1,
+        color_transfer="bt709",
+        color_space="",
+        color_primaries="",
+        color_range="",
+        field_order="progressive",
+    )
+    spec = JobSpec(tmp_path / "in.mkv", tmp_path / "out.mkv", _settings())
+    control = Control(infer=_identity, lock=_Lock(), spawn=spawn, run_text=lambda _argv: "", device=False)
+    with pytest.raises(ClarityError, match="YUV444P not supported") as caught:
+        _restore_range(
+            spec,
+            control,
+            CancelToken(),
+            probe=probe,
+            decode=["ffmpeg", "pipe:1"],
+            encode=["ffmpeg", "pipe:0", str(partial)],
+            start=0,
+            stop=1,
+            partial=partial,
+            tile=2,
+            batch=1,
+        )
+    assert "BrokenPipeError" in str(caught.value)

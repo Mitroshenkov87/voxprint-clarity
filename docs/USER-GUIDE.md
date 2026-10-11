@@ -104,6 +104,16 @@ The final file is written as a `.partial` and replaces the destination only
 after the join finishes. Cancel removes the unfinished final file and the
 chunk that was in progress.
 
+### Example: Strong on a darkened frame
+
+Case B from the RTX 4090 run. The source is a darkened frame of Tears of
+Steel (c) Blender Foundation, [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
+Strong (SCUNet), 2x off.
+
+![Case B before Strong (SCUNet)](examples/crop-caseB-scunet-strong-before.png)
+
+![Case B after Strong (SCUNet)](examples/crop-caseB-scunet-strong-after.png)
+
 ## Projects and resume
 
 **Save project** writes a `.vxclarity` file. **Open project** reads it back.

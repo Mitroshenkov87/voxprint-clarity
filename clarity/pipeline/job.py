@@ -13,6 +13,11 @@ from typing import Any
 
 import numpy as np
 
+try:
+    import torch
+except ImportError:
+    torch = None
+
 from clarity.engine import (
     choose_tile as engine_choose_tile,
     empty_cuda_cache,
@@ -31,6 +36,7 @@ from clarity.pipeline.encode import (
     VideoCodec,
     decode_command,
     encode_command,
+    encoder_pix_fmt,
     select_encoder,
 )
 from clarity.pipeline.probe import Probe, require_sdr
@@ -185,12 +191,22 @@ def _content_token(frames: np.ndarray) -> str:
 
 
 def downscale_half(frames: np.ndarray) -> np.ndarray:
-    """Area-average 2x downscale. 4x compact output becomes the optional 2x result."""
-    count, height, width, channels = frames.shape
+    """Area-average 2x downscale. 4x compact output becomes the optional 2x result.
+
+    When CUDA is available the average runs on the GPU and only the 2x frame
+    comes back to the host. The numpy path is the same 2x2 mean.
+    """
+    _count, height, width, _channels = frames.shape
     even_h = height - (height % 2)
     even_w = width - (width % 2)
     image = frames[:, :even_h, :even_w]
-    return image.reshape(count, even_h // 2, 2, even_w // 2, 2, channels).mean(axis=(2, 4)).astype(np.float32)
+    if torch is not None and torch.cuda.is_available():
+        tensor = torch.from_numpy(np.ascontiguousarray(image)).permute(0, 3, 1, 2)
+        scaled = torch.nn.functional.interpolate(tensor.to(device="cuda"), scale_factor=0.5, mode="area")
+        return np.ascontiguousarray(scaled.permute(0, 2, 3, 1).float().cpu().numpy(), dtype=np.float32)
+    return image.reshape(image.shape[0], even_h // 2, 2, even_w // 2, 2, image.shape[-1]).mean(axis=(2, 4)).astype(
+        np.float32
+    )
 
 
 def models_for(settings: Settings) -> list[ClarityModel]:
@@ -319,6 +335,7 @@ def commands_for(
             width=width,
             height=height,
             fps=probe.fps,
+            pix_fmt=encoder_pix_fmt(probe.pix_fmt),
         ),
         "chunks": [list(pair) for pair in plan_chunks(max(probe.frames, 1), [], settings.max_frames)],
     }
