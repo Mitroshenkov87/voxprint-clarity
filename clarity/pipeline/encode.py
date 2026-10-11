@@ -71,6 +71,26 @@ def planned_encoder(codec: VideoCodec, available: set[str]) -> tuple[str, bool]:
         return preferred, False
 
 
+def encoder_pix_fmt(source_pix_fmt: str) -> str:
+    """The pixel format NVENC will accept for this source.
+
+    rgb24 on the pipe makes ffmpeg pick yuv444p, and av1_nvenc rejects that.
+    8-bit sources are written as yuv420p. A 10-bit or deeper source is written
+    as p010le.
+
+    Args:
+        source_pix_fmt: The ``pix_fmt`` ffprobe reported. Empty means 8-bit.
+
+    Returns:
+        ``yuv420p`` or ``p010le``.
+    """
+    folded = source_pix_fmt.lower()
+    deep = ("p010", "p016", "10le", "10be", "12le", "12be", "16le", "16be")
+    if any(token in folded for token in deep):
+        return "p010le"
+    return "yuv420p"
+
+
 def video_args(encoder: str, cq: int = 20) -> list[str]:
     """ffmpeg video-encoder flags for one allowed encoder.
 
@@ -122,8 +142,13 @@ def encode_command(
     width: int,
     height: int,
     fps: float,
+    pix_fmt: str = "yuv420p",
 ) -> list[str]:
-    """Raw rgb24 on stdin, plus stream-copied audio, subtitles, and chapters from the source."""
+    """Raw rgb24 on stdin, plus stream-copied audio, subtitles, and chapters from the source.
+
+    ``pix_fmt`` is the encoder output format (``yuv420p`` or ``p010le``), placed
+    after ``-c:v`` so ffmpeg does not leave rgb24 as yuv444p.
+    """
     suffix = "matroska" if container is Container.MKV else "mp4"
     rate = f"{fps:.6f}" if fps > 0 else "24000/1001"
     command = [
@@ -155,6 +180,8 @@ def encode_command(
         "-map_metadata",
         "1",
         *video_args(encoder),
+        "-pix_fmt",
+        pix_fmt,
         *audio_args(copy=copy_audio),
         "-c:s",
         "copy",
@@ -210,8 +237,12 @@ def encode_chunk_command(
     width: int,
     height: int,
     fps: float,
+    pix_fmt: str = "yuv420p",
 ) -> list[str]:
-    """One restored chunk, video only. Audio is copied once when the chunks are joined."""
+    """One restored chunk, video only. Audio is copied once when the chunks are joined.
+
+    ``pix_fmt`` is the encoder output format, after ``-c:v``.
+    """
     rate = f"{fps:.6f}" if fps > 0 else "24000/1001"
     return [
         ffmpeg,
@@ -230,6 +261,8 @@ def encode_chunk_command(
         "-i",
         "pipe:0",
         *video_args(encoder),
+        "-pix_fmt",
+        pix_fmt,
         "-an",
         "-f",
         "matroska",

@@ -15,7 +15,8 @@ no fallback for a GPU below compute capability 8.9 or a driver below 600.
 Compile `installer/VoxprintClarity.iss` with Inno Setup 6. A normal install
 runs `installer/install-runtime.ps1`, which:
 
-1. Reads `installer/runtime_lock.json` and requires Pillow 12.3.0.
+1. Reads `installer/runtime_lock.json` (Pillow 12.3.0, `onnxruntime-gpu`
+   1.31.0, TensorRT 10.14.1.48).
 2. Creates a venv under `%LOCALAPPDATA%\Voxprint\shared\venv`
    (`%VOXPRINT_HOME%\shared\venv` when `VOXPRINT_HOME` is set). An existing
    venv is reused.
@@ -24,8 +25,19 @@ runs `installer/install-runtime.ps1`, which:
    The pin moves to tag `engine-v1.1.0` when that tag is published.
 4. Calls `ensure_runtime("clarity")`. The engine installs Python 3.14, the
    CUDA 13 wheels, and its default model into the shared folder.
-5. Installs `Pillow==$pillow` from the lock after that step.
-6. Junctions the venv to `{app}\runtime`.
+5. Uninstalls the CPU `onnxruntime` wheel and TensorRT 11, then installs the
+   locked `onnxruntime-gpu` and `tensorrt-cu13-libs` pair. `tensorrt-cu13`
+   10.14.1.48 is installed with `--no-deps` so the engine probe does not pull
+   TensorRT 11 on the next repair. TensorRT 10.14 bindings have no cp314 wheel.
+6. Installs `Pillow==$pillow` from the lock after that step.
+7. Creates `{app}` if needed and junctions the venv to `{app}\runtime`. The
+   link is checked: a failed `mklink` stops the install, and a `runtime` path
+   that is not a junction is refused.
+
+`PrepareToInstall` runs before `{app}` exists, so the setup runs the same
+script again with `-LinkOnly` after the files are copied. That second step
+only creates the junction. The shortcut and `--register-models-user` use
+`{app}\runtime\Scripts\python.exe`.
 
 The Start menu folder is `Voxprint`. The shortcut is **Voxprint AI Clarity**.
 
@@ -73,7 +85,9 @@ Run `voxprint-clarity-install` once after extracting the package, and once
 for an AppImage before the first restore. The script needs Python 3.14,
 installs the engine at commit `d11d609` and Pillow 12.3.0, and runs
 `--install-suite`. That calls `ensure_runtime("clarity")`, repairs ffmpeg,
-and fetches Clarity's Clean and Strong weights. A second run reuses the venv.
+and fetches Clarity's Clean and Strong weights. It then applies the same
+ONNX Runtime 1.31 and TensorRT 10.14 pin as the Windows installer, read from
+`runtime_lock.json`. A second run reuses the venv.
 The launcher and `AppRun` prepend `shared/ffmpeg` to `PATH`.
 
 After extracting onto a prefix, update the MIME and desktop databases.

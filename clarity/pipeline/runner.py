@@ -13,7 +13,7 @@ import threading
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, IO
 
@@ -34,15 +34,19 @@ from clarity.engine import (
 )
 from clarity.errors import Cancelled, ClarityError
 from clarity.models import ClarityModel
+from clarity.precision import apply_precision, torch_dtype_name
+from clarity.pipeline.colour import apply_colour_frame, uint8_colour_stats
 from clarity.pipeline.encode import (
     concat_command,
     concat_list,
     decode_range_command,
     encode_chunk_command,
+    encoder_pix_fmt,
     parse_encoder_list,
     planned_encoder,
     select_encoder,
 )
+from clarity.pipeline.sharpen import unsharp
 from clarity.pipeline.job import Hooks, Settings, models_for, process_frames, wait_for_thermal
 from clarity.pipeline.probe import parse_probe, probe_command, require_sdr
 from clarity.pipeline.resume import (
@@ -176,9 +180,10 @@ def _prepare_infer(settings: Settings) -> Callable[[ClarityModel, np.ndarray], n
             path = paths.get(model.id)
             if path is None:
                 raise ClarityError(f"{model.id} was not fetched before the job")
-            network = ModelLoader().load_from_file(str(path)).eval().cuda().half()
+            network = apply_precision(ModelLoader().load_from_file(str(path)).eval().cuda(), model.precision)
             loaded[model.id] = network
-        tensor = torch.from_numpy(np.ascontiguousarray(nchw)).to(device="cuda", dtype=torch.float16)
+        dtype = getattr(torch, torch_dtype_name(model.precision))
+        tensor = torch.from_numpy(np.ascontiguousarray(nchw)).to(device="cuda", dtype=dtype)
         with torch.inference_mode():
             output = network(tensor)
         return np.asarray(output.detach().float().cpu().numpy(), dtype=np.float32)
@@ -327,6 +332,7 @@ def build_restore_plan(
                     width=out_w,
                     height=out_h,
                     fps=probe.fps,
+                    pix_fmt=encoder_pix_fmt(probe.pix_fmt),
                 ),
             }
         )
@@ -439,6 +445,26 @@ def _prepare_plan(spec: JobSpec, probe: Any, bound: Control) -> tuple[Path, list
     return work, ranges, _finished_records(journal, chunks, ranges), cuts
 
 
+def host_batch_count(height: int, width: int, model_scale: int) -> int:
+    """How many frames fit in the engine tile accumulator.
+
+    ``tile_frames`` keeps three float32 images at the model scale: the
+    accumulator, the coverage map, and the ``clip`` temporary. A 720p frame
+    at 4x is about half a gigabyte, so a whole chunk is not allocated.
+
+    Args:
+        height: Source height in pixels.
+        width: Source width in pixels.
+        model_scale: 4 while the upscale net runs, otherwise 1.
+
+    Returns:
+        At least one.
+    """
+    pixels = max(1, int(height) * int(model_scale) * int(width) * int(model_scale))
+    per_frame = pixels * 3 * 4 * 3
+    return max(1, (512 * 1024 * 1024) // per_frame)
+
+
 def _restore_range(
     spec: JobSpec,
     bound: Control,
@@ -453,49 +479,96 @@ def _restore_range(
     tile: int,
     batch: int,
 ) -> tuple[int, int]:
-    """Decode one chunk, restore it, and leave the encoded bytes in ``partial``."""
+    """Decode one chunk, restore it, and leave the encoded bytes in ``partial``.
+
+    The engine is given at most :func:`host_batch_count` frames. Each batch is
+    downscaled before the next one starts, stored as uint8, then written to the
+    encoder. Colour uses one gain measured on that uint8 chunk, so a scene does
+    not pump and the 4x float32 chunk is never allocated.
+    """
     out_h = probe.height * (2 if spec.settings.upscale else 1)
     out_w = probe.width * (2 if spec.settings.upscale else 1)
     frame_bytes = probe.width * probe.height * 3
     count = stop - start
+    model_scale = 4 if spec.settings.upscale else 1
+    limit = host_batch_count(probe.height, probe.width, model_scale)
+    plain = replace(spec.settings, white_balance=False, levels=False, sharpen=0.0)
+    store_path = partial.with_name(partial.name + ".frames")
     decoder = bound.spawn(decode)
     encoder = bound.spawn(encode)
     token.watch(decoder)
     token.watch(encoder)
     stderr_text: list[str] = []
-    threading.Thread(target=_drain, args=(getattr(decoder, "stderr", None), stderr_text), daemon=True).start()
-    threading.Thread(target=_drain, args=(getattr(encoder, "stderr", None), stderr_text), daemon=True).start()
+    drains = [
+        threading.Thread(target=_drain, args=(getattr(decoder, "stderr", None), stderr_text), daemon=True),
+        threading.Thread(target=_drain, args=(getattr(encoder, "stderr", None), stderr_text), daemon=True),
+    ]
+    for drain in drains:
+        drain.start()
+    store: np.memmap | None = None
     try:
         source_out = decoder.stdout
         if source_out is None:
             raise ClarityError("the decoder has no stdout")
-        frames: list[np.ndarray] = []
+        encoder_in = encoder.stdin
+        if encoder_in is None:
+            raise ClarityError("the encoder has no stdin")
+        store = np.memmap(store_path, dtype=np.uint8, mode="w+", shape=(count, out_h, out_w, 3))
+        pending: list[np.ndarray] = []
+        cursor = 0
+
+        def flush_batch() -> None:
+            nonlocal cursor
+            if not pending or store is None:
+                return
+            if token.is_set():
+                raise Cancelled("cancelled")
+            restored = process_frames(
+                np.stack(pending),
+                plain,
+                bound.infer,
+                tile=tile,
+                batch=batch,
+                use_engine=bound.device,
+            )
+            expected = (len(pending), out_h, out_w, 3)
+            if restored.shape != expected:
+                raise ClarityError(f"restored frames are {restored.shape}, expected {expected}")
+            stored = np.clip(np.rint(restored * 255.0), 0, 255).astype(np.uint8)
+            store[cursor : cursor + stored.shape[0]] = stored
+            cursor += stored.shape[0]
+            pending.clear()
+
         for _ in range(count):
             if token.is_set():
                 raise Cancelled("cancelled")
             raw = _read_exact(source_out, frame_bytes, token)
-            if token.is_set():
-                raise Cancelled("cancelled")
             if len(raw) != frame_bytes:
                 raise ClarityError("the decoder ended in the middle of a frame")
-            frame = np.frombuffer(raw, dtype=np.uint8).reshape(probe.height, probe.width, 3).astype(np.float32)
-            frames.append(frame / 255.0)
-        if token.is_set():
-            raise Cancelled("cancelled")
-        restored = process_frames(
-            np.stack(frames),
-            spec.settings,
-            bound.infer,
-            tile=tile,
-            batch=batch,
-            use_engine=bound.device,
-        )
-        if restored.shape != (count, out_h, out_w, 3):
-            raise ClarityError(f"restored frames are {restored.shape}, expected {(count, out_h, out_w, 3)}")
-        encoder_in = encoder.stdin
-        if encoder_in is None:
-            raise ClarityError("the encoder has no stdin")
-        _write_all(encoder_in, _as_bytes(restored))
+            frame = np.frombuffer(raw, dtype=np.uint8).reshape(probe.height, probe.width, 3)
+            pending.append(frame.astype(np.float32) / 255.0)
+            if len(pending) >= limit:
+                flush_batch()
+        flush_batch()
+        if cursor != count:
+            raise ClarityError(f"restored {cursor} frames, expected {count}")
+        store.flush()
+        means, lo, hi = uint8_colour_stats(store)
+        for index in range(count):
+            if token.is_set():
+                raise Cancelled("cancelled")
+            image = store[index].astype(np.float32) / 255.0
+            image = apply_colour_frame(
+                image,
+                means,
+                lo,
+                hi,
+                white_balance=spec.settings.white_balance,
+                levels=spec.settings.levels,
+            )
+            if spec.settings.sharpen > 0:
+                image = unsharp(image, spec.settings.sharpen)
+            _write_all(encoder_in, _as_bytes(image[None, ...]))
         encoder_in.close()
         code_decode = int(decoder.wait(timeout=120))
         code_encode = int(encoder.wait(timeout=120))
@@ -504,11 +577,36 @@ def _restore_range(
     except Cancelled:
         _discard(decoder, encoder, partial)
         raise
-    except Exception:
+    except Exception as exc:
         _discard(decoder, encoder, partial)
+        for drain in drains:
+            drain.join(timeout=1)
         if token.is_set():
             raise Cancelled("cancelled") from None
-        raise
+        detail = " ".join(part.strip() for part in stderr_text if part.strip())
+        if isinstance(exc, ClarityError):
+            if detail and detail not in str(exc):
+                raise ClarityError(f"{exc}\n{detail}") from exc
+            raise
+        message = f"{type(exc).__name__}: {exc}"
+        if detail:
+            message = f"{message}\n{detail}"
+        raise ClarityError(message) from exc
+    finally:
+        mapped = store
+        store = None
+        if mapped is not None:
+            mem = getattr(mapped, "_mmap", None)
+            del mapped
+            if mem is not None:
+                try:
+                    mem.close()
+                except OSError:
+                    pass
+        try:
+            store_path.unlink(missing_ok=True)
+        except OSError:
+            pass
     return tile, batch
 
 

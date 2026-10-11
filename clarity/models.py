@@ -39,6 +39,7 @@ class ClarityModel:
     condition: str
     channels: int
     selectable: bool = True
+    precision: str = "fp16"
 
     def manifest(self) -> dict[str, Any]:
         """Fields ``voxprint_engine.registry.validate_manifest`` accepts."""
@@ -96,6 +97,7 @@ CATALOG: tuple[ClarityModel, ...] = (
         download_url=f"{_KAIR}/drunet_deblocking_color.pth",
         condition="deblock",
         channels=4,
+        precision="fp32",
     ),
     _model(
         id="drunet-color",
@@ -115,6 +117,7 @@ CATALOG: tuple[ClarityModel, ...] = (
         download_url=f"{_KAIR}/drunet_color.pth",
         condition="sigma",
         channels=4,
+        precision="fp32",
     ),
     _model(
         id="scunet-color-real-psnr",

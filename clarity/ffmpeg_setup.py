@@ -21,6 +21,7 @@ from typing import IO
 
 from clarity.engine import shared_directory
 from clarity.errors import ClarityError
+from clarity.net import install_system_trust
 
 Progress = Callable[[str], None]
 _FFMPEG_URL = {
@@ -145,6 +146,7 @@ class _HttpsRedirect(urllib.request.HTTPRedirectHandler):
 def _download(url: str, target: Path, progress: Progress) -> None:
     if not url.startswith("https://"):
         raise FfmpegMissing("downloads must use https")
+    install_system_trust()
     request = urllib.request.Request(url, headers={"User-Agent": "voxprint-clarity"})
     opener = urllib.request.build_opener(_HttpsRedirect)
     try:

@@ -63,6 +63,8 @@ def test_h264_is_refused_and_av1_is_default() -> None:
         fps=24,
     )
     text = " ".join(command)
+    video_at = command.index("-c:v")
+    assert command[command.index("-pix_fmt", video_at) + 1] == "yuv420p"
     assert "av1_nvenc" in text
     assert "libx264" not in text
     assert "h264" not in text

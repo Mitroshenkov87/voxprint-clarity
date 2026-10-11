@@ -9,6 +9,10 @@ from enum import IntEnum
 from pathlib import Path
 from typing import Any, Literal, Never
 
+from clarity.net import install_system_trust
+
+install_system_trust()
+
 from PySide6.QtWidgets import QApplication
 
 from clarity.appinfo import APP_BUILD, APP_NAME, APP_VERSION, CODENAME, version_label
@@ -24,12 +28,14 @@ from clarity.engine import (
 from clarity.errors import Cancelled, ClarityError
 from clarity.ffmpeg_setup import FfmpegMissing, ensure_ffmpeg
 from clarity.models import catalogue_rows, clean_models, fetch_weights, strong_model
+from clarity.ort_check import provider_failure
 from clarity.pipeline.encode import Container, VideoCodec
 from clarity.pipeline.job import Settings
 from clarity.pipeline.runner import JobSpec, dry_run_restore, run_job
 from clarity.platform_gate import assess_platform
 from clarity.project import ProjectFormatError, load_project, work_dir_for
 from clarity.ui.main_window import MainWindow
+from clarity.ui.platform import gui_qt_platform, require_windows_platform_plugin, selftest_qt_platform
 from clarity.ui.suite_dialog import RepairProgress
 
 CommandName = Literal["restore", "project", "info", "version", "models", "selftest"]
@@ -300,6 +306,8 @@ def _restore(args: argparse.Namespace, console: Console) -> int:
         return console.fail(str(exc), ExitCode.USAGE)
     except ClarityError as exc:
         return console.fail(str(exc), ExitCode.JOB)
+    except Exception as exc:
+        return console.fail(f"{type(exc).__name__}: {exc}", ExitCode.JOB)
     return console.ok({"command": "restore", "dry_run": False, "destination": str(spec.destination)})
 
 
@@ -421,7 +429,8 @@ def _models_command(args: argparse.Namespace, console: Console) -> int:
 
 
 def _selftest_window() -> int:
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    os.environ["QT_QPA_PLATFORM"] = selftest_qt_platform()
+    require_windows_platform_plugin()
     app = QApplication.instance() or QApplication([])
     window = MainWindow()
     window.show()
@@ -444,6 +453,9 @@ def _selftest_command(args: argparse.Namespace, console: Console) -> int:
         )
     try:
         report = _ensure_shared(lambda message: console.progress(0.0, message))
+        providers = _provider_gate()
+        if providers is not None:
+            return console.fail(providers, ExitCode.ENVIRONMENT)
         code = _selftest_window()
     except (ImportError, ClarityError, OSError) as exc:
         return console.fail(str(exc), ExitCode.USAGE)
@@ -508,6 +520,10 @@ def _gui(argv: list[str]) -> int:
     if args.selftest:
         try:
             _ensure_shared(lambda message: print(message, file=sys.stderr))
+            providers = _provider_gate()
+            if providers is not None:
+                print(providers)
+                return int(ExitCode.ENVIRONMENT)
             code = _selftest_window()
         except (ImportError, ClarityError, OSError) as exc:
             print(exc)
@@ -530,7 +546,14 @@ def _gui(argv: list[str]) -> int:
         return 2
     if gate.warning:
         print(gate.warning)
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen" if not sys.stdout.isatty() else "")
+    chosen = gui_qt_platform()
+    if chosen:
+        os.environ["QT_QPA_PLATFORM"] = chosen
+    try:
+        require_windows_platform_plugin()
+    except ClarityError as exc:
+        print(exc)
+        return int(ExitCode.ENVIRONMENT)
     application = QApplication.instance() or QApplication(sys.argv)
     try:
         _ensure_shared(RepairProgress())
@@ -542,6 +565,21 @@ def _gui(argv: list[str]) -> int:
         window.open_project(args.project)
     window.show()
     return int(application.exec())
+
+
+def _provider_gate() -> str | None:
+    """Return a provider error, or None when this run is allowed to skip the GPU stack.
+
+    ``VOXPRINT_CI_LANCZOS=1`` is the CI selftest. It has no CUDA provider and must
+    stay green. A real launch and a real selftest fail when the CPU wheel or a
+    missing TensorRT EP would make Clean and Strong exports run on CPU.
+
+    Returns:
+        The failure text, or None.
+    """
+    if os.environ.get("VOXPRINT_CI_LANCZOS", "").strip() == "1":
+        return None
+    return provider_failure()
 
 
 def _ensure_shared(progress: Any) -> Any:

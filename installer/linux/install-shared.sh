@@ -41,3 +41,18 @@ fi
 "$venv/bin/python" -m pip install "Pillow==12.3.0"
 VOXPRINT_HOME=$suite_home PYTHONPATH="$app${PYTHONPATH:+:$PYTHONPATH}" "$venv/bin/python" -m clarity --install-suite
 "$venv/bin/python" -m pip install "Pillow==12.3.0"
+if [ -f "$script_dir/runtime_lock.json" ]; then
+  lock=$script_dir/runtime_lock.json
+elif [ -f "$script_dir/../runtime_lock.json" ]; then
+  lock=$script_dir/../runtime_lock.json
+else
+  echo "runtime lock missing" >&2
+  exit 1
+fi
+ort=$("$venv/bin/python" -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))[sys.argv[2]])' "$lock" onnxruntime_gpu)
+libs=$("$venv/bin/python" -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))[sys.argv[2]])' "$lock" tensorrt_cu13_libs)
+meta=$("$venv/bin/python" -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))[sys.argv[2]])' "$lock" tensorrt_cu13)
+"$venv/bin/python" -m pip uninstall -y onnxruntime onnxruntime-gpu tensorrt tensorrt-cu13 tensorrt-cu13-bindings tensorrt-cu13-libs || true
+"$venv/bin/python" -m pip install --extra-index-url "https://pypi.nvidia.com" "onnxruntime-gpu==$ort" "tensorrt-cu13-libs==$libs"
+"$venv/bin/python" -m pip install --no-deps "tensorrt-cu13==$meta"
+"$venv/bin/python" -c 'import importlib.metadata as m; names={d.metadata["Name"].lower() for d in m.distributions()}; raise SystemExit(1 if "onnxruntime" in names else 0)'

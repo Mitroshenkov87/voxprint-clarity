@@ -2,4 +2,8 @@
 # Install the app first (`requirements.txt`) so numpy, Pillow, and the package import.
 -r requirements-gpu.txt
 spandrel
-onnxruntime-gpu
+# 1.31's TensorRT EP loads nvinfer_10. The matching library pin is
+# tensorrt-cu13-libs==10.14.1.48 (see runtime_lock.json). The unpinned
+# tensorrt meta package is TensorRT 11 and does not satisfy that EP.
+onnxruntime-gpu==1.31.0
+onnx>=1.21,<2

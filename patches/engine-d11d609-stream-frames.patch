@@ -1,0 +1,49 @@
+--- a/voxprint_engine/video.py
++++ b/voxprint_engine/video.py
+@@ -9,7 +9,7 @@
+ import os
+ import re
+ import subprocess
+-from collections.abc import Callable
++from collections.abc import Callable, Iterator
+ from dataclasses import dataclass
+ from typing import Any
+ 
+@@ -331,6 +331,37 @@
+     return np.clip(acc / np.maximum(cover, 1e-6), 0.0, 1.0)
+ 
+ 
++def iter_tile_frames(
++    frames: Array,
++    infer: Infer,
++    tile: int,
++    overlap: int,
++    *,
++    scale: int = 1,
++    batch: int = 1,
++) -> Iterator[Array]:
++    """Yield one restored HWC frame.
++
++    ``tile_frames`` allocates the accumulator, the coverage map, and the
++    ``clip`` temporary for every frame at once. A 138-frame 720p chunk at
++    4x is about 22.7 GiB of float32. This iterator keeps those arrays at
++    one frame. Stacking the yields allocates the whole chunk again.
++    """
++    if frames.ndim != 4:
++        raise ValueError("expected NHWC")
++    count = int(frames.shape[0])
++    for index in range(count):
++        restored = tile_frames(
++            frames[index : index + 1],
++            infer,
++            tile,
++            overlap,
++            scale=scale,
++            batch=batch,
++        )
++        yield restored[0]
++
++
+ def restore_frames(
+     frames: Array,
+     infer: Infer,

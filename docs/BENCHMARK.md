@@ -11,6 +11,21 @@ times both backends, and writes PNG crops. It exits 2 when the GPU, ffmpeg,
 a weight, the export, or TensorRT EP is missing, and it does not invent a
 frames-per-second number for a backend it did not run.
 
+## Measured on an RTX 4090
+
+Windows Server 2025 desktop VM, NVIDIA driver 610.88, the first GPU run of
+this tree's restore path (Strong / SCUNet, 8-bit, 2x off):
+
+| Run | Result |
+|---|---|
+| End to end, Strong (SCUNet), 192 frames, 77.4 s | 2.5 fps, peak VRAM 2736 MiB (2.7 GB), GPU util 96% |
+| `python -m clarity.bench`, SCUNet `pytorch-fp16`, 8 frames of 256×256 | 17.241 fps, 138.8 MB |
+| `python -m clarity.bench`, `realesr-general-x4v3` `pytorch-fp16` | 46.190 fps, 48.0 MB |
+
+DRUNet was still being loaded in fp16 on that run, and `onnx` was not installed,
+so the DRUNet timing and every TensorRT export were not measured. DRUNet is
+fp32. The bench loads each model in the precision declared in the catalogue.
+
 ## Install
 
 On the VM, with Python 3.14:
@@ -20,8 +35,10 @@ python -m pip install -r requirements.txt -r requirements-bench.txt
 python -m clarity.bench
 ```
 
-`requirements-bench.txt` pulls the CUDA 13.0 torch wheel, `spandrel`, and
-`onnxruntime-gpu`. TensorRT EP has to be in that ONNX Runtime build.
+`requirements-bench.txt` pulls the CUDA 13.0 torch wheel, `spandrel`,
+`onnx`, and `onnxruntime-gpu==1.31.0`. TensorRT EP has to be in that build.
+The matching library is `tensorrt-cu13-libs==10.14.1.48` (`nvinfer_10`), pinned
+in `installer/runtime_lock.json`. TensorRT 11 does not provide that DLL.
 `--skip-download` reuses files already in `--clip-dir` and still exits 2
 when one of them is absent.
 
@@ -49,7 +66,8 @@ pinned SHA-256:
 
 ## Backends
 
-Each model is loaded with spandrel in fp16 on CUDA. The timed loop is a
+Each model is loaded with spandrel on CUDA at its catalogue precision.
+DRUNet is fp32. SCUNet and Real-ESRGAN are fp16. The timed loop is a
 256×256 forward, after one warmup call. Peak VRAM is
 `torch.cuda.max_memory_allocated`.
 
@@ -59,10 +77,10 @@ keeps `tools/export_onnx.py` in the enlarge repository and out of the
 installed wheel, so a machine that only has the wheel writes the graph with
 `torch.onnx.export` (fp16, opset 17) and says so in the report. The ONNX
 Runtime session is opened with
-`TensorrtExecutionProvider` (`trt_fp16_enable`, engine cache under
-`--out/trt-cache`) and then `CUDAExecutionProvider`. There is no CPU
-provider. If TensorRT EP is not in `session.get_providers()`, that model is
-not given a TensorRT timing.
+`TensorrtExecutionProvider` (engine cache under `--out/trt-cache`) and then
+`CUDAExecutionProvider`. `trt_fp16_enable` is on for an fp16 model and off
+for fp32. There is no CPU provider. If TensorRT EP is not in
+`session.get_providers()`, that model is not given a TensorRT timing.
 
 ## Output
 
