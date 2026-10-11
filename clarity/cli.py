@@ -26,7 +26,10 @@ from clarity.pipeline.job import Settings
 from clarity.pipeline.runner import JobSpec, dry_run_restore, run_job
 from clarity.platform_gate import assess_platform
 from clarity.project import ProjectFormatError, load_project, work_dir_for
+from clarity.suite_repair import SuiteMissing, ensure_suite
+from clarity.suite_share import release_app
 from clarity.ui.main_window import MainWindow
+from clarity.ui.suite_dialog import RepairProgress
 
 CommandName = Literal["restore", "project", "info", "version", "models", "selftest"]
 ProjectAction = Literal["open", "resume"]
@@ -165,6 +168,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Remove Clarity from the shared models folder",
     )
+    parser.add_argument("--install-suite", action="store_true", help="Install or repair the shared suite dependencies")
     parser.add_argument("--out", type=Path, default=None, help="Write the models-folder report here")
     parser.epilog = "Headless commands: restore, project, info, version, models, selftest. See docs/CLI.md."
     return parser
@@ -433,11 +437,12 @@ def _selftest_command(args: argparse.Namespace, console: Console) -> int:
             {
                 "command": "selftest",
                 "dry_run": True,
-                "checks": ["offscreen window", "start label"],
+                "checks": ["suite dependencies", "offscreen window", "start label"],
                 "gpu_used": False,
             }
         )
     try:
+        ensure_suite(console.progress)
         code = _selftest_window()
     except (ImportError, ClarityError, OSError) as exc:
         return console.fail(str(exc), ExitCode.USAGE)
@@ -488,10 +493,13 @@ def _gui(argv: list[str]) -> int:
     if args.version:
         print(version_label())
         return 0
+    if args.install_suite:
+        return _install_suite()
     if args.register_models_user or args.unregister_models_user:
         return _register(args.out, remove=bool(args.unregister_models_user))
     if args.selftest:
         try:
+            ensure_suite(lambda fraction, message: print(message, file=sys.stderr))
             code = _selftest_window()
         except (ImportError, ClarityError, OSError) as exc:
             print(exc)
@@ -516,6 +524,11 @@ def _gui(argv: list[str]) -> int:
         print(gate.warning)
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen" if not sys.stdout.isatty() else "")
     application = QApplication.instance() or QApplication(sys.argv)
+    try:
+        ensure_suite(RepairProgress())
+    except SuiteMissing as exc:
+        print(exc)
+        return int(ExitCode.ENVIRONMENT)
     window = MainWindow()
     if args.project is not None:
         window.open_project(args.project)
@@ -523,7 +536,23 @@ def _gui(argv: list[str]) -> int:
     return int(application.exec())
 
 
+def _install_suite() -> int:
+    """Install or repair the shared dependencies and print each step.
+
+    Returns:
+        ``0`` when every component is ready, ``2`` when a repair fails.
+    """
+    try:
+        ensure_suite(lambda _fraction, message: print(message, file=sys.stderr))
+    except (SuiteMissing, OSError) as exc:
+        print(exc)
+        return int(ExitCode.ENVIRONMENT)
+    return int(ExitCode.OK)
+
+
 def _register(out: Path | None, *, remove: bool) -> int:
+    if remove:
+        release_app()
     try:
         if remove:
             others = unregister_user("clarity")

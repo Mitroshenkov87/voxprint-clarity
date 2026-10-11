@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import re
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -23,6 +24,8 @@ except ImportError:
     torch = None
 
 OWNER = "clarity"
+NVIDIA_DRIVER_URL = "https://www.nvidia.com/Download/index.aspx"
+_DRIVER_VERSION = re.compile(r"driver ([0-9][0-9.]*)")
 ENGINE_REQUIREMENT = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0"
 _GPU_BUSY = "the GPU is busy"
 _GPU_CANCELLED = "cancelled while waiting for the GPU"
@@ -116,6 +119,42 @@ class Gate:
         self.warning = warning
 
 
+def driver_refusal(version: str) -> str:
+    """Explain that the NVIDIA driver is older than the R600 series.
+
+    Args:
+        version: The driver version nvidia-smi reported.
+
+    Returns:
+        The refusal, including NVIDIA's driver download page.
+    """
+    shown = version.strip() or "unknown"
+    return (
+        f"This NVIDIA driver ({shown}) is older than the R600 series. "
+        "Clarity needs a 600-series driver or newer. "
+        f"Download a current driver from {NVIDIA_DRIVER_URL}"
+    )
+
+
+def annotate_driver_message(message: str) -> str:
+    """Add the driver download page when the engine refused an old driver.
+
+    Args:
+        message: Text from ``voxprint_engine.hardware.assess_gpu``.
+
+    Returns:
+        ``message`` unchanged, or :func:`driver_refusal` when it names an old driver.
+    """
+    if "driver" not in message.lower() or "600" not in message:
+        return message
+    found = _DRIVER_VERSION.search(message)
+    if found:
+        return driver_refusal(found.group(1))
+    if NVIDIA_DRIVER_URL in message:
+        return message
+    return f"{message} Download a current driver from {NVIDIA_DRIVER_URL}"
+
+
 def assess_launch() -> Gate:
     """RTX 40 series (compute capability 8.9) and a 600-series driver."""
     if os.environ.get("VOXPRINT_CI_LANCZOS", "").strip() == "1":
@@ -124,7 +163,8 @@ def assess_launch() -> Gate:
     if _hardware is None:
         raise EngineUnavailable("voxprint_engine.hardware is not installed")
     gate = _hardware.assess_gpu(refuse_below=(8, 9))
-    return Gate(bool(gate.ok), str(getattr(gate, "message", "") or ""), str(getattr(gate, "warning", "") or ""))
+    message = annotate_driver_message(str(getattr(gate, "message", "") or ""))
+    return Gate(bool(gate.ok), message, str(getattr(gate, "warning", "") or ""))
 
 
 def hold_gpu(

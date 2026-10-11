@@ -41,7 +41,10 @@ jobs:
       - name: Window self-test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m clarity --selftest
+          VOXPRINT_HOME: ${{ runner.temp }}/voxprint-suite
+        run: |
+          python -c "from clarity.suite_repair import write_ready_markers; write_ready_markers()"
+          python -m clarity --selftest
 
   installer:
     name: Windows online installer

@@ -74,11 +74,12 @@ CloseApplications=yes
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [CustomMessages]
-RuntimeStatus=Installing Python 3.14 and PyTorch for CUDA 13. Clarity has no CPU runtime.
+RuntimeStatus=Installing Python 3.14, PyTorch, LGPL ffmpeg, and the shared engine. Clarity has no CPU runtime.
 RuntimeFailed=The Python environment could not be installed.%n%nDetails: %1
 
 [Files]
 Source: "install-runtime.ps1"; DestDir: "{tmp}"; Flags: dontcopy
+Source: "install-runtime.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements.txt"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "..\requirements-gpu.txt"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "..\requirements-bench.txt"; DestDir: "{tmp}"; Flags: dontcopy
@@ -110,6 +111,7 @@ Root: HKCU; Subkey: "Software\Classes\Voxprint.Clarity.Project\DefaultIcon"; Val
 Root: HKCU; Subkey: "Software\Classes\Voxprint.Clarity.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{#PyW}"" ""{app}\main.py"" ""%1"""
 
 [Run]
+Filename: "{#Py}"; Parameters: """{app}\main.py"" --install-suite"; WorkingDir: "{app}"; StatusMsg: "Installing the default models into the shared suite folder..."; Flags: runhidden; Check: RuntimeInstalled
 Filename: "{#Py}"; Parameters: """{app}\main.py"" --register-models-user"; WorkingDir: "{app}"; StatusMsg: "Registering the shared models folder..."; Flags: runhidden; Check: RuntimeInstalled
 
 [UninstallRun]

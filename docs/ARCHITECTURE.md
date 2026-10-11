@@ -43,6 +43,22 @@ voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-
 
 `clarity.engine` loads that package with `importlib` and forwards the calls. The requirement string is `ENGINE_REQUIREMENT`. The lock owner is `OWNER` (`clarity`).
 
+## Shared dependencies
+
+The Windows installer and `installer/linux/install-shared.sh` install Python 3.14, torch 2.14.1+cu130, an LGPL ffmpeg build, the engine, and the default Clean and Strong models while setup is running. The app launch and `selftest` call `ensure_suite` afterwards. A component that is already present is recorded. A component that is missing is repaired, with a Qt dialog in the window and `{"type": "progress"}` lines from `--json`.
+
+Shared files live in one versioned directory:
+
+- Windows: `%LOCALAPPDATA%\Voxprint\shared`
+- Linux: `$XDG_DATA_HOME/voxprint/shared`, or `~/.local/share/voxprint/shared`
+- `VOXPRINT_HOME` replaces the `Voxprint` directory on either platform
+
+`manifest.json` in that directory stores `format_version` 1 and `components.<name>.users`, an integer count per app. Installing increments Clarity's count. Launch calls `retain_component`, which records Clarity once and leaves an existing count unchanged. Uninstall drops one count. The ffmpeg directory is removed when its count reaches zero. The runtime directory is removed when Python, torch, and the engine all have no remaining users. Weight files stay in the engine models folder.
+
+`voxprint_engine.paths` owns the home directory and the models folder. The versioned `shared/` directory and the integer refcount are the addition proposed in [UPSTREAM-SHARED.md](UPSTREAM-SHARED.md). Clarity follows that home and uses this layout until `shared_dir()` exists.
+
+A driver older than the R600 series is refused by `assess_launch`. The message names the reported version and includes <https://www.nvidia.com/Download/index.aspx>.
+
 ## GPU lock, VRAM, and thermals
 
 The live path (`live_control`) sets `device=True` and takes the lock with `hold_gpu`, which calls `gpu_job(..., owner="clarity")`. The same owner is written on a `restore_batch` message. The engine shares a parent lock with a worker only when both sides pass that owner.
