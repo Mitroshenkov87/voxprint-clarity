@@ -12,7 +12,10 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from clarity.cli import ExitCode, main
+from voxprint_common.cli_protocol import EXIT_CANCELLED, EXIT_FAILED, EXIT_OK, EXIT_USAGE
+
+from clarity.cli import ExitCode, main, protocol_code
+from clarity.errors import Cancelled
 from clarity.codenames import check, foreign_names, parse_registry
 from clarity.pipeline.encode import Container, VideoCodec
 from clarity.pipeline.probe import parse_probe
@@ -207,6 +210,33 @@ def test_version_models_and_selftest_dry_run(capsys: pytest.CaptureFixture[str])
     assert main(["selftest", "--dry-run", "--json"]) == 0
     check_body = _result(capsys.readouterr().out)
     assert check_body["gpu_used"] is False
+
+
+def test_protocol_code_keeps_clarity_numbers() -> None:
+    assert [protocol_code(code) for code in ExitCode] == [0, 1, 2, 3]
+    assert protocol_code(ExitCode.OK) == EXIT_OK == int(ExitCode.OK)
+    assert protocol_code(ExitCode.USAGE) == EXIT_USAGE == int(ExitCode.USAGE)
+    assert protocol_code(ExitCode.ENVIRONMENT) == EXIT_FAILED == int(ExitCode.ENVIRONMENT)
+    assert protocol_code(ExitCode.JOB) == EXIT_CANCELLED == int(ExitCode.JOB)
+    assert ExitCode.JOB.name == "JOB"
+
+
+def test_cancel_stays_usage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    source = tmp_path / "in.mkv"
+    source.write_bytes(b"video")
+    monkeypatch.setattr("clarity.cli._gates", lambda _console: None)
+
+    def stop(*_args: object, **_kwargs: object) -> None:
+        raise Cancelled("cancelled")
+
+    monkeypatch.setattr("clarity.cli.run_job", stop)
+    code = main(["restore", "--input", str(source), "--output", str(tmp_path / "out.mkv"), "--json"])
+    assert code == int(ExitCode.USAGE)
+    assert code != int(ExitCode.JOB)
+    result = _result(capsys.readouterr().out)
+    assert result["ok"] is False
+    assert result["code"] == 1
+    assert result["error"] == "cancelled"
 
 
 def test_missing_input_is_usage(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

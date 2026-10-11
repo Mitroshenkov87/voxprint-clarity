@@ -326,8 +326,9 @@ def test_model_licences_are_permissive() -> None:
 def test_theme_contrast_and_translations() -> None:
     for foreground, background in theme.CONTRAST_PAIRS:
         assert theme.contrast_ratio(foreground, background) >= 4.5
-    assert theme.IDENTITY == "#86efac"
-    assert theme.IDENTITY == theme.GREEN
+    assert theme.IDENTITY == "#2dd4bf"
+    assert theme.IDENTITY != theme.GREEN
+    assert theme.IDENTITY != "#86efac"
     assert theme.IDENTITY != "#f5d76e"
     assert theme.splash_art().is_file()
     assert tr("start", "en") == "Start"

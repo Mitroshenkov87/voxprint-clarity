@@ -14,7 +14,7 @@ from clarity.net import install_system_trust
 install_system_trust()
 
 from PySide6.QtWidgets import QApplication
-from voxprint_common.cli_protocol import emit
+from voxprint_common.cli_protocol import EXIT_CANCELLED, EXIT_FAILED, EXIT_OK, EXIT_USAGE, emit
 from voxprint_common.cli_protocol import progress as protocol_progress
 from voxprint_common.cli_protocol import result as protocol_result
 from voxprint_common.ui.splash import Splash
@@ -60,6 +60,36 @@ class ExitCode(IntEnum):
     JOB = 3
 
 
+def protocol_code(code: ExitCode) -> int:
+    """Map a Clarity status onto the integer ``voxprint_common.cli_protocol`` accepts.
+
+    The integers match. The names do not. ``docs/CLI.md`` is the contract, and
+    ``vm_test`` depends on it:
+
+    * ``OK`` (0) is ``EXIT_OK``.
+    * ``USAGE`` (1) is ``EXIT_USAGE``. A cancel uses this code.
+    * ``ENVIRONMENT`` (2) is ``EXIT_FAILED``.
+    * ``JOB`` (3) is the integer the shared package names ``EXIT_CANCELLED``.
+      In Clarity that integer is a live restore or model fetch that failed
+      after it started. It is not a cancel.
+
+    Args:
+        code: A status from :class:`ExitCode`.
+
+    Returns:
+        The integer written as JSON ``code`` and returned as the process status.
+    """
+    if code is ExitCode.OK:
+        return EXIT_OK
+    if code is ExitCode.USAGE:
+        return EXIT_USAGE
+    if code is ExitCode.ENVIRONMENT:
+        return EXIT_FAILED
+    if code is ExitCode.JOB:
+        return EXIT_CANCELLED
+    raise AssertionError(f"unmapped exit code {code!r}")
+
+
 class _Parser(argparse.ArgumentParser):
     def error(self, message: str) -> Never:
         self.print_usage(sys.stderr)
@@ -89,9 +119,9 @@ class Console:
             The integer value of ``code``.
         """
         if self.json_mode:
-            emit(protocol_result(False, code=int(code), message=message, error=message))
+            emit(protocol_result(False, code=protocol_code(code), message=message, error=message))
         print(message, file=sys.stderr)
-        return int(code)
+        return protocol_code(code)
 
     def ok(self, payload: dict[str, Any]) -> int:
         """Print a successful result and return 0.
@@ -105,7 +135,7 @@ class Console:
         if self.json_mode:
             extra = {key: value for key, value in payload.items() if key not in {"type", "ok", "code", "message"}}
             note = str(payload["message"]) if "message" in payload else ""
-            emit(protocol_result(True, code=int(ExitCode.OK), message=note, **extra))
+            emit(protocol_result(True, code=protocol_code(ExitCode.OK), message=note, **extra))
         else:
             _human({"type": "result", "ok": True, **payload})
         return int(ExitCode.OK)

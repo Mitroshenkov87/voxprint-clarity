@@ -1,8 +1,8 @@
 """Suite theme from ``voxprint_common.ui.theme``, plus Clarity's splash identity.
 
 The window uses the shared yellow primary actions and soft blue accents.
-The splash progress bar is not one of those tokens. ``IDENTITY`` is Clarity's
-own colour, passed to ``voxprint_common.ui.splash.Splash``.
+The splash progress bar is Clarity's teal identity, not the shared ``GREEN``
+success token. ``IDENTITY`` is passed to ``voxprint_common.ui.splash.Splash``.
 """
 from __future__ import annotations
 
@@ -49,9 +49,9 @@ from voxprint_common.ui.theme import (
 
 from clarity.appinfo import repo_root
 
-# Splash progress fill. PALETTE.md has no cyan or teal. GREEN is the clear
-# accent no other app uses as its splash identity.
-IDENTITY = GREEN
+# Splash progress fill. Registered as Clarity's identity in the suite palette.
+# GREEN stays the success token, so a bar in that colour would read as done.
+IDENTITY = "#2dd4bf"
 
 
 def splash_art() -> Path:

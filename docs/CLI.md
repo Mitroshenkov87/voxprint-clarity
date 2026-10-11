@@ -38,6 +38,11 @@ With `--json`, a failure still prints one result line on stdout:
 The line is written by `voxprint_common.cli_protocol`, so it also carries
 `code` (the exit code from the table above) and `message` (the same text as
 `error` on a failure). The exit codes themselves are unchanged.
+
+Those integers match the shared protocol, and the names do not. The package
+calls 2 `EXIT_FAILED` and 3 `EXIT_CANCELLED`. Here, 2 is an environment
+refusal and 3 is a failed live job. A cancel is usage (1), not 3. `vm_test`
+and this table are the contract. The JSON `code` field is that same integer.
 Progress, when a live job reports it, is `{"type":"progress","fraction":0.25,"message":"12/48"}`
 on stdout. A TensorRT build or cache load adds `"stage":"building_engine"` or
 `"stage":"loading_cached_engine"`. The message says the first build can take

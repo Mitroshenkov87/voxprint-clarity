@@ -76,7 +76,7 @@ voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/archive/refs
 
 `installer/runtime_lock.json` records the series as `0.1.*`. Project files, the journal, and the catalogue stay in Clarity. Only the hash function moved. The fetch gate still accepts MIT, Apache-2.0, and BSD after the shared check. ISC, CC-BY, and CC0 pass the shared release list and are not fetched here.
 
-The GUI opens `voxprint_common.ui.splash.Splash` on `assets/splash/clarity.jpg`. The progress bar uses Clarity's identity colour `#86efac` (the palette's `GREEN` token). The rest of the window uses the shared yellow primary and soft blue accents. A missing art file paints `#0b1020`. The splash stays up at least 0.6 seconds, then fades for 200 ms.
+The GUI opens `voxprint_common.ui.splash.Splash` on `assets/splash/clarity.jpg`. The progress bar uses Clarity's identity colour `#2dd4bf` (teal, registered in the suite palette). It is not the `GREEN` success token. The rest of the window uses the shared yellow primary and soft blue accents. A missing art file paints `#0b1020`. The splash stays up at least 0.6 seconds, then fades for 200 ms.
 
 ## GPU lock, VRAM, and thermals
 
