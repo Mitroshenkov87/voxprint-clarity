@@ -15,10 +15,11 @@ including the two historical duplicates below.
 | App | Codenames used (oldest first) |
 |---|---|
 | audiobook-builder | Tikkun, Zahav, Menuchah, Kolot, Kaporet, Shalem, Shelishi, Toledot, Achim, Nachon, Chazak |
-| enlarge | Gadol, Hagdil, Petach |
-| movie-dubber | Hineni, Chazak |
-| clarity | Bereshit, Tohar |
+| enlarge | Gadol, Hagdil, Petach, Bahir |
+| movie-dubber | Hineni, Chazak, Bochan |
+| clarity | Bereshit, Tohar, Arukhah |
 | plotweaver | Sefer, Rikmah, Machashavah, Tzaruf |
+| lucent | Zohar, Ner |
 
 Historical duplicate (published, kept as is): **Chazak** (audiobook-builder and movie-dubber).
 
@@ -28,6 +29,8 @@ Historical duplicate (published, kept as is): **Chazak** (audiobook-builder and 
 |---|---|---|
 | canvas | Yotzer | fashioner (Yeshayahu) |
 | model-forge | Charash | craftsman, smith (Yeshayahu 44:12) |
-| movie-dubber | Bochan | tested, proven (even bochan, Yeshayahu 28:16) |
+| audiobook-builder | Tamim | whole, complete (Bereshit 17:1, Devarim 18:13); 1.0.0 RC3 build 1001 |
+| lucent | Yashar | upright, straight (Devarim 6:18); fixes from the first VM test |
+| enlarge | Marpe | healing, remedy (Mishlei 4:22); fixes from the first GPU test |
 
 When a reserved codename ships, move it to the "Used codenames" table.
