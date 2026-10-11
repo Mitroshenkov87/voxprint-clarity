@@ -19,8 +19,9 @@ runs `installer/install-runtime.ps1`, which:
 2. Creates a venv under `%LOCALAPPDATA%\Voxprint\shared\venv`
    (`%VOXPRINT_HOME%\shared\venv` when `VOXPRINT_HOME` is set). An existing
    venv is reused.
-3. Installs `requirements.txt` and the engine at tag `engine-v1.1.0`
-   (`voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0`).
+3. Installs `requirements.txt` and the engine at commit `9183489`
+   (`voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489`).
+   The pin moves to tag `engine-v1.2.0` when that tag is published.
 4. Calls `ensure_runtime("clarity")`. The engine installs Python 3.14, the
    CUDA 13 wheels, `onnxruntime-gpu==1.31.0`, TensorRT 10.14.1.48, and its
    default model into the shared folder. It removes the CPU `onnxruntime` wheel.
@@ -78,7 +79,7 @@ appimagetool can be downloaded. The package includes
 
 Run `voxprint-clarity-install` once after extracting the package, and once
 for an AppImage before the first restore. The script needs Python 3.14,
-installs the engine at tag `engine-v1.1.0` and Pillow 12.3.0, and runs
+installs the engine at commit `9183489` and Pillow 12.3.0, and runs
 `--install-suite`. That calls `ensure_runtime("clarity")`, which installs the
 ONNX Runtime GPU and TensorRT pins, repairs ffmpeg, and fetches Clarity's
 Clean and Strong weights. A second run reuses the venv.

@@ -28,7 +28,7 @@ $Archive = Join-Path $ResultsDir "$BundleName.tar.gz"
 
 $FfmpegUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip"
 $UvUrl = "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip"
-$EngineUrl = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0"
+$EngineUrl = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489"
 
 function Fail([string]$Reason) {
     Write-Host ""
@@ -197,7 +197,7 @@ Write-Host "installing torch 2.14.1 cu130"
 Invoke-Native { & $uv pip install --python $python "torch==2.14.1" --index-url "https://download.pytorch.org/whl/cu130" } "torch 2.14.1 cu130 failed to install"
 Write-Host "installing Clarity requirements"
 Invoke-Native { & $uv pip install --python $python -r (Join-Path $Root "requirements.txt") -r (Join-Path $Root "requirements-bench.txt") } "requirements failed to install"
-Write-Host "installing the shared engine engine-v1.1.0"
+Write-Host "installing the shared engine 9183489"
 Invoke-Native { & $uv pip install --python $python $EngineUrl } "the public engine install failed"
 
 Write-Host "running python -m clarity.bench"

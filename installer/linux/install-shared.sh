@@ -2,7 +2,9 @@
 # Install Clarity by calling the engine's shared runtime.
 # Python 3.14, the CUDA 13 wheels, and the engine's default model come from
 # voxprint_engine.suite_runtime.ensure_runtime (holder "clarity").
-# The engine pin is tag engine-v1.1.0. It installs ONNX Runtime GPU and TensorRT.
+# The engine pin is commit 9183489 (package 1.2.0, API 1).
+# TODO: switch the engine pin to tag engine-v1.2.0 when it is published.
+# It installs ONNX Runtime GPU and TensorRT.
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
@@ -24,7 +26,7 @@ else
   esac
 fi
 
-engine="voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0"
+engine="voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489"
 if ! command -v python3.14 >/dev/null 2>&1; then
   echo "Python 3.14 was not found. Install the Enlarge bundle, which carries that runtime." >&2
   exit 1

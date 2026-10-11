@@ -37,7 +37,6 @@ from clarity.engine import (
 )
 from clarity.errors import Cancelled, ClarityError
 from clarity.models import ClarityModel
-from clarity.precision import apply_precision, torch_dtype_name
 from clarity.pipeline.colour import apply_colour_frame, uint8_colour_stats
 from clarity.pipeline.encode import (
     concat_command,
@@ -66,13 +65,6 @@ from clarity.pipeline.resume import (
     write_plan,
 )
 from clarity.pipeline.scenes import parse_scene_cuts, plan_chunks, scene_command
-
-try:
-    import torch
-    from spandrel import ModelLoader
-except ImportError:
-    torch = None
-    ModelLoader = None
 
 Proc = Any
 Progress = Callable[[float, str], None]
@@ -168,51 +160,24 @@ def _run_text(argv: list[str]) -> str:
     return proc.stdout
 
 
-def _torch_infer(model: ClarityModel, nchw: np.ndarray, path: Path, loaded: dict[str, Any]) -> np.ndarray:
-    """Run one conditioned batch with spandrel.
-
-    The engine converter writes a 3-channel graph. A model that also takes a
-    condition channel stays on this path.
-    """
-    if torch is None or ModelLoader is None:
-        raise ClarityError("PyTorch and spandrel are required. Install requirements-gpu.txt on this machine.")
-    if not torch.cuda.is_available():
-        raise ClarityError("CUDA is not available. Clarity has no CPU mode.")
-    network = loaded.get(model.id)
-    if network is None:
-        network = apply_precision(ModelLoader().load_from_file(str(path)).eval().cuda(), model.precision)
-        loaded[model.id] = network
-    dtype = getattr(torch, torch_dtype_name(model.precision))
-    tensor = torch.from_numpy(np.ascontiguousarray(nchw)).to(device="cuda", dtype=dtype)
-    with torch.inference_mode():
-        output = network(tensor)
-    return np.asarray(output.detach().float().cpu().numpy(), dtype=np.float32)
-
-
 def _prepare_infer(settings: Settings, progress: Progress) -> Callable[[ClarityModel, np.ndarray], np.ndarray]:
     """Fetch weights, convert them with the engine, and run the ONNX session.
 
-    A model whose network takes a condition channel stays on PyTorch. The
-    engine's converter writes a 3-channel graph, so that extra channel is not
-    in the cached ONNX file.
+    DRUNet's manifest sets ``in_channels`` to 4. The noise-level map is that
+    fourth channel, and the export example is ``1x4xHxW``. Catalogue precision
+    stays fp32 for DRUNet: the engine runs the module in float, then writes
+    the checked fp16 graph.
     """
     paths = {model.id: ensure_weight(model.manifest()) for model in models_for(settings)}
-    loaded: dict[str, Any] = {}
     sessions: dict[str, Any] = {}
 
     def infer(model: ClarityModel, nchw: np.ndarray) -> np.ndarray:
         path = paths.get(model.id)
         if path is None:
             raise ClarityError(f"{model.id} was not fetched before the job")
-        if model.channels != 3:
-            return _torch_infer(model, nchw, path, loaded)
         session = sessions.get(model.id)
         if session is None:
-
-            def on_progress(fraction: float, message: str) -> None:
-                progress(fraction, message)
-
-            onnx_path = ensure_model_onnx(model.manifest(), path, on_progress)
+            onnx_path = ensure_model_onnx(model.manifest(), path, progress)
             session = open_restore_session(onnx_path, progress)
             sessions[model.id] = session
         return np.asarray(run_onnx_batch(session, nchw), dtype=np.float32)

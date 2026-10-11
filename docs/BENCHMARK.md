@@ -37,7 +37,7 @@ python -m clarity.bench
 
 `requirements-bench.txt` pulls the CUDA 13.0 torch wheel, `spandrel`,
 `onnx`, and `onnxruntime-gpu==1.31.0`. TensorRT EP has to be in that build.
-The engine tag `engine-v1.1.0` installs the matching library
+Engine commit `9183489` installs the matching library
 `tensorrt-cu13-libs==10.14.1.48` (`nvinfer_10`) and removes the CPU wheel.
 `--skip-download` reuses files already in `--clip-dir` and still exits 2
 when one of them is absent.
@@ -72,9 +72,11 @@ DRUNet is fp32. SCUNet and Real-ESRGAN are fp16. The timed loop is a
 `torch.cuda.max_memory_allocated`.
 
 ONNX export calls `voxprint_engine.onnx_export.export_weight`. That writes a
-checked fp16 graph. The converter's example tensor is 3 channels, so DRUNet
-(a condition channel) is timed on PyTorch and its TensorRT row records why
-the graph was not exported. SCUNet and Real-ESRGAN are exported and timed.
+checked fp16 graph. The example tensor is `1 x in_channels x H x W`. DRUNet
+passes `in_channels` 4, so the plan is `1x4xHxW` and the noise-level map is
+the fourth channel. The PyTorch timing still uses the catalogue precision, so
+DRUNet stays fp32 and `trt_fp16_enable` stays off for that row. SCUNet and
+Real-ESRGAN stay 3-channel fp16.
 The ONNX Runtime session is opened with
 `TensorrtExecutionProvider` (engine cache under `--out/trt-cache`) and then
 `CUDAExecutionProvider`. `trt_fp16_enable` is on for an fp16 model and off

@@ -3,14 +3,15 @@
 # shortcut can start. Python 3.14, the CUDA 13 wheels, ONNX Runtime GPU,
 # TensorRT, and the engine's default model are installed by
 # voxprint_engine.suite_runtime.ensure_runtime (holder "clarity").
-# The engine pin is tag engine-v1.1.0.
+# The engine pin is commit 9183489 (package 1.2.0, API 1).
+# TODO: switch the engine pin to tag engine-v1.2.0 when it is published.
 # -SkipRuntime is only for the installer compile check.
 param(
     [Parameter(Mandatory = $true)][string]$AppDir,
     [string]$Requirements = "",
     [string]$Lock = "",
     [string]$Log = "",
-    [string]$EngineRequirement = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0",
+    [string]$EngineRequirement = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489",
     [switch]$SkipRuntime,
     [switch]$LinkOnly
 )

@@ -284,12 +284,33 @@ def _vram_mb() -> float:
     return 0.0
 
 
-def export_with_engine(weight: Path, dest: Path) -> str:
+def export_example_shape(channels: int, height: int, width: int) -> tuple[int, int, int, int]:
+    """The engine export example, ``1 x in_channels x height x width``.
+
+    DRUNet's noise-level map is the fourth channel, so that plan is ``1x4xHxW``.
+    A catalogue precision of fp32 still loads the PyTorch timing in float.
+    The engine runs the module in float and writes a checked fp16 graph.
+
+    Args:
+        channels: Network input depth. DRUNet is 4.
+        height: Example height.
+        width: Example width.
+
+    Returns:
+        The NCHW shape the exporter feeds the module.
+    """
+    if channels < 1 or height < 1 or width < 1:
+        raise ValueError("the export example needs a positive size")
+    return (1, channels, height, width)
+
+
+def export_with_engine(weight: Path, dest: Path, *, channels: int = 3) -> str:
     """Write a checked fp16 ONNX file with the engine converter.
 
     Args:
         weight: The pinned ``.pth`` file.
         dest: Where the ``.onnx`` file is written.
+        channels: Example depth. DRUNet passes 4 so the plan is ``1x4xHxW``.
 
     Returns:
         A note stored on the benchmark row.
@@ -297,6 +318,7 @@ def export_with_engine(weight: Path, dest: Path) -> str:
     Raises:
         RuntimeError: When the engine converter is missing or the export fails.
     """
+    _batch, depth, _height, _width = export_example_shape(channels, 64, 64)
     try:
         module = importlib.import_module("voxprint_engine.onnx_export")
     except ImportError as exc:
@@ -305,7 +327,7 @@ def export_with_engine(weight: Path, dest: Path) -> str:
     if not callable(export):
         raise RuntimeError("voxprint_engine.onnx_export.export_weight is missing")
     try:
-        export(weight, dest)
+        export(weight, dest, channels=depth)
     except Exception as exc:
         raise RuntimeError(str(exc)) from exc
     if not dest.is_file():
@@ -600,12 +622,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         onnx_path = args.out / f"{model.id}.onnx"
         try:
-            if model.channels != 3:
-                raise RuntimeError(
-                    f"{model.id} takes {model.channels} channels. "
-                    "The engine converter writes a 3-channel fp16 graph."
-                )
-            exported = export_with_engine(weight, onnx_path)
+            exported = export_with_engine(weight, onnx_path, channels=model.channels)
             _reset_vram()
             session = open_trt_session(onnx_path, args.out / "trt-cache" / model.id, precision=model.precision)
             trt_fps, trt_vram = time_trt(session, model.channels, args.frames)

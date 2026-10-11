@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from clarity.bench import tensorrt_providers
+from clarity.bench import export_example_shape, export_with_engine, tensorrt_providers
 from clarity.cli import main
 from clarity.errors import ClarityError
 from clarity.models import CATALOG, clean_models, strong_model
@@ -70,81 +70,66 @@ def test_fp32_load_does_not_call_half() -> None:
             assert net.calls == ["bf16"]
 
 
-def test_prepare_infer_loads_drunet_in_fp32(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _Tensor:
-        def to(self, **_kwargs: object) -> _Tensor:
-            return self
+def test_clean_mode_exports_drunet_with_four_channels(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[dict[str, object]] = []
+    batches: list[tuple[int, ...]] = []
 
-        def detach(self) -> _Tensor:
-            return self
+    def ensure(manifest: dict[str, object], path: Path, on_progress: object) -> Path:
+        del path
+        assert callable(on_progress)
+        seen.append(manifest)
+        return Path("drunet.onnx")
 
-        def float(self) -> _Tensor:
-            return self
+    def open_session(path: Path, progress: object) -> object:
+        del path
+        assert callable(progress)
+        return object()
 
-        def cpu(self) -> _Tensor:
-            return self
+    def run_batch(session: object, nchw: np.ndarray) -> np.ndarray:
+        del session
+        batches.append(tuple(int(part) for part in nchw.shape))
+        return np.zeros((nchw.shape[0], 3, nchw.shape[2], nchw.shape[3]), dtype=np.float32)
 
-        def numpy(self) -> np.ndarray:
-            return np.zeros((1, 3, 2, 2), dtype=np.float32)
-
-    class _Cuda:
-        @staticmethod
-        def is_available() -> bool:
-            return True
-
-    class _Torch:
-        float32 = "float32"
-        float16 = "float16"
-        bfloat16 = "bfloat16"
-        cuda = _Cuda()
-
-        @staticmethod
-        def from_numpy(_array: np.ndarray) -> _Tensor:
-            return _Tensor()
-
-        @staticmethod
-        def inference_mode() -> object:
-            class _Ctx:
-                def __enter__(self) -> None:
-                    return None
-
-                def __exit__(self, *_exc: object) -> bool:
-                    return False
-
-            return _Ctx()
-
-    class _Net:
-        def eval(self) -> _Net:
-            return self
-
-        def cuda(self) -> _Net:
-            return self
-
-        def half(self) -> _Net:
-            raise RuntimeError("does not support fp16")
-
-        def bfloat16(self) -> _Net:
-            return self
-
-        def float(self) -> _Net:
-            return self
-
-        def __call__(self, tensor: _Tensor) -> _Tensor:
-            return tensor
-
-    class _Loader:
-        def load_from_file(self, _path: str) -> _Net:
-            return _Net()
-
-    monkeypatch.setattr("clarity.pipeline.runner.torch", _Torch)
-    monkeypatch.setattr("clarity.pipeline.runner.ModelLoader", _Loader)
     monkeypatch.setattr("clarity.pipeline.runner.ensure_weight", lambda manifest: Path(str(manifest["id"])))
+    monkeypatch.setattr("clarity.pipeline.runner.ensure_model_onnx", ensure)
+    monkeypatch.setattr("clarity.pipeline.runner.open_restore_session", open_session)
+    monkeypatch.setattr("clarity.pipeline.runner.run_onnx_batch", run_batch)
     infer = _prepare_infer(Settings(mode="clean"), lambda _fraction, _text: None)
     model = clean_models()[0]
     assert model.precision == "fp32"
     assert model.channels == 4
-    output = infer(model, np.zeros((1, 3, 2, 2), dtype=np.float32))
-    assert output.shape == (1, 3, 2, 2)
+    output = infer(model, np.zeros((1, 4, 8, 6), dtype=np.float32))
+    assert output.shape == (1, 3, 8, 6)
+    assert seen[0]["in_channels"] == 4
+    assert batches == [(1, 4, 8, 6)]
+    denoise = clean_models()[1]
+    infer(denoise, np.zeros((1, 4, 8, 6), dtype=np.float32))
+    assert seen[1]["in_channels"] == 4
+
+
+def test_drunet_export_plan_uses_1x4xhxw(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    height, width = 64, 48
+    for model in clean_models():
+        assert model.arch == "drunet"
+        assert model.precision == "fp32"
+        assert model.manifest()["in_channels"] == 4
+        assert export_example_shape(model.channels, height, width) == (1, 4, height, width)
+    captured: dict[str, int] = {}
+
+    def export(weight: Path, dest: Path, on_progress: object = None, *, channels: int = 3) -> None:
+        del weight, on_progress
+        captured["channels"] = channels
+        dest.write_bytes(b"onnx")
+
+    class _Export:
+        export_weight = staticmethod(export)
+
+    monkeypatch.setattr("clarity.bench.importlib.import_module", lambda name: _Export)
+    weight = tmp_path / "drunet.pth"
+    weight.write_bytes(b"pth")
+    note = export_with_engine(weight, tmp_path / "drunet.onnx", channels=4)
+    assert captured["channels"] == 4
+    assert "fp16" in note
 
 
 def test_prepare_infer_converts_a_three_channel_model(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -351,7 +336,7 @@ def test_lgpl_check_ignores_disabled_gpl_libraries() -> None:
     assert "--enable-libx265" in script
     assert "python -c $providerCheck" not in script
     assert "provider_check.py" not in script
-    assert "engine-v1.1.0" in script
+    assert "9183489" in script
     assert "--no-deps" not in script
 
     def rejected(build: str) -> bool:
@@ -383,8 +368,8 @@ def test_runtime_junction_is_created_after_the_files_exist() -> None:
     assert "--no-deps" not in windows
     assert "onnxruntime-gpu" not in linux
     assert "--no-deps" not in linux
-    assert "engine-v1.1.0" in windows
-    assert "engine-v1.1.0" in linux
+    assert "9183489" in windows
+    assert "9183489" in linux
     link_lines = [line for line in iss.splitlines() if "LinkOnly" in line]
     assert link_lines
     assert all("RuntimeInstalled" not in line for line in link_lines)
