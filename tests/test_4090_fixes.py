@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -23,7 +24,12 @@ from clarity.pipeline.encode import Container, encode_chunk_command, encode_comm
 from clarity.pipeline.job import Settings, downscale_half
 from clarity.pipeline.runner import _prepare_infer
 from clarity.precision import PRECISIONS, apply_precision
-from clarity.ui.platform import gui_qt_platform, require_windows_platform_plugin, selftest_qt_platform
+from clarity.ui.platform import (
+    gui_qt_platform,
+    require_windows_platform_plugin,
+    selftest_qt_platform,
+    windows_platform_plugin,
+)
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -284,11 +290,21 @@ def test_gui_does_not_force_offscreen() -> None:
     assert 'setdefault("QT_QPA_PLATFORM"' not in source
 
 
-def test_windows_platform_plugin_is_required_only_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
-    require_windows_platform_plugin()
+def test_missing_windows_plugin_is_refused(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr("clarity.ui.platform.sys.platform", "win32")
+    monkeypatch.setattr("clarity.ui.platform.windows_platform_plugin", lambda: tmp_path / "qwindows.dll")
     with pytest.raises(ClarityError, match="Windows platform plugin"):
         require_windows_platform_plugin()
+
+
+def test_windows_platform_plugin_loads_on_windows() -> None:
+    path = windows_platform_plugin()
+    if sys.platform != "win32":
+        assert not path.is_file()
+        require_windows_platform_plugin()
+        return
+    assert path.is_file()
+    require_windows_platform_plugin()
 
 
 def test_system_trust_is_idempotent() -> None:

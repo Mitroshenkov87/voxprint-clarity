@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 import PySide6
-from PySide6.QtCore import QLibrary
+from PySide6.QtCore import QLibrary, QLibraryInfo
 
 from clarity.errors import ClarityError
 
@@ -43,10 +43,25 @@ def selftest_qt_platform() -> str:
 def windows_platform_plugin() -> Path:
     """Path of ``qwindows.dll`` inside this PySide6 install.
 
+    Windows wheels keep plugins in ``PySide6/plugins``. Linux wheels keep them
+    in ``PySide6/Qt/plugins``. ``QLibraryInfo`` reports the directory this
+    build uses.
+
     Returns:
         The platform plugin path. The file is absent on Linux and macOS wheels.
     """
-    return Path(PySide6.__file__).resolve().parent / "Qt" / "plugins" / "platforms" / "qwindows.dll"
+    plugins = Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath))
+    located = plugins / "platforms" / "qwindows.dll"
+    if located.is_file():
+        return located
+    root = Path(PySide6.__file__).resolve().parent
+    for candidate in (
+        root / "plugins" / "platforms" / "qwindows.dll",
+        root / "Qt" / "plugins" / "platforms" / "qwindows.dll",
+    ):
+        if candidate.is_file():
+            return candidate
+    return located
 
 
 def require_windows_platform_plugin() -> None:
