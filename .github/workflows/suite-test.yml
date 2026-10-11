@@ -25,7 +25,7 @@ jobs:
           python-version: "3.14"
       - name: Qt libraries (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libglib2.0-0 ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libglib2.0-0 ffmpeg shellcheck
       - name: Install test tools
         run: python -m pip install -r requirements-dev.txt
       - name: Install the shared engine
@@ -54,3 +54,29 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           VOXPRINT_HOME: ${{ runner.temp }}/voxprint-suite
         run: python -m clarity --selftest --no-gpu
+      - name: shellcheck
+        if: runner.os == 'Linux'
+        run: shellcheck scripts/vm_test.sh scripts/bench.sh
+      - name: VM smoke refuses a machine with no GPU
+        shell: bash
+        run: |
+          set +e
+          python scripts/vm_test.py --smoke --json --results "$RUNNER_TEMP/vm-smoke" > "$RUNNER_TEMP/vm-smoke.json"
+          code=$?
+          set -e
+          echo "exit $code"
+          cat "$RUNNER_TEMP/vm-smoke.json"
+          test "$code" -eq 3
+          python -c "import json,os,pathlib; p=pathlib.Path(os.environ['RUNNER_TEMP'])/'vm-smoke.json'; lines=[json.loads(x) for x in p.read_text(encoding='utf-8').splitlines() if x.strip()]; assert lines[-1]['type']=='summary' and lines[-1]['exit']==3 and lines[-1]['step']=='gpu'"
+      - name: PSScriptAnalyzer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          foreach ($path in @(
+              "scripts/vm_test.ps1",
+              "scripts/test-gpu.ps1",
+              "scripts/gpu-common.ps1"
+          )) {
+              Invoke-ScriptAnalyzer -Path $path -Severity Error -EnableExit
+          }

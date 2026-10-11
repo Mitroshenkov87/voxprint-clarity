@@ -2,9 +2,10 @@
 
 `python -m clarity.bench` is the timing run for a rented RTX 4090
 (or any RTX 40 series or newer GPU). `scripts/bench.sh` and `scripts/bench.ps1`
-call it. `scripts/test-gpu.ps1` is the full VM script: it installs the stack,
-runs this benchmark, restores a sample of the clip, and packs one archive.
-See [TESTING-GPU.md](TESTING-GPU.md).
+call it. `scripts/vm_test.sh --full` (and `scripts/vm_test.ps1 --full` on
+Windows Server 2025) runs the lean plan and then this benchmark.
+`scripts/test-gpu.ps1` still installs the stack, runs this benchmark, restores
+a sample, and packs one archive. See [TESTING-GPU.md](TESTING-GPU.md).
 
 The benchmark downloads the clip and the three weights, exports ONNX,
 times both backends, and writes PNG crops. It exits 2 when the GPU, ffmpeg,

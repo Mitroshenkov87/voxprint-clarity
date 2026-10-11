@@ -331,13 +331,17 @@ def test_tensorrt_fp32_leaves_fp16_off(tmp_path: Path) -> None:
 
 def test_lgpl_check_ignores_disabled_gpl_libraries() -> None:
     script = (_ROOT / "scripts" / "test-gpu.ps1").read_text(encoding="utf-8")
-    assert "--enable-gpl" in script
-    assert "--enable-libx264" in script
-    assert "--enable-libx265" in script
+    shared = (_ROOT / "scripts" / "gpu-common.ps1").read_text(encoding="utf-8")
+    assert 'Join-Path $PSScriptRoot "gpu-common.ps1"' in script
+    assert "--enable-gpl" in shared
+    assert "--enable-libx264" in shared
+    assert "--enable-libx265" in shared
     assert "python -c $providerCheck" not in script
     assert "provider_check.py" not in script
-    assert "9183489" in script
+    assert "provider_check.py" not in shared
+    assert "9183489" in shared
     assert "--no-deps" not in script
+    assert "--no-deps" not in shared
 
     def rejected(build: str) -> bool:
         return bool(

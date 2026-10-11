@@ -13,6 +13,7 @@ installer/Output/
 *.local.*
 scripts/_*.json
 benchmark-out/
+vm-results/
 *.pth
 *.onnx
 *.engine

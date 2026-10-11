@@ -15,6 +15,7 @@ if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction Sile
     $PSNativeCommandUseErrorActionPreference = $false
 }
 $script:TranscriptStarted = $false
+. (Join-Path $PSScriptRoot "gpu-common.ps1")
 
 $Root = Split-Path -Parent $PSScriptRoot
 if (-not $ResultsDir) { $ResultsDir = Join-Path $Root "gpu-results" }
@@ -26,42 +27,9 @@ $BundleDir = Join-Path $Stage $BundleName
 $Transcript = Join-Path $BundleDir "transcript.log"
 $Archive = Join-Path $ResultsDir "$BundleName.tar.gz"
 
-$FfmpegUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip"
-$UvUrl = "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip"
-$EngineUrl = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489"
-
-function Fail([string]$Reason) {
-    Write-Host ""
-    Write-Host "FAILED: $Reason"
-    Write-Host "The GPU test stopped. Fix that and run scripts\test-gpu.ps1 again."
-    if ($script:TranscriptStarted) {
-        try { Stop-Transcript | Out-Null } catch { }
-        $script:TranscriptStarted = $false
-    }
-    exit 1
-}
-
-function Invoke-Native([scriptblock]$Command, [string]$Reason) {
-    & $Command
-    if ($LASTEXITCODE -ne 0) {
-        Fail "$Reason (exit $LASTEXITCODE)"
-    }
-}
-
-function Expand-Zip([string]$Zip, [string]$Destination) {
-    if (Test-Path -LiteralPath $Destination) {
-        Remove-Item -LiteralPath $Destination -Recurse -Force
-    }
-    Expand-Archive -LiteralPath $Zip -DestinationPath $Destination -Force
-}
-
-if ($env:OS -ne "Windows_NT") {
-    Fail "scripts/test-gpu.ps1 runs on Windows. This process is not Windows."
-}
 if ($SampleFrames -lt 0) {
     Fail "-SampleFrames must be 0 (the whole clip) or a positive frame count."
 }
-
 if (-not (Test-Path -LiteralPath (Join-Path $Root "clarity\bench.py"))) {
     Fail "scripts/test-gpu.ps1 must stay inside the Clarity checkout. clarity\bench.py was not found."
 }
@@ -72,107 +40,19 @@ $script:TranscriptStarted = $true
 Write-Host "Clarity GPU test"
 Write-Host "results: $ResultsDir"
 
-$caption = (Get-CimInstance Win32_OperatingSystem).Caption
-Write-Host "os: $caption"
-if ($caption -notmatch "Windows Server 2025" -and -not $AllowOtherOs) {
-    Fail "This script expects Windows Server 2025. Found: $caption. Pass -AllowOtherOs only when the image caption differs."
+try {
+    Assert-ClarityHost -AllowOtherGpu:$AllowOtherGpu -AllowOtherOs:$AllowOtherOs
+} catch {
+    Fail $_.Exception.Message
 }
 
-$nvidia = Get-Command nvidia-smi -ErrorAction SilentlyContinue
-if (-not $nvidia) {
-    Fail "nvidia-smi was not found. Install an NVIDIA driver from the 600 series or newer."
+try {
+    $uv = Get-ClarityUv $Tools
+    $git = Get-ClarityGit $Tools
+    $ffmpeg = Get-ClarityFfmpeg $Tools
+} catch {
+    Fail $_.Exception.Message
 }
-$gpuLine = & nvidia-smi --query-gpu=name,driver_version,compute_cap --format=csv,noheader
-if ($LASTEXITCODE -ne 0 -or -not $gpuLine) {
-    Fail "nvidia-smi did not report a GPU. Clarity has no CPU mode."
-}
-$gpuLine = ($gpuLine | Select-Object -First 1).Trim()
-Write-Host "gpu: $gpuLine"
-$cells = @($gpuLine.Split(",") | ForEach-Object { $_.Trim() })
-if ($cells.Count -lt 3) {
-    Fail "nvidia-smi returned '$gpuLine', which is not name, driver, compute capability."
-}
-$driver = $cells[$cells.Count - 2]
-$compute = $cells[$cells.Count - 1]
-$gpuName = ($cells[0..($cells.Count - 3)] -join ", ")
-$driverMajor = 0
-if ($driver -match "^(\d+)") { $driverMajor = [int]$Matches[1] }
-if ($driverMajor -lt 600) {
-    Fail "NVIDIA driver $driver is older than the 600 series. Install a 600-series driver or newer."
-}
-$majorCap = 0
-$minorCap = 0
-if ($compute -match "^(\d+)\.(\d+)") {
-    $majorCap = [int]$Matches[1]
-    $minorCap = [int]$Matches[2]
-}
-if ($majorCap -lt 8 -or ($majorCap -eq 8 -and $minorCap -lt 9)) {
-    Fail "GPU compute capability $compute is below 8.9. Clarity needs an RTX 40 series GPU or newer."
-}
-if ($gpuName -notmatch "4090" -and -not $AllowOtherGpu) {
-    Fail "Expected an RTX 4090 and found '$gpuName'. Pass -AllowOtherGpu to run on another RTX 40 series card."
-}
-
-function Get-Uv {
-    $existing = Get-ChildItem -Path $Tools -Filter "uv.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($existing) { return $existing.FullName }
-    $zip = Join-Path $Tools "uv.zip"
-    $dest = Join-Path $Tools "uv"
-    Write-Host "downloading uv"
-    Invoke-WebRequest -Uri $UvUrl -OutFile $zip -UseBasicParsing
-    Expand-Zip $zip $dest
-    $found = Get-ChildItem -Path $dest -Filter "uv.exe" -Recurse | Select-Object -First 1
-    if (-not $found) { Fail "uv.exe was not in the uv archive." }
-    return $found.FullName
-}
-
-function Get-Git {
-    $cmd = Get-Command git -ErrorAction SilentlyContinue
-    if ($cmd) { return $cmd.Source }
-    $git = Join-Path $Tools "mingit\cmd\git.exe"
-    if (Test-Path -LiteralPath $git) { return $git }
-    Write-Host "downloading MinGit"
-    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/git-for-windows/git/releases/latest" -Headers @{ "User-Agent" = "voxprint-clarity" }
-    $asset = $release.assets | Where-Object { $_.name -like "MinGit-*-64-bit.zip" } | Select-Object -First 1
-    if (-not $asset) { Fail "GitHub did not list a MinGit 64-bit zip on the latest Git for Windows release." }
-    $zip = Join-Path $Tools "mingit.zip"
-    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -UseBasicParsing
-    Expand-Zip $zip (Join-Path $Tools "mingit")
-    if (-not (Test-Path -LiteralPath $git)) { Fail "MinGit did not contain cmd\git.exe." }
-    return $git
-}
-
-function Get-Ffmpeg {
-    $local = Join-Path $Tools "ffmpeg\bin\ffmpeg.exe"
-    $probe = Join-Path $Tools "ffmpeg\bin\ffprobe.exe"
-    if (-not (Test-Path -LiteralPath $local)) {
-        Write-Host "downloading LGPL ffmpeg"
-        $zip = Join-Path $Tools "ffmpeg-lgpl.zip"
-        Invoke-WebRequest -Uri $FfmpegUrl -OutFile $zip -UseBasicParsing
-        $dest = Join-Path $Tools "ffmpeg-unpack"
-        Expand-Zip $zip $dest
-        $bin = Get-ChildItem -Path $dest -Filter "ffmpeg.exe" -Recurse | Select-Object -First 1
-        if (-not $bin) { Fail "The ffmpeg archive did not contain ffmpeg.exe." }
-        $target = Join-Path $Tools "ffmpeg"
-        if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
-        Move-Item -LiteralPath $bin.Directory.Parent.FullName -Destination $target
-    }
-    if (-not (Test-Path -LiteralPath $probe)) { Fail "ffprobe.exe is missing next to the LGPL ffmpeg." }
-    $build = & $local -hide_banner -buildconf 2>&1 | Out-String
-    # Match enabled GPL pieces. "--disable-libx264" contains "libx264" and is the LGPL build.
-    if ($build -match "--enable-gpl" -or $build -match "--enable-libx264" -or $build -match "--enable-libx265") {
-        Fail "ffmpeg is not an LGPL build ($FfmpegUrl)."
-    }
-    $encoders = & $local -hide_banner -encoders 2>&1 | Out-String
-    if ($encoders -notmatch "av1_nvenc") {
-        Fail "This ffmpeg has no av1_nvenc. The restore needs an LGPL build with NVENC."
-    }
-    return $local
-}
-
-$uv = Get-Uv
-$git = Get-Git
-$ffmpeg = Get-Ffmpeg
 $ffprobe = Join-Path (Split-Path -Parent $ffmpeg) "ffprobe.exe"
 $env:Path = "$(Split-Path -Parent $git);$(Split-Path -Parent $ffmpeg);$env:Path"
 Write-Host "uv: $uv"
@@ -180,25 +60,7 @@ Write-Host "git: $git"
 Write-Host "ffmpeg: $ffmpeg"
 
 $env:PYTHONPATH = $Root
-Write-Host "installing CPython 3.14"
-Invoke-Native { & $uv python install 3.14 } "uv could not install CPython 3.14"
-$pythonBase = & $uv python find 3.14
-if ($LASTEXITCODE -ne 0 -or -not $pythonBase) { Fail "Python 3.14 was not found after uv python install." }
-$venv = Join-Path $ResultsDir "venv"
-if (-not (Test-Path -LiteralPath (Join-Path $venv "Scripts\python.exe"))) {
-    Invoke-Native { & $uv venv --python $pythonBase $venv } "uv could not create the virtualenv"
-}
-$python = Join-Path $venv "Scripts\python.exe"
-if (-not (Test-Path -LiteralPath $python)) { Fail "The virtualenv has no Scripts\python.exe." }
-
-Write-Host "installing the Clarity checkout"
-Invoke-Native { & $uv pip install --python $python -e $Root } "the Clarity checkout failed to install"
-Write-Host "installing torch 2.14.1 cu130"
-Invoke-Native { & $uv pip install --python $python "torch==2.14.1" --index-url "https://download.pytorch.org/whl/cu130" } "torch 2.14.1 cu130 failed to install"
-Write-Host "installing Clarity requirements"
-Invoke-Native { & $uv pip install --python $python -r (Join-Path $Root "requirements.txt") -r (Join-Path $Root "requirements-bench.txt") } "requirements failed to install"
-Write-Host "installing the shared engine 9183489"
-Invoke-Native { & $uv pip install --python $python $EngineUrl } "the public engine install failed"
+$python = Install-ClarityGpuPython -Root $Root -ResultsDir $ResultsDir -Uv $uv
 
 Write-Host "running python -m clarity.bench"
 $benchOut = Join-Path $ResultsDir "benchmark"
