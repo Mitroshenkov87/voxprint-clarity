@@ -22,6 +22,9 @@ if ($SkipRuntime) {
     exit 0
 }
 if (-not (Test-Path -LiteralPath $Lock)) { throw "runtime lock missing: $Lock" }
+$lockJson = Get-Content -Raw -LiteralPath $Lock | ConvertFrom-Json
+$pillow = [string]$lockJson.pillow
+if (-not $pillow) { throw "runtime lock is missing pillow" }
 $hash = (Get-FileHash -LiteralPath $Lock -Algorithm SHA256).Hash.Substring(0, 16).ToLower()
 $runtime = Join-Path $env:LOCALAPPDATA "Voxprint\runtime-$hash"
 New-Item -ItemType Directory -Force -Path $runtime | Out-Null
@@ -46,6 +49,9 @@ if ($LASTEXITCODE -ne 0) { throw "torch install failed" }
 Write-Log "installing Clarity requirements"
 & $uv.FullName pip install --python $venvPython -r $Requirements
 if ($LASTEXITCODE -ne 0) { throw "requirements install failed" }
+Write-Log "installing Pillow $pillow"
+& $uv.FullName pip install --python $venvPython "Pillow==$pillow"
+if ($LASTEXITCODE -ne 0) { throw "Pillow install failed" }
 if ($BenchRequirements) {
     Write-Log "installing restore requirements"
     & $uv.FullName pip install --python $venvPython -r $BenchRequirements
@@ -70,6 +76,6 @@ if ($LASTEXITCODE -ne 0) { throw "onnxruntime-gpu install failed" }
 $link = Join-Path $AppDir "runtime"
 if (Test-Path $link) { cmd /c rmdir "$link" | Out-Null }
 cmd /c mklink /J "$link" "$runtime\venv" | Out-Null
-@{ python = "3.14"; torch = "2.14.1"; cuda = "cu130"; key = $hash } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $runtime "runtime-key.json") -Encoding utf8
+@{ python = "3.14"; torch = "2.14.1"; cuda = "cu130"; pillow = $pillow; key = $hash } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $runtime "runtime-key.json") -Encoding utf8
 Write-Log "runtime ready"
 exit 0
