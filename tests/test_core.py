@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable, Iterator
 from importlib.metadata import version
 from pathlib import Path
@@ -9,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from clarity.appinfo import release_title, version_label
+from clarity.appinfo import build_info, release_title, version_label
 from clarity.bench import Sample, main as bench_main, render_report, save_crops, tensorrt_providers, write_report
 from clarity.bench import conditioned_nchw, network_module
 from clarity.engine import assess_launch, gpu_busy_text, submit_restore
@@ -550,10 +551,25 @@ def test_bench_times_the_raw_module() -> None:
 
 def test_version_label_reads_build_json() -> None:
     data = json.loads(Path("BUILD.json").read_text(encoding="utf-8"))
-    label = version_label()
-    assert f"build {data['build']}" in label
-    assert label.endswith(f'"{data["codename"]}"')
-    assert release_title() == f"Voxprint AI Clarity {label}"
+    info = build_info()
+    text = version_label()
+    if info.build is None:
+        assert "dev" in text
+        assert "build 0" not in text
+    else:
+        assert f"build {info.build}" in text
+    assert text.endswith(f'"{data["codename"]}"')
+    assert release_title() == f"Voxprint AI Clarity {text}"
+    override = os.environ.get("VOXPRINT_BUILD", "").strip() or os.environ.get("VOXPRINT_BUILD_NUMBER", "").strip()
+    run = os.environ.get("GITHUB_RUN_NUMBER", "").strip()
+    if override.isdigit():
+        assert info.build == int(override)
+    elif run.isdigit():
+        offset = data.get("offset")
+        extra = offset if isinstance(offset, int) else 0
+        assert info.build == int(run) + extra
+    else:
+        assert info.build == data["build"]
 
 
 def test_bench_refuses_without_a_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
