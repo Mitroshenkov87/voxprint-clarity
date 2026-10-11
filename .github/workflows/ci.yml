@@ -25,7 +25,7 @@ jobs:
       - name: Install the shared engine
         shell: bash
         run: |
-          python -m pip install "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0"
+          python -m pip install "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@d11d60921448b697d832b2699e6e3e04c62c6dfd"
           python -c "import voxprint_engine"
       - name: Lint
         run: |
@@ -42,9 +42,8 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
           VOXPRINT_HOME: ${{ runner.temp }}/voxprint-suite
-        run: |
-          python -c "from clarity.suite_repair import write_ready_markers; write_ready_markers()"
-          python -m clarity --selftest
+          VOXPRINT_CI_LANCZOS: "1"
+        run: python -m clarity --selftest
 
   installer:
     name: Windows online installer

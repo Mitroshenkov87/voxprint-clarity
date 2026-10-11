@@ -1,8 +1,8 @@
 ; Voxprint AI Clarity online installer (Inno Setup 6).
 ; ISCC installer\VoxprintClarity.iss
 ; Start menu folder is Voxprint, shared with the other suite apps.
-; /RUNTIME=skip skips the Python download. That switch is for the CI file check.
-; A normal install downloads Python 3.14 and torch 2.14.1 cu130. There is no CPU runtime.
+; /RUNTIME=skip skips the shared runtime. That switch is for the CI file check.
+; A normal install calls voxprint_engine.suite_runtime.ensure_runtime for holder clarity.
 
 #define AppName "VoxprintClarity"
 #define AppDisplayName "Voxprint AI Clarity"
@@ -74,15 +74,13 @@ CloseApplications=yes
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [CustomMessages]
-RuntimeStatus=Installing Python 3.14, PyTorch, LGPL ffmpeg, and the shared engine. Clarity has no CPU runtime.
+RuntimeStatus=Installing the shared suite runtime. Clarity has no CPU runtime.
 RuntimeFailed=The Python environment could not be installed.%n%nDetails: %1
 
 [Files]
 Source: "install-runtime.ps1"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "install-runtime.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements.txt"; DestDir: "{tmp}"; Flags: dontcopy
-Source: "..\requirements-gpu.txt"; DestDir: "{tmp}"; Flags: dontcopy
-Source: "..\requirements-bench.txt"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "runtime_lock.json"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "..\main.py"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\requirements.txt"; DestDir: "{app}"; Flags: ignoreversion
@@ -111,11 +109,11 @@ Root: HKCU; Subkey: "Software\Classes\Voxprint.Clarity.Project\DefaultIcon"; Val
 Root: HKCU; Subkey: "Software\Classes\Voxprint.Clarity.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{#PyW}"" ""{app}\main.py"" ""%1"""
 
 [Run]
-Filename: "{#Py}"; Parameters: """{app}\main.py"" --install-suite"; WorkingDir: "{app}"; StatusMsg: "Installing the default models into the shared suite folder..."; Flags: runhidden; Check: RuntimeInstalled
-Filename: "{#Py}"; Parameters: """{app}\main.py"" --register-models-user"; WorkingDir: "{app}"; StatusMsg: "Registering the shared models folder..."; Flags: runhidden; Check: RuntimeInstalled
+Filename: "{#Py}"; Parameters: """{app}\main.py"" --install-suite"; WorkingDir: "{app}"; StatusMsg: "Checking the shared suite runtime..."; Flags: runhidden waituntilterminated; Check: RuntimeInstalled
+Filename: "{#Py}"; Parameters: """{app}\main.py"" --register-models-user"; WorkingDir: "{app}"; StatusMsg: "Registering the shared models folder..."; Flags: runhidden waituntilterminated; Check: RuntimeInstalled
 
 [UninstallRun]
-Filename: "{#Py}"; Parameters: """{app}\main.py"" --unregister-models-user --out ""{tmp}\clarity-users.txt"""; WorkingDir: "{app}"; Flags: runhidden; RunOnceId: "unregister-clarity"; Check: RuntimeInstalled
+Filename: "{#Py}"; Parameters: """{app}\main.py"" --unregister-models-user --out ""{tmp}\clarity-users.txt"""; WorkingDir: "{app}"; Flags: runhidden waituntilterminated; RunOnceId: "unregister-clarity"; Check: RuntimeInstalled
 
 [Code]
 function CmdParam(const Name, Default: String): String;
@@ -148,8 +146,6 @@ begin
   Result := '';
   ExtractTemporaryFile('install-runtime.ps1');
   ExtractTemporaryFile('requirements.txt');
-  ExtractTemporaryFile('requirements-gpu.txt');
-  ExtractTemporaryFile('requirements-bench.txt');
   ExtractTemporaryFile('runtime_lock.json');
   Script := ExpandConstant('{tmp}\install-runtime.ps1');
   LogFile := ExpandConstant('{%TEMP}\VoxprintClarity-setup.log');
@@ -159,7 +155,6 @@ begin
     Skip := '';
   Params := '-NoProfile -ExecutionPolicy Bypass -File "' + Script + '" -AppDir "' + ExpandConstant('{app}') +
             '" -Requirements "' + ExpandConstant('{tmp}\requirements.txt') +
-            '" -BenchRequirements "' + ExpandConstant('{tmp}\requirements-bench.txt') +
             '" -Lock "' + ExpandConstant('{tmp}\runtime_lock.json') +
             '" -Log "' + LogFile + '"' + Skip;
   if WizardSilent then Show := SW_HIDE else Show := SW_SHOWNORMAL;

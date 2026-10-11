@@ -1,14 +1,15 @@
-# Online runtime for Voxprint AI Clarity.
-# Python 3.14, torch 2.14.1+cu130, LGPL ffmpeg, and the engine go in
-# %LOCALAPPDATA%\Voxprint\shared. Another suite app with the same pins reuses
-# that folder. There is no CPU flavor. -SkipRuntime is only for the installer compile check.
+# App environment for Voxprint AI Clarity.
+# The venv holds PySide, the pinned Pillow wheel, and voxprint_engine so the
+# shortcut can start. Python 3.14, the CUDA 13 wheels, and the engine's default
+# model are installed by voxprint_engine.suite_runtime.ensure_runtime (holder
+# "clarity"). TODO: switch the engine pin to tag engine-v1.1.0 when it is published.
+# -SkipRuntime is only for the installer compile check.
 param(
     [Parameter(Mandatory = $true)][string]$AppDir,
     [Parameter(Mandatory = $true)][string]$Requirements,
     [Parameter(Mandatory = $true)][string]$Lock,
     [Parameter(Mandatory = $true)][string]$Log,
-    [string]$BenchRequirements = "",
-    [string]$EngineRequirement = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0",
+    [string]$EngineRequirement = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@d11d60921448b697d832b2699e6e3e04c62c6dfd",
     [switch]$SkipRuntime
 )
 $ErrorActionPreference = "Stop"
@@ -16,11 +17,6 @@ function Write-Log([string]$Message) {
     $line = "$(Get-Date -Format o) $Message"
     Add-Content -LiteralPath $Log -Value $line -Encoding utf8
     Write-Host $line
-}
-function Write-Ready([string]$Shared, [string]$Name) {
-    $dir = Join-Path $Shared $Name
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    Set-Content -LiteralPath (Join-Path $dir "READY") -Value "ready" -Encoding utf8
 }
 New-Item -ItemType File -Force -Path $Log | Out-Null
 if ($SkipRuntime) {
@@ -31,18 +27,17 @@ if (-not (Test-Path -LiteralPath $Lock)) { throw "runtime lock missing: $Lock" }
 $lockJson = Get-Content -Raw -LiteralPath $Lock | ConvertFrom-Json
 $pillow = [string]$lockJson.pillow
 if (-not $pillow) { throw "runtime lock is missing pillow" }
-$hash = (Get-FileHash -LiteralPath $Lock -Algorithm SHA256).Hash.Substring(0, 16).ToLower()
 if ($env:VOXPRINT_HOME) {
     $suiteHome = $env:VOXPRINT_HOME
 } else {
     $suiteHome = Join-Path $env:LOCALAPPDATA "Voxprint"
 }
 $shared = Join-Path $suiteHome "shared"
-$runtime = Join-Path $shared "runtime\py3.14-torch2.14.1-cu130"
-New-Item -ItemType Directory -Force -Path $runtime | Out-Null
-$venvPython = Join-Path $runtime "venv\Scripts\python.exe"
+$venvRoot = Join-Path $shared "venv"
+New-Item -ItemType Directory -Force -Path $venvRoot | Out-Null
+$venvPython = Join-Path $venvRoot "Scripts\python.exe"
 if (Test-Path -LiteralPath $venvPython) {
-    Write-Log "reusing $runtime"
+    Write-Log "reusing $venvRoot"
 } else {
     $uvDir = Join-Path $env:TEMP "voxprint-uv"
     New-Item -ItemType Directory -Force -Path $uvDir | Out-Null
@@ -56,22 +51,11 @@ if (Test-Path -LiteralPath $venvPython) {
     & $uv.FullName python install 3.14
     $python = & $uv.FullName python find 3.14
     if (-not $python) { throw "Python 3.14 was not found after uv python install" }
-    Write-Log "creating venv $runtime"
-    & $uv.FullName venv --python $python "$runtime\venv"
-    Write-Log "installing torch 2.14.1 cu130"
-    & $uv.FullName pip install --python $venvPython "torch==2.14.1" --index-url "https://download.pytorch.org/whl/cu130"
-    if ($LASTEXITCODE -ne 0) { throw "torch install failed" }
+    Write-Log "creating venv $venvRoot"
+    & $uv.FullName venv --python $python --seed "$venvRoot"
     Write-Log "installing Clarity requirements"
     & $uv.FullName pip install --python $venvPython -r $Requirements
     if ($LASTEXITCODE -ne 0) { throw "requirements install failed" }
-    Write-Log "installing Pillow $pillow"
-    & $uv.FullName pip install --python $venvPython "Pillow==$pillow"
-    if ($LASTEXITCODE -ne 0) { throw "Pillow install failed" }
-    if ($BenchRequirements) {
-        Write-Log "installing restore requirements"
-        & $uv.FullName pip install --python $venvPython -r $BenchRequirements
-        if ($LASTEXITCODE -ne 0) { throw "restore requirements install failed" }
-    }
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         Write-Log "downloading MinGit so the public engine can be cloned"
         $gitZip = Join-Path $uvDir "mingit.zip"
@@ -85,48 +69,16 @@ if (Test-Path -LiteralPath $venvPython) {
     Write-Log "installing the shared engine"
     & $uv.FullName pip install --python $venvPython $EngineRequirement
     if ($LASTEXITCODE -ne 0) { throw "engine install failed" }
-    Write-Log "installing onnxruntime-gpu over the engine CPU wheel"
-    & $uv.FullName pip install --python $venvPython --upgrade "onnxruntime-gpu"
-    if ($LASTEXITCODE -ne 0) { throw "onnxruntime-gpu install failed" }
 }
-$ffmpeg = Join-Path $shared "ffmpeg\ffmpeg.exe"
-if (Test-Path -LiteralPath $ffmpeg) {
-    Write-Log "reusing $ffmpeg"
-} else {
-    Write-Log "installing LGPL ffmpeg"
-    $ffmpegZip = Join-Path $env:TEMP "voxprint-ffmpeg-lgpl.zip"
-    Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip" -OutFile $ffmpegZip
-    $ffmpegExpand = Join-Path $env:TEMP "voxprint-ffmpeg-lgpl"
-    if (Test-Path $ffmpegExpand) { Remove-Item -LiteralPath $ffmpegExpand -Recurse -Force }
-    Expand-Archive -LiteralPath $ffmpegZip -DestinationPath $ffmpegExpand -Force
-    $found = Get-ChildItem -Path $ffmpegExpand -Filter "ffmpeg.exe" -Recurse | Select-Object -First 1
-    if (-not $found) { throw "the LGPL ffmpeg archive has no ffmpeg.exe" }
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ffmpeg) | Out-Null
-    Copy-Item -LiteralPath $found.FullName -Destination $ffmpeg -Force
-    $probe = Get-ChildItem -Path $ffmpegExpand -Filter "ffprobe.exe" -Recurse | Select-Object -First 1
-    if ($probe) { Copy-Item -LiteralPath $probe.FullName -Destination (Join-Path (Split-Path -Parent $ffmpeg) "ffprobe.exe") -Force }
-}
-foreach ($name in @("python", "torch", "ffmpeg", "engine")) { Write-Ready $shared $name }
-$env:VOXPRINT_SHARED = $shared
-& $venvPython -c "import json, os; from pathlib import Path; root = Path(os.environ['VOXPRINT_SHARED']); path = root / 'manifest.json'; data = {};
-try:
-    data = json.loads(path.read_text(encoding='utf-8'))
-except Exception:
-    data = {}
-comps = data.get('components') if isinstance(data.get('components'), dict) else {}
-versions = {'python': '3.14', 'torch': '2.14.1+cu130', 'ffmpeg': 'lgpl', 'engine': 'engine-v1.0.0'}
-for name, version in versions.items():
-    entry = comps.get(name) if isinstance(comps.get(name), dict) else {'users': {}}
-    users = entry.get('users') if isinstance(entry.get('users'), dict) else {}
-    users['clarity'] = int(users.get('clarity') or 0) + 1
-    entry['version'] = version
-    entry['users'] = users
-    comps[name] = entry
-path.write_text(json.dumps({'format_version': 1, 'components': comps}, indent=1, sort_keys=True) + '\n', encoding='utf-8')"
-if ($LASTEXITCODE -ne 0) { throw "shared manifest update failed" }
+Write-Log "ensuring the shared runtime for clarity"
+& $venvPython -c "from voxprint_engine.suite_runtime import ensure_runtime; report = ensure_runtime('clarity', progress=lambda message: print(message, flush=True)); raise SystemExit(0 if report.ok else 1)"
+if ($LASTEXITCODE -ne 0) { throw "shared runtime install failed" }
+Write-Log "installing Pillow $pillow"
+& $venvPython -m pip install "Pillow==$pillow"
+if ($LASTEXITCODE -ne 0) { throw "Pillow install failed" }
 $link = Join-Path $AppDir "runtime"
 if (Test-Path $link) { cmd /c rmdir "$link" | Out-Null }
-cmd /c mklink /J "$link" "$runtime\venv" | Out-Null
-@{ python = "3.14"; torch = "2.14.1"; cuda = "cu130"; pillow = $pillow; shared = $shared; key = $hash } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $runtime "runtime-key.json") -Encoding utf8
+cmd /c mklink /J "$link" "$venvRoot" | Out-Null
+@{ pillow = $pillow; shared = $shared } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $venvRoot "runtime-key.json") -Encoding utf8
 Write-Log "runtime ready"
 exit 0

@@ -25,8 +25,10 @@ except ImportError:
 
 OWNER = "clarity"
 NVIDIA_DRIVER_URL = "https://www.nvidia.com/Download/index.aspx"
+# TODO: switch to tag engine-v1.1.0 when it is published.
+ENGINE_COMMIT = "d11d60921448b697d832b2699e6e3e04c62c6dfd"
 _DRIVER_VERSION = re.compile(r"driver ([0-9][0-9.]*)")
-ENGINE_REQUIREMENT = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0"
+ENGINE_REQUIREMENT = f"voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@{ENGINE_COMMIT}"
 _GPU_BUSY = "the GPU is busy"
 _GPU_CANCELLED = "cancelled while waiting for the GPU"
 
@@ -165,6 +167,70 @@ def assess_launch() -> Gate:
     gate = _hardware.assess_gpu(refuse_below=(8, 9))
     message = annotate_driver_message(str(getattr(gate, "message", "") or ""))
     return Gate(bool(gate.ok), message, str(getattr(gate, "warning", "") or ""))
+
+
+def shared_directory() -> Path:
+    """Return the engine's shared suite directory.
+
+    Returns:
+        ``voxprint_engine.paths.shared_dir()``.
+
+    Raises:
+        EngineUnavailable: When the engine package is not installed.
+    """
+    paths = _load_module("voxprint_engine.paths")
+    if paths is None:
+        raise EngineUnavailable(f"Install {ENGINE_REQUIREMENT}.")
+    return Path(paths.shared_dir())
+
+
+def ensure_shared_runtime(progress: Callable[[str], None] | None = None) -> Any:
+    """Hold Clarity on the shared runtime and repair anything the engine finds missing.
+
+    The engine installs Python 3.14, the CUDA 13 wheels, and its default model.
+    The holder id is ``clarity``. API stays 1.
+
+    Args:
+        progress: Receives one status line per check or install step.
+
+    Returns:
+        The engine ``RuntimeReport``.
+
+    Raises:
+        EngineUnavailable: When ``voxprint_engine.suite_runtime`` is not installed.
+        ClarityError: When the engine refuses the install.
+    """
+    module = _load_module("voxprint_engine.suite_runtime")
+    if module is None:
+        raise EngineUnavailable(f"Install {ENGINE_REQUIREMENT}.")
+    try:
+        return module.ensure_runtime(OWNER, progress=progress)
+    except module.SuiteInstallError as exc:
+        raise ClarityError(str(exc)) from exc
+
+
+def release_shared_runtime(progress: Callable[[str], None] | None = None) -> Any:
+    """Drop Clarity's hold on the shared runtime.
+
+    The engine deletes a payload only when no app still holds it.
+
+    Args:
+        progress: Receives one status line per release step.
+
+    Returns:
+        The engine ``RuntimeReport``.
+
+    Raises:
+        EngineUnavailable: When ``voxprint_engine.suite_runtime`` is not installed.
+        ClarityError: When the engine refuses the release.
+    """
+    module = _load_module("voxprint_engine.suite_runtime")
+    if module is None:
+        raise EngineUnavailable(f"Install {ENGINE_REQUIREMENT}.")
+    try:
+        return module.release_runtime(OWNER, progress=progress)
+    except module.SuiteInstallError as exc:
+        raise ClarityError(str(exc)) from exc
 
 
 def hold_gpu(

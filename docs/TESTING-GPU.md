@@ -20,7 +20,7 @@ URL over HTTPS. Enlarge is public, so the script does not take a deploy key.
   libx264, or libx265 is rejected. `av1_nvenc` must be present.
 - MinGit, when `git` is not already on `PATH` (the engine install is a git URL)
 - `voxprint-engine` from
-  `git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.0.0`
+  `git+https://github.com/Mitroshenkov87/voxprint-enlarge@d11d60921448b697d832b2699e6e3e04c62c6dfd`
 
 After the engine install, the script installs `onnxruntime-gpu` again so the
 engine's CPU wheel does not replace it, then stops if

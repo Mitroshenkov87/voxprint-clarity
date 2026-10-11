@@ -54,7 +54,6 @@ nav:
   - Command line: CLI.md
   - Command reference: reference/cli.md
   - Architecture: ARCHITECTURE.md
-  - Shared suite: UPSTREAM-SHARED.md
   - Project file: formats/VXCLARITY.md
   - Engine: ENGINE-INTERFACE.md
   - API reference: reference/api.md
