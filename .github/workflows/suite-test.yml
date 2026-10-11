@@ -31,7 +31,7 @@ jobs:
       - name: Install the shared engine
         shell: bash
         run: |
-          python -m pip install "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0"
+          python -m pip install "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489"
           python -c "import voxprint_engine"
       - name: Check the release tag
         if: inputs.check_release_tag

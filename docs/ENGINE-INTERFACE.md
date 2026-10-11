@@ -5,13 +5,13 @@ Clarity uses the shared package `voxprint_engine` (distribution name
 
 | | |
 |---|---|
-| Tag | `engine-v1.1.0` (commit `0f6a84013a72413b1fb53b4b0ae9826c10c54436`). API stays 1. |
-| Requirement | `voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0` |
+| Commit | `9183489` (package 1.2.0, API 1). TODO: tag `engine-v1.2.0` when it is published. |
+| Requirement | `voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489` |
 | CI install | the same `git+https` requirement. Enlarge is public, so there is no deploy key. |
 | Import package | `voxprint_engine` |
 | Video names | `voxprint_engine.api` |
 
-The video API is in that tag. Clarity does not vendor a copy of the engine.
+The video API is in that commit. Clarity does not vendor a copy of the engine.
 
 `iter_tile_frames` yields one restored frame. The accumulator stays one frame.
 Clarity still limits the source window with `host_batch_count` (512 MiB for the
@@ -66,10 +66,13 @@ caches it as `<sha256>.onnx`. A second call returns that file.
 `python -m clarity.bench` calls `voxprint_engine.onnx_export.export_weight`
 for the same conversion.
 
-The converter's example tensor is 3 channels. SCUNet and Real-ESRGAN take
-that path, then Clarity opens a session with TensorRT and retries on CUDA
-when the engine build fails. DRUNet takes a condition channel (4 channels)
-and stays on PyTorch. The restore path does not call `torch.onnx.export`.
+The example tensor is `1 x in_channels x H x W`. `in_channels` is 1 to 16
+and defaults to 3. DRUNet's manifest sets it to 4, so the plan is `1x4xHxW`
+and the noise-level map is the fourth channel. Clean, Strong, and the upscale
+nets all open a TensorRT session and retry on CUDA when the engine build
+fails. DRUNet's catalogue precision stays fp32: the engine runs the module in
+float, then writes the fp16 graph, and the bench leaves `trt_fp16_enable` off
+for that model.
 
 Before TensorRT loads, Clarity reports `building_engine` or
 `loading_cached_engine`. A `--json` progress line adds `"stage"`. The window
@@ -77,6 +80,6 @@ status shows the same sentence. The first build can take several minutes.
 
 ## CI
 
-CI installs the public tag over HTTPS on every test job and imports
+CI installs the public commit over HTTPS on every test job and imports
 `voxprint_engine` before the suite runs. `tests/test_engine.py` runs in that
 job. There is no deploy key and no skip when a secret is absent.

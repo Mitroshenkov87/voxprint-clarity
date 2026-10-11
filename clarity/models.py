@@ -60,6 +60,7 @@ class ClarityModel:
             "summary": self.summary,
             "selectable": self.selectable,
             "download_url": self.download_url,
+            "in_channels": self.channels,
         }
 
 

@@ -26,8 +26,9 @@ except ImportError:
 
 OWNER = "clarity"
 NVIDIA_DRIVER_URL = "https://www.nvidia.com/Download/index.aspx"
-# Tag engine-v1.1.0 is commit 0f6a84013a72413b1fb53b4b0ae9826c10c54436. API stays 1.
-ENGINE_COMMIT = "engine-v1.1.0"
+# TODO: switch to tag engine-v1.2.0 when it is published.
+# Commit 9183489 is package 1.2.0, API 1, and accepts in_channels 1-16.
+ENGINE_COMMIT = "9183489"
 _DRIVER_VERSION = re.compile(r"driver ([0-9][0-9.]*)")
 ENGINE_REQUIREMENT = f"voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@{ENGINE_COMMIT}"
 _GPU_BUSY = "the GPU is busy"

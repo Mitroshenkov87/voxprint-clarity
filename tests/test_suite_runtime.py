@@ -87,9 +87,9 @@ def test_runtime_holder_is_clarity_and_install_errors_become_clarity_errors(
 
 def test_missing_suite_runtime_names_the_pinned_engine(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("clarity.engine._load_module", lambda name: None)
-    with pytest.raises(EngineUnavailable, match="engine-v1.1.0"):
+    with pytest.raises(EngineUnavailable, match="9183489"):
         ensure_shared_runtime()
-    with pytest.raises(EngineUnavailable, match="engine-v1.1.0"):
+    with pytest.raises(EngineUnavailable, match="9183489"):
         release_shared_runtime()
 
 
@@ -359,9 +359,9 @@ def test_ffmpeg_repairs_once_and_skips_in_ci(monkeypatch: pytest.MonkeyPatch, tm
 
 
 def test_engine_pin_and_pillow_stay() -> None:
-    assert ENGINE_COMMIT == "engine-v1.1.0"
+    assert ENGINE_COMMIT == "9183489"
     assert ENGINE_REQUIREMENT.endswith("@" + ENGINE_COMMIT)
-    assert "git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0" in ENGINE_REQUIREMENT
+    assert "git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489" in ENGINE_REQUIREMENT
     engine = (_ROOT / "clarity" / "engine.py").read_text(encoding="utf-8")
     windows = (_ROOT / "installer" / "install-runtime.ps1").read_text(encoding="utf-8")
     linux = (_ROOT / "installer" / "linux" / "install-shared.sh").read_text(encoding="utf-8")
@@ -375,8 +375,9 @@ def test_engine_pin_and_pillow_stay() -> None:
     assert ENGINE_REQUIREMENT in linux
     assert ENGINE_REQUIREMENT in package
     assert ENGINE_REQUIREMENT in workflow
-    assert 'ENGINE_COMMIT = "engine-v1.1.0"' in engine
+    assert 'ENGINE_COMMIT = "9183489"' in engine
     assert "enlarge@{ENGINE_COMMIT}" in engine
+    assert "engine-v1.2.0" in engine
     assert "Pillow==12.3.0" in linux
     assert "--install-suite" in linux
     for text in (windows, linux, package, workflow, engine):

@@ -3,8 +3,8 @@
 Clarity is the non-generative video app in the Voxprint AI Media Suite.
 English in the README, docs, comments, and commits. Imperative commit subjects.
 
-- Depend on `voxprint_engine` from voxprint-enlarge at tag `engine-v1.1.0`
-  (commit `0f6a840`). API stays 1.
+- Depend on `voxprint_engine` from voxprint-enlarge at commit `9183489`
+  (package 1.2.0, API 1). TODO: tag `engine-v1.2.0` when it is published.
   Import the video names from `voxprint_engine.api`. Do not reimplement the
   GPU lock, VRAM budget, thermal rule, model store, hardware query, or ONNX session.
 - The parent GPU lock and the restore worker use the owner string `clarity`.

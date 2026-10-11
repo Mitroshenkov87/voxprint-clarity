@@ -20,7 +20,7 @@ URL over HTTPS. Enlarge is public, so the script does not take a deploy key.
   `--disable-libx264` is the LGPL build and is kept. `av1_nvenc` must be present.
 - MinGit, when `git` is not already on `PATH` (the engine install is a git URL)
 - `voxprint-engine` from
-  `git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0`
+  `git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489`
 
 The engine tag installs `onnxruntime-gpu==1.31.0` and TensorRT 10.14.1.48
 and removes the CPU wheel. Its selftest asserts `CUDAExecutionProvider` and

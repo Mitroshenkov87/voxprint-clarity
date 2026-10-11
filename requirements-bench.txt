@@ -2,7 +2,7 @@
 # Install the app first (`requirements.txt`) so numpy, Pillow, and the package import.
 -r requirements-gpu.txt
 spandrel
-# The engine tag engine-v1.1.0 installs onnxruntime-gpu==1.31.0 with
+# Engine commit 9183489 installs onnxruntime-gpu==1.31.0 with
 # tensorrt-cu13-libs==10.14.1.48 and removes the CPU wheel. This line is the
 # same GPU wheel for a bench virtualenv that does not call ensure_runtime.
 onnxruntime-gpu==1.31.0
