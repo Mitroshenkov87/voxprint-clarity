@@ -28,6 +28,8 @@
   "cancel": "Отмена",
   "status.ready": "Готово",
   "status.running": "Восстановление {done} из {total}",
+  "status.building_engine": "Сборка движка TensorRT. Первая сборка может занять несколько минут.",
+  "status.loading_cached_engine": "Загрузка сохранённого движка TensorRT.",
   "status.done": "Завершено",
   "status.cancelled": "Отменено",
   "status.cancelling": "Остановка",

@@ -22,8 +22,8 @@ from clarity.engine import (
     choose_tile as engine_choose_tile,
     empty_cuda_cache,
     halve_tile as engine_halve_tile,
+    iter_tile_frames,
     note_spill as engine_note_spill,
-    restore_frames,
     sysmem_spill,
     thermal_decide,
 )
@@ -169,18 +169,27 @@ def _run_model(frames: np.ndarray, model: ClarityModel, settings: Settings, infe
             raise ClarityError(f"{model.id} must return NCHW with 3 channels, got {output.shape}")
         return output
 
-    return np.asarray(
-        restore_frames(
-            frames.astype(np.float32, copy=False),
-            wrapped,
-            tile=tile,
-            overlap=settings.overlap,
-            scale=model.scale,
-            batch=batch,
-            length=1,
-            window_overlap=0,
-        )
-    )
+    source = frames.astype(np.float32, copy=False)
+    output: np.ndarray | None = None
+    index = 0
+    for frame in iter_tile_frames(
+        source,
+        wrapped,
+        tile,
+        settings.overlap,
+        scale=model.scale,
+        batch=batch,
+    ):
+        image = np.asarray(frame, dtype=np.float32)
+        if output is None:
+            output = np.empty((source.shape[0], image.shape[0], image.shape[1], image.shape[2]), dtype=np.float32)
+        if index >= output.shape[0]:
+            raise ClarityError(f"{model.id} returned more frames than the batch")
+        output[index] = image
+        index += 1
+    if output is None or index != source.shape[0]:
+        raise ClarityError(f"{model.id} restored {index} frames, expected {source.shape[0]}")
+    return output
 
 
 def _content_token(frames: np.ndarray) -> str:

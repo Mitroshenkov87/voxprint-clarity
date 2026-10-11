@@ -17,6 +17,7 @@ from typing import Any, Protocol
 
 from clarity.errors import Cancelled, ClarityError
 from clarity.i18n import tr
+from clarity.progress import progress_stage
 
 try:
     import torch
@@ -25,8 +26,8 @@ except ImportError:
 
 OWNER = "clarity"
 NVIDIA_DRIVER_URL = "https://www.nvidia.com/Download/index.aspx"
-# TODO: switch to tag engine-v1.1.0 when it is published.
-ENGINE_COMMIT = "d11d60921448b697d832b2699e6e3e04c62c6dfd"
+# Tag engine-v1.1.0 is commit 0f6a84013a72413b1fb53b4b0ae9826c10c54436. API stays 1.
+ENGINE_COMMIT = "engine-v1.1.0"
 _DRIVER_VERSION = re.compile(r"driver ([0-9][0-9.]*)")
 ENGINE_REQUIREMENT = f"voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@{ENGINE_COMMIT}"
 _GPU_BUSY = "the GPU is busy"
@@ -310,17 +311,126 @@ def read_shared_usage() -> int | None:
     return None if value is None else int(value)
 
 
-def restore_frames(*args: Any, **kwargs: Any) -> Any:
-    """Run one tiled restore through ``voxprint_engine.api.restore_frames``.
+def iter_tile_frames(*args: Any, **kwargs: Any) -> Any:
+    """Yield one restored frame from ``voxprint_engine.api.iter_tile_frames``.
+
+    The accumulator stays one frame. Stacking the yields allocates the chunk again.
 
     Args:
         *args: Positional arguments forwarded unchanged.
         **kwargs: Keyword arguments forwarded unchanged.
 
     Returns:
-        Whatever the engine returns for that call.
+        An iterator of HWC float frames.
     """
-    return _require().restore_frames(*args, **kwargs)
+    return _require().iter_tile_frames(*args, **kwargs)
+
+
+def ensure_model_onnx(
+    payload: dict[str, Any],
+    weight: Path,
+    on_progress: Callable[[float, str], None] | None = None,
+) -> Path:
+    """Convert a pinned weight with the engine and return the cached ONNX file.
+
+    The engine stores ``<sha256>.onnx``. A second call returns that file.
+
+    Args:
+        payload: Manifest fields for the weight.
+        weight: The checked ``.pth`` file.
+        on_progress: Receives ``(fraction, message)`` while the engine converts.
+
+    Returns:
+        Path of the checked ONNX file.
+
+    Raises:
+        ClarityError: When the engine cannot convert the weight.
+        EngineUnavailable: When the engine package is not installed.
+    """
+    api = _require()
+    error = _load_attr("voxprint_engine.onnx_export", "OnnxExportError")
+    store_error = _load_attr("voxprint_engine.store", "StoreError")
+    try:
+        return Path(api.ensure_onnx(manifest_for(payload), None, on_progress, weight=weight))
+    except ClarityError:
+        raise
+    except Exception as exc:
+        if error is not None and isinstance(exc, error):
+            raise ClarityError(str(exc)) from exc
+        if store_error is not None and isinstance(exc, store_error):
+            raise ClarityError(str(exc)) from exc
+        raise
+
+
+def _engine_stage_text(message: str) -> str:
+    """Turn an engine TensorRT sentence into the status line the window shows."""
+    stage = progress_stage(message)
+    if stage == "building_engine":
+        return tr("status.building_engine")
+    if stage == "loading_cached_engine":
+        return tr("status.loading_cached_engine")
+    return message
+
+
+def open_restore_session(onnx_path: Path, on_progress: Callable[[float, str], None]) -> Any:
+    """Open the ONNX file, trying TensorRT and then CUDA.
+
+    The progress callback hears the engine's build or cache message before
+    TensorRT loads, because the first engine build can take minutes.
+
+    Args:
+        onnx_path: A checked ONNX file from :func:`ensure_model_onnx`.
+        on_progress: Receives ``(fraction, message)`` for the build and the cache.
+
+    Returns:
+        The open ONNX Runtime session.
+
+    Raises:
+        ClarityError: When no provider accepts the file.
+        EngineUnavailable: When the engine session helpers are not installed.
+    """
+    session_mod = _load_module("voxprint_engine.session")
+    providers_mod = _load_module("voxprint_engine.providers")
+    if session_mod is None or providers_mod is None:
+        raise EngineUnavailable(f"Install {ENGINE_REQUIREMENT}.")
+    installed = session_mod.available_providers()
+    labels = ("clarity", "driver", "trt")
+    attempts = [providers_mod.choices_for(installed, "auto", gpu=labels[0], driver=labels[1], trt=labels[2])]
+    fallback = providers_mod.cuda_fallback_choices(installed, "auto", gpu=labels[0], driver=labels[1], trt=labels[2])
+    if fallback:
+        attempts.append(fallback)
+    errors: list[str] = []
+    for choices in attempts:
+        if not choices:
+            continue
+        if choices[0].name == "TensorrtExecutionProvider":
+            cache = Path(str(choices[0].options.get("trt_engine_cache_path") or ""))
+            on_progress(0.0, _engine_stage_text(str(session_mod.trt_build_message(cache))))
+        try:
+            session, provider = session_mod.open_session(onnx_path, choices)
+        except session_mod.EngineBuildError as exc:
+            errors.append(str(exc))
+            continue
+        if provider == "TensorrtExecutionProvider":
+            on_progress(0.0, tr("status.loading_cached_engine"))
+        return session
+    raise ClarityError("; ".join(errors) or "the ONNX session did not load")
+
+
+def run_onnx_batch(session: Any, nchw: Any) -> Any:
+    """Run one NCHW batch on an ONNX Runtime session from the engine.
+
+    Args:
+        session: A session from :func:`open_restore_session`.
+        nchw: Float NCHW input.
+
+    Returns:
+        Float32 NCHW output.
+    """
+    video = _load_module("voxprint_engine.video")
+    if video is None:
+        raise EngineUnavailable(f"Install {ENGINE_REQUIREMENT}.")
+    return video.run_batch(session, nchw)
 
 
 def thermal_decide(elapsed_s: float, median_c: float | None, throttling_s: float, paused: bool) -> Any:

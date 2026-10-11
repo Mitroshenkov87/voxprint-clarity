@@ -10,16 +10,10 @@ import numpy as np
 import pytest
 
 from clarity.bench import tensorrt_providers
-from clarity.cli import _provider_gate, main
+from clarity.cli import main
 from clarity.errors import ClarityError
-from clarity.models import CATALOG, clean_models
+from clarity.models import CATALOG, clean_models, strong_model
 from clarity.net import install_system_trust
-from clarity.ort_check import (
-    ORT_GPU_VERSION,
-    TRT_LIBS_VERSION,
-    TRT_META_VERSION,
-    describe_provider_failure,
-)
 from clarity.pipeline.encode import Container, encode_chunk_command, encode_command, encoder_pix_fmt
 from clarity.pipeline.job import Settings, downscale_half
 from clarity.pipeline.runner import _prepare_infer
@@ -145,11 +139,48 @@ def test_prepare_infer_loads_drunet_in_fp32(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr("clarity.pipeline.runner.torch", _Torch)
     monkeypatch.setattr("clarity.pipeline.runner.ModelLoader", _Loader)
     monkeypatch.setattr("clarity.pipeline.runner.ensure_weight", lambda manifest: Path(str(manifest["id"])))
-    infer = _prepare_infer(Settings(mode="clean"))
+    infer = _prepare_infer(Settings(mode="clean"), lambda _fraction, _text: None)
     model = clean_models()[0]
     assert model.precision == "fp32"
+    assert model.channels == 4
     output = infer(model, np.zeros((1, 3, 2, 2), dtype=np.float32))
     assert output.shape == (1, 3, 2, 2)
+
+
+def test_prepare_infer_converts_a_three_channel_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    heard: list[str] = []
+
+    def ensure(manifest: dict[str, object], path: Path, on_progress: object) -> Path:
+        del manifest, path
+        assert callable(on_progress)
+        on_progress(0.2, "converting the weight to ONNX")
+        calls.append("onnx")
+        return Path("model.onnx")
+
+    def open_session(path: Path, progress: object) -> object:
+        del path
+        assert callable(progress)
+        progress(0.0, "building the TensorRT engine")
+        calls.append("session")
+        return object()
+
+    def run_batch(session: object, nchw: np.ndarray) -> np.ndarray:
+        del session
+        calls.append("batch")
+        return np.zeros_like(nchw)
+
+    monkeypatch.setattr("clarity.pipeline.runner.ensure_weight", lambda manifest: Path(str(manifest["id"])))
+    monkeypatch.setattr("clarity.pipeline.runner.ensure_model_onnx", ensure)
+    monkeypatch.setattr("clarity.pipeline.runner.open_restore_session", open_session)
+    monkeypatch.setattr("clarity.pipeline.runner.run_onnx_batch", run_batch)
+    infer = _prepare_infer(Settings(mode="strong"), lambda _fraction, text: heard.append(text))
+    model = strong_model()
+    assert model.channels == 3
+    output = infer(model, np.zeros((1, 3, 2, 2), dtype=np.float32))
+    assert output.shape == (1, 3, 2, 2)
+    assert calls == ["onnx", "session", "batch"]
+    assert "building the TensorRT engine" in heard
 
 
 def test_output_pix_fmt_follows_the_source_depth() -> None:
@@ -261,29 +292,6 @@ def test_downscale_half_uses_area_on_cuda(monkeypatch: pytest.MonkeyPatch) -> No
     assert out.shape == (1, 2, 2, 3)
 
 
-def test_cpu_wheel_and_missing_tensorrt_fail_loudly() -> None:
-    shadowed = describe_provider_failure(["AzureExecutionProvider", "CPUExecutionProvider"], {"onnxruntime"})
-    assert shadowed is not None and "CPU onnxruntime" in shadowed
-    missing = describe_provider_failure(["CUDAExecutionProvider"], set())
-    assert missing is not None and "TensorrtExecutionProvider" in missing
-    assert describe_provider_failure(
-        ["CUDAExecutionProvider", "TensorrtExecutionProvider"],
-        {"onnxruntime-gpu"},
-    ) is None
-
-
-def test_provider_gate_ignores_the_ci_stand_in(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("VOXPRINT_CI_LANCZOS", "1")
-    monkeypatch.setattr("clarity.cli.provider_failure", lambda: "missing CUDAExecutionProvider")
-    assert _provider_gate(False) == "missing CUDAExecutionProvider"
-
-    def boom() -> str:
-        raise AssertionError("providers were checked")
-
-    monkeypatch.setattr("clarity.cli.provider_failure", boom)
-    assert _provider_gate(True) is None
-
-
 def test_gui_does_not_force_offscreen() -> None:
     assert gui_qt_platform() is None
     assert selftest_qt_platform() == "offscreen"
@@ -314,19 +322,21 @@ def test_system_trust_is_idempotent() -> None:
     install_system_trust()
 
 
-def test_onnx_and_the_runtime_pair_are_pinned() -> None:
+def test_onnx_and_pillow_stay_pinned() -> None:
     requirements = (_ROOT / "requirements.txt").read_text(encoding="utf-8")
     package = (_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     bench = (_ROOT / "requirements-bench.txt").read_text(encoding="utf-8")
+    bench_source = (_ROOT / "clarity" / "bench.py").read_text(encoding="utf-8")
     assert "onnx>=" in requirements
     assert "onnx>=" in package
     assert "truststore>=" in requirements
-    assert f"onnxruntime-gpu=={ORT_GPU_VERSION}" in bench
+    assert "onnxruntime-gpu==1.31.0" in bench
     lock = json.loads((_ROOT / "installer" / "runtime_lock.json").read_text(encoding="utf-8"))
-    assert lock["onnxruntime_gpu"] == ORT_GPU_VERSION
-    assert lock["tensorrt_cu13_libs"] == TRT_LIBS_VERSION
-    assert lock["tensorrt_cu13"] == TRT_META_VERSION
     assert lock["pillow"] == "12.3.0"
+    assert "onnxruntime_gpu" not in lock
+    assert "tensorrt_cu13" not in lock
+    assert "torch.onnx" not in bench_source
+    assert "export_weight" in bench_source
 
 
 def test_tensorrt_fp32_leaves_fp16_off(tmp_path: Path) -> None:
@@ -340,9 +350,9 @@ def test_lgpl_check_ignores_disabled_gpl_libraries() -> None:
     assert "--enable-libx264" in script
     assert "--enable-libx265" in script
     assert "python -c $providerCheck" not in script
-    assert "provider_check.py" in script
-    assert "runtime_lock.json" in script
-    assert "--no-deps" in script
+    assert "provider_check.py" not in script
+    assert "engine-v1.1.0" in script
+    assert "--no-deps" not in script
 
     def rejected(build: str) -> bool:
         return bool(
@@ -369,20 +379,22 @@ def test_runtime_junction_is_created_after_the_files_exist() -> None:
     assert "Pillow==$pillow" in windows
     assert "[switch]$LinkOnly" in windows
     assert "mklink /J failed" in windows
-    assert "tensorrt-cu13==$trtMeta" in windows
-    assert "--no-deps" in windows
-    assert "onnxruntime-gpu==$ort" in linux
-    assert "--no-deps" in linux
+    assert "tensorrt-cu13" not in windows
+    assert "--no-deps" not in windows
+    assert "onnxruntime-gpu" not in linux
+    assert "--no-deps" not in linux
+    assert "engine-v1.1.0" in windows
+    assert "engine-v1.1.0" in linux
     link_lines = [line for line in iss.splitlines() if "LinkOnly" in line]
     assert link_lines
     assert all("RuntimeInstalled" not in line for line in link_lines)
 
 
-def test_upstream_engine_patches_describe_the_two_fixes() -> None:
-    video = (_ROOT / "patches" / "engine-d11d609-stream-frames.patch").read_text(encoding="utf-8")
-    runtime = (_ROOT / "patches" / "engine-d11d609-ort-trt-pin.patch").read_text(encoding="utf-8")
-    assert "iter_tile_frames" in video
-    assert "def tile_frames" not in video.split("@@")[-1] or "yield" in video
-    assert "onnxruntime-gpu==1.31.0" in runtime
-    assert "tensorrt-cu13-libs==10.14.1.48" in runtime
-    assert "--no-deps" in runtime
+def test_engine_streaming_and_onnx_live_in_the_tag() -> None:
+    job = (_ROOT / "clarity" / "pipeline" / "job.py").read_text(encoding="utf-8")
+    runner = (_ROOT / "clarity" / "pipeline" / "runner.py").read_text(encoding="utf-8")
+    assert "iter_tile_frames" in job
+    assert "restore_frames(" not in job
+    assert "ensure_model_onnx" in runner
+    assert not (_ROOT / "patches").exists()
+    assert not (_ROOT / "clarity" / "ort_check.py").exists()

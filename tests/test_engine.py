@@ -1,6 +1,6 @@
 """Tests that need the installed ``voxprint-engine`` package.
 
-CI installs ``voxprint_engine`` at commit ``d11d609`` before this module runs.
+CI installs ``voxprint_engine`` at tag ``engine-v1.1.0`` before this module runs.
 """
 from __future__ import annotations
 

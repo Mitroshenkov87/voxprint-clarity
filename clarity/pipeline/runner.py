@@ -22,13 +22,16 @@ import numpy as np
 from clarity.engine import (
     choose_tile,
     empty_cuda_cache,
+    ensure_model_onnx,
     ensure_weight,
     gpu_busy_text,
     halve_tile,
     hold_gpu,
     measure,
     note_spill,
+    open_restore_session,
     read_shared_usage,
+    run_onnx_batch,
     sysmem_spill,
     thermal_decide,
 )
@@ -165,28 +168,54 @@ def _run_text(argv: list[str]) -> str:
     return proc.stdout
 
 
-def _prepare_infer(settings: Settings) -> Callable[[ClarityModel, np.ndarray], np.ndarray]:
-    """Fetch weights through the engine store, then run them with spandrel on CUDA."""
+def _torch_infer(model: ClarityModel, nchw: np.ndarray, path: Path, loaded: dict[str, Any]) -> np.ndarray:
+    """Run one conditioned batch with spandrel.
+
+    The engine converter writes a 3-channel graph. A model that also takes a
+    condition channel stays on this path.
+    """
+    if torch is None or ModelLoader is None:
+        raise ClarityError("PyTorch and spandrel are required. Install requirements-gpu.txt on this machine.")
+    if not torch.cuda.is_available():
+        raise ClarityError("CUDA is not available. Clarity has no CPU mode.")
+    network = loaded.get(model.id)
+    if network is None:
+        network = apply_precision(ModelLoader().load_from_file(str(path)).eval().cuda(), model.precision)
+        loaded[model.id] = network
+    dtype = getattr(torch, torch_dtype_name(model.precision))
+    tensor = torch.from_numpy(np.ascontiguousarray(nchw)).to(device="cuda", dtype=dtype)
+    with torch.inference_mode():
+        output = network(tensor)
+    return np.asarray(output.detach().float().cpu().numpy(), dtype=np.float32)
+
+
+def _prepare_infer(settings: Settings, progress: Progress) -> Callable[[ClarityModel, np.ndarray], np.ndarray]:
+    """Fetch weights, convert them with the engine, and run the ONNX session.
+
+    A model whose network takes a condition channel stays on PyTorch. The
+    engine's converter writes a 3-channel graph, so that extra channel is not
+    in the cached ONNX file.
+    """
     paths = {model.id: ensure_weight(model.manifest()) for model in models_for(settings)}
     loaded: dict[str, Any] = {}
+    sessions: dict[str, Any] = {}
 
     def infer(model: ClarityModel, nchw: np.ndarray) -> np.ndarray:
-        if torch is None or ModelLoader is None:
-            raise ClarityError("PyTorch and spandrel are required. Install requirements-gpu.txt on this machine.")
-        if not torch.cuda.is_available():
-            raise ClarityError("CUDA is not available. Clarity has no CPU mode.")
-        network = loaded.get(model.id)
-        if network is None:
-            path = paths.get(model.id)
-            if path is None:
-                raise ClarityError(f"{model.id} was not fetched before the job")
-            network = apply_precision(ModelLoader().load_from_file(str(path)).eval().cuda(), model.precision)
-            loaded[model.id] = network
-        dtype = getattr(torch, torch_dtype_name(model.precision))
-        tensor = torch.from_numpy(np.ascontiguousarray(nchw)).to(device="cuda", dtype=dtype)
-        with torch.inference_mode():
-            output = network(tensor)
-        return np.asarray(output.detach().float().cpu().numpy(), dtype=np.float32)
+        path = paths.get(model.id)
+        if path is None:
+            raise ClarityError(f"{model.id} was not fetched before the job")
+        if model.channels != 3:
+            return _torch_infer(model, nchw, path, loaded)
+        session = sessions.get(model.id)
+        if session is None:
+
+            def on_progress(fraction: float, message: str) -> None:
+                progress(fraction, message)
+
+            onnx_path = ensure_model_onnx(model.manifest(), path, on_progress)
+            session = open_restore_session(onnx_path, progress)
+            sessions[model.id] = session
+        return np.asarray(run_onnx_batch(session, nchw), dtype=np.float32)
 
     return infer
 
@@ -205,7 +234,7 @@ def live_control(settings: Settings, token: CancelToken, progress: Progress | No
         return hold_gpu(job, eta_s=eta_s, cancel=token.is_set, on_wait=on_wait)
 
     return Control(
-        infer=_prepare_infer(settings),
+        infer=_prepare_infer(settings, report),
         lock=lock,
         spawn=_spawn,
         run_text=_run_text,
@@ -446,11 +475,11 @@ def _prepare_plan(spec: JobSpec, probe: Any, bound: Control) -> tuple[Path, list
 
 
 def host_batch_count(height: int, width: int, model_scale: int) -> int:
-    """How many frames fit in the engine tile accumulator.
+    """How many source frames stay in memory before ``iter_tile_frames``.
 
-    ``tile_frames`` keeps three float32 images at the model scale: the
-    accumulator, the coverage map, and the ``clip`` temporary. A 720p frame
-    at 4x is about half a gigabyte, so a whole chunk is not allocated.
+    The engine iterator keeps one frame in the accumulator. This limit is the
+    same 512 MiB budget the three full-chunk float32 buffers used to need, so
+    a 720p frame at 4x is still restored alone and a 138-frame chunk is not.
 
     Args:
         height: Source height in pixels.
@@ -481,10 +510,11 @@ def _restore_range(
 ) -> tuple[int, int]:
     """Decode one chunk, restore it, and leave the encoded bytes in ``partial``.
 
-    The engine is given at most :func:`host_batch_count` frames. Each batch is
-    downscaled before the next one starts, stored as uint8, then written to the
-    encoder. Colour uses one gain measured on that uint8 chunk, so a scene does
-    not pump and the 4x float32 chunk is never allocated.
+    The engine is given at most :func:`host_batch_count` frames, and
+    ``iter_tile_frames`` restores those one at a time. Each batch is downscaled
+    before the next one starts, stored as uint8, then written to the encoder.
+    Colour uses one gain measured on that uint8 chunk, so a scene does not pump
+    and the 4x float32 chunk is never allocated.
     """
     out_h = probe.height * (2 if spec.settings.upscale else 1)
     out_w = probe.width * (2 if spec.settings.upscale else 1)

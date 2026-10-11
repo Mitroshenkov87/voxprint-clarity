@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Iterator
 from importlib.metadata import version
 from pathlib import Path
 
@@ -164,6 +165,43 @@ def _identity(model: object, nchw: np.ndarray) -> np.ndarray:
     if scale == 1:
         return rgb
     return np.repeat(np.repeat(rgb, scale, axis=2), scale, axis=3)
+
+
+def test_process_frames_streams_one_engine_frame(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[int] = []
+
+    def fake_iter(
+        frames: np.ndarray,
+        wrapped: Callable[[np.ndarray], np.ndarray],
+        tile: int,
+        overlap: int,
+        *,
+        scale: int,
+        batch: int,
+    ) -> Iterator[np.ndarray]:
+        del tile, overlap, scale, batch
+        seen.append(int(frames.shape[0]))
+        count = int(frames.shape[0])
+        for index in range(count):
+            nchw = np.transpose(frames[index : index + 1], (0, 3, 1, 2))
+            output = np.asarray(wrapped(nchw))
+            yield np.transpose(output[0], (1, 2, 0))
+
+    monkeypatch.setattr("clarity.pipeline.job.iter_tile_frames", fake_iter)
+    frames = np.full((2, 8, 8, 3), 0.4, dtype=np.float32)
+    settings = Settings(
+        mode="strong",
+        upscale=False,
+        sharpen=0,
+        white_balance=False,
+        levels=False,
+        tile=8,
+        overlap=0,
+        batch=2,
+    )
+    out = process_frames(frames, settings, _identity, tile=8, batch=2)
+    assert out.shape == frames.shape
+    assert seen == [2]
 
 
 def test_process_frames_clean_and_optional_2x() -> None:

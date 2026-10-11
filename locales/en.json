@@ -28,6 +28,8 @@
   "cancel": "Cancel",
   "status.ready": "Ready",
   "status.running": "Restoring {done} of {total}",
+  "status.building_engine": "Building the TensorRT engine. The first build can take several minutes.",
+  "status.loading_cached_engine": "Loading the cached TensorRT engine.",
   "status.done": "Finished",
   "status.cancelled": "Cancelled",
   "status.cancelling": "Stopping",

@@ -37,8 +37,8 @@ python -m clarity.bench
 
 `requirements-bench.txt` pulls the CUDA 13.0 torch wheel, `spandrel`,
 `onnx`, and `onnxruntime-gpu==1.31.0`. TensorRT EP has to be in that build.
-The matching library is `tensorrt-cu13-libs==10.14.1.48` (`nvinfer_10`), pinned
-in `installer/runtime_lock.json`. TensorRT 11 does not provide that DLL.
+The engine tag `engine-v1.1.0` installs the matching library
+`tensorrt-cu13-libs==10.14.1.48` (`nvinfer_10`) and removes the CPU wheel.
 `--skip-download` reuses files already in `--clip-dir` and still exits 2
 when one of them is absent.
 
@@ -71,12 +71,11 @@ DRUNet is fp32. SCUNet and Real-ESRGAN are fp16. The timed loop is a
 256×256 forward, after one warmup call. Peak VRAM is
 `torch.cuda.max_memory_allocated`.
 
-ONNX export calls `tools.export_onnx.convert` (or
-`voxprint_engine.export_onnx`) when that module imports. Tag `engine-v1.0.0`
-keeps `tools/export_onnx.py` in the enlarge repository and out of the
-installed wheel, so a machine that only has the wheel writes the graph with
-`torch.onnx.export` (fp16, opset 17) and says so in the report. The ONNX
-Runtime session is opened with
+ONNX export calls `voxprint_engine.onnx_export.export_weight`. That writes a
+checked fp16 graph. The converter's example tensor is 3 channels, so DRUNet
+(a condition channel) is timed on PyTorch and its TensorRT row records why
+the graph was not exported. SCUNet and Real-ESRGAN are exported and timed.
+The ONNX Runtime session is opened with
 `TensorrtExecutionProvider` (engine cache under `--out/trt-cache`) and then
 `CUDAExecutionProvider`. `trt_fp16_enable` is on for an fp16 model and off
 for fp32. There is no CPU provider. If TensorRT EP is not in

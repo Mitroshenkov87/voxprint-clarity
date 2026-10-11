@@ -15,22 +15,17 @@ no fallback for a GPU below compute capability 8.9 or a driver below 600.
 Compile `installer/VoxprintClarity.iss` with Inno Setup 6. A normal install
 runs `installer/install-runtime.ps1`, which:
 
-1. Reads `installer/runtime_lock.json` (Pillow 12.3.0, `onnxruntime-gpu`
-   1.31.0, TensorRT 10.14.1.48).
+1. Reads `installer/runtime_lock.json` (Pillow 12.3.0).
 2. Creates a venv under `%LOCALAPPDATA%\Voxprint\shared\venv`
    (`%VOXPRINT_HOME%\shared\venv` when `VOXPRINT_HOME` is set). An existing
    venv is reused.
-3. Installs `requirements.txt` and the engine at commit `d11d609`
-   (`voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@d11d60921448b697d832b2699e6e3e04c62c6dfd`).
-   The pin moves to tag `engine-v1.1.0` when that tag is published.
+3. Installs `requirements.txt` and the engine at tag `engine-v1.1.0`
+   (`voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0`).
 4. Calls `ensure_runtime("clarity")`. The engine installs Python 3.14, the
-   CUDA 13 wheels, and its default model into the shared folder.
-5. Uninstalls the CPU `onnxruntime` wheel and TensorRT 11, then installs the
-   locked `onnxruntime-gpu` and `tensorrt-cu13-libs` pair. `tensorrt-cu13`
-   10.14.1.48 is installed with `--no-deps` so the engine probe does not pull
-   TensorRT 11 on the next repair. TensorRT 10.14 bindings have no cp314 wheel.
-6. Installs `Pillow==$pillow` from the lock after that step.
-7. Creates `{app}` if needed and junctions the venv to `{app}\runtime`. The
+   CUDA 13 wheels, `onnxruntime-gpu==1.31.0`, TensorRT 10.14.1.48, and its
+   default model into the shared folder. It removes the CPU `onnxruntime` wheel.
+5. Installs `Pillow==$pillow` from the lock after that step.
+6. Creates `{app}` if needed and junctions the venv to `{app}\runtime`. The
    link is checked: a failed `mklink` stops the install, and a `runtime` path
    that is not a junction is refused.
 
@@ -83,11 +78,10 @@ appimagetool can be downloaded. The package includes
 
 Run `voxprint-clarity-install` once after extracting the package, and once
 for an AppImage before the first restore. The script needs Python 3.14,
-installs the engine at commit `d11d609` and Pillow 12.3.0, and runs
-`--install-suite`. That calls `ensure_runtime("clarity")`, repairs ffmpeg,
-and fetches Clarity's Clean and Strong weights. It then applies the same
-ONNX Runtime 1.31 and TensorRT 10.14 pin as the Windows installer, read from
-`runtime_lock.json`. A second run reuses the venv.
+installs the engine at tag `engine-v1.1.0` and Pillow 12.3.0, and runs
+`--install-suite`. That calls `ensure_runtime("clarity")`, which installs the
+ONNX Runtime GPU and TensorRT pins, repairs ffmpeg, and fetches Clarity's
+Clean and Strong weights. A second run reuses the venv.
 The launcher and `AppRun` prepend `shared/ffmpeg` to `PATH`.
 
 After extracting onto a prefix, update the MIME and desktop databases.
@@ -117,10 +111,10 @@ QT_QPA_PLATFORM=offscreen python -m clarity --selftest --no-gpu
 ```
 
 `--no-gpu` is the selftest CI and the release workflow both run. It checks
-the window, the engine import, and the restore plan, and it skips the CUDA
-and TensorRT provider requirement. For that process the engine skips the
-suite download. `assess_launch` still refuses `VOXPRINT_CI_LANCZOS` for a
-restore, and a selftest without `--no-gpu` still requires the GPU providers.
+the window, the engine import, and the restore plan. For that process the
+engine skips the suite download. `assess_launch` still refuses
+`VOXPRINT_CI_LANCZOS` for a restore. The CUDA and TensorRT provider check
+belongs to the engine selftest. Clarity does not repeat it.
 
 CI is GitHub Actions on `ubuntu-latest` and `windows-latest` (lint and unit
 tests, with the public engine installed), plus an installer job and an

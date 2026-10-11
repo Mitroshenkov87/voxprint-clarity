@@ -38,7 +38,7 @@ holder `clarity`. That installs Python 3.14, the CUDA 13 wheels, and the
 engine's default model into `%LOCALAPPDATA%\Voxprint\shared` (or
 `%VOXPRINT_HOME%\shared` when that variable is set). Clarity then adds the
 LGPL ffmpeg build and its Clean and Strong weights. Pillow stays at 12.3.0.
-The engine pin is commit `d11d609` until tag `engine-v1.1.0` is published.
+The engine pin is tag `engine-v1.1.0`.
 The Start menu folder is **Voxprint**. The shortcut is **Voxprint AI Clarity**.
 
 ### Linux
@@ -152,8 +152,8 @@ below the 600 series. Clarity will not start a CPU job. A driver older than
 the R600 series includes a link to
 <https://www.nvidia.com/Download/index.aspx>. Update the driver or use an
 RTX 40 series GPU or newer. A missing engine package prints the
-`voxprint-engine @ git+https://...@d11d60921448b697d832b2699e6e3e04c62c6dfd`
-install line instead. That pin moves to tag `engine-v1.1.0` when the tag is published.
+`voxprint-engine @ git+https://...@engine-v1.1.0`
+install line instead.
 
 **The status says the GPU is busy.** Another suite job holds the shared lock.
 Clarity waits and retries. It does not cancel your restore for that wait.

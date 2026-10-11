@@ -14,22 +14,19 @@ URL over HTTPS. Enlarge is public, so the script does not take a deploy key.
 - this checkout (`uv pip install -e .`) so `python -m clarity.bench` imports Clarity
 - `torch==2.14.1` from the CUDA 13.0 index
 - `requirements.txt` and `requirements-bench.txt` (`spandrel`, `onnxruntime-gpu==1.31.0`, `onnx`)
-- the lock in `installer/runtime_lock.json`: `onnxruntime-gpu`, `tensorrt-cu13-libs`
-  10.14.1.48, and `tensorrt-cu13` 10.14.1.48 with `--no-deps`
 - an LGPL ffmpeg and ffprobe from
   `ffmpeg-master-latest-win64-lgpl.zip` (BtbN). A build whose configuration
   contains `--enable-gpl`, `--enable-libx264`, or `--enable-libx265` is rejected.
   `--disable-libx264` is the LGPL build and is kept. `av1_nvenc` must be present.
 - MinGit, when `git` is not already on `PATH` (the engine install is a git URL)
 - `voxprint-engine` from
-  `git+https://github.com/Mitroshenkov87/voxprint-enlarge@d11d60921448b697d832b2699e6e3e04c62c6dfd`
+  `git+https://github.com/Mitroshenkov87/voxprint-enlarge@engine-v1.1.0`
 
-After the engine install, the script uninstalls the CPU `onnxruntime` wheel
-and any TensorRT 11 packages, installs the locked pair, and runs
-`provider_check.py`. A multi-line `python -c` string is not used: Windows
-PowerShell 5.1 strips quotes from native arguments. The script stops when the
-CPU wheel is still installed or `CUDAExecutionProvider` /
-`TensorrtExecutionProvider` is missing.
+The engine tag installs `onnxruntime-gpu==1.31.0` and TensorRT 10.14.1.48
+and removes the CPU wheel. Its selftest asserts `CUDAExecutionProvider` and
+`TensorrtExecutionProvider`. The GPU script does not repeat that check.
+A multi-line `python -c` string is not used: Windows PowerShell 5.1 strips
+quotes from native arguments.
 
 ## What it runs
 
