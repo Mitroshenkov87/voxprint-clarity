@@ -73,4 +73,10 @@ jobs:
         shell: pwsh
         run: |
           Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
-          Invoke-ScriptAnalyzer -Path scripts/vm_test.ps1, scripts/test-gpu.ps1, scripts/gpu-common.ps1 -Severity Error -EnableExit
+          foreach ($path in @(
+              "scripts/vm_test.ps1",
+              "scripts/test-gpu.ps1",
+              "scripts/gpu-common.ps1"
+          )) {
+              Invoke-ScriptAnalyzer -Path $path -Severity Error -EnableExit
+          }
