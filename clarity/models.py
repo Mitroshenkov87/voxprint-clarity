@@ -272,6 +272,11 @@ def catalogue_rows() -> list[dict[str, Any]]:
     return rows
 
 
+def catalogue_ids() -> list[str]:
+    """Return every catalogue id, in catalogue order."""
+    return [model.id for model in CATALOG]
+
+
 def fetch_weights(ids: list[str] | None = None, *, dry_run: bool = False) -> list[dict[str, Any]]:
     """Fetch catalogue weights through the shared engine store.
 

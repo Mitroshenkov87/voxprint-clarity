@@ -28,7 +28,7 @@ from clarity.engine import (
 )
 from clarity.errors import Cancelled, ClarityError
 from clarity.ffmpeg_setup import FfmpegMissing, ensure_ffmpeg
-from clarity.models import catalogue_rows, clean_models, fetch_weights, strong_model
+from clarity.models import catalogue_ids, catalogue_rows, fetch_weights
 from clarity.pipeline.encode import Container, VideoCodec
 from clarity.pipeline.job import Settings, commands_for
 from clarity.pipeline.probe import Probe
@@ -715,7 +715,7 @@ def _runtime_failure(report: Any) -> str:
 
 
 def _install_suite() -> int:
-    """Install the shared runtime, ffmpeg, and Clarity's Clean and Strong weights.
+    """Install the shared runtime, ffmpeg, and every catalogue weight Clarity uses.
 
     Returns:
         ``0`` when the engine report is ok, ``2`` when a repair fails.
@@ -726,8 +726,7 @@ def _install_suite() -> int:
 
     try:
         _ensure_shared(progress)
-        ids = [model.id for model in (*clean_models(), strong_model())]
-        fetch_weights(ids, dry_run=False)
+        fetch_weights(catalogue_ids(), dry_run=False)
     except (FfmpegMissing, EngineUnavailable, ClarityError, OSError) as exc:
         print(exc, file=sys.stderr)
         return int(ExitCode.ENVIRONMENT)

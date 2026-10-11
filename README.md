@@ -76,7 +76,7 @@ The documentation site is published from `main`:
 
 - [docs/USER-GUIDE.md](docs/USER-GUIDE.md) — install, first run, restore, resume
 - [docs/INSTALL.md](docs/INSTALL.md) — platforms, runtime, ffmpeg
-- [docs/ENGINE-INTERFACE.md](docs/ENGINE-INTERFACE.md) — the public Enlarge engine
+- [docs/ENGINE-INTERFACE.md](docs/ENGINE-INTERFACE.md) — the shared inference engine
 - [docs/BENCHMARK.md](docs/BENCHMARK.md) — how to time the models
 - [docs/TESTING-GPU.md](docs/TESTING-GPU.md) — the rented RTX 4090 script
 - [docs/formats/VXCLARITY.md](docs/formats/VXCLARITY.md) — the `.vxclarity` project file
@@ -89,7 +89,7 @@ The documentation site is published from `main`:
 
 From a checkout, developers install with `requirements-dev.txt`,
 `requirements-gpu.txt`, and `pip install -e ".[engine]"`. The engine line is
-`voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489`.
+`voxprint-engine @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz`.
 Model weights are MIT, Apache-2.0, or BSD only. The table is in
 [docs/USER-GUIDE.md](docs/USER-GUIDE.md).
 

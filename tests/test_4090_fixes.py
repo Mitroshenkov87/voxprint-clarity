@@ -385,7 +385,9 @@ def test_lgpl_check_ignores_disabled_gpl_libraries() -> None:
     assert "python -c $providerCheck" not in script
     assert "provider_check.py" not in script
     assert "provider_check.py" not in shared
-    assert "9183489" in shared
+    assert "engine-v1.2.1" in shared
+    assert "MinGit" not in shared
+    assert "Get-ClarityGit" not in script
     assert "--no-deps" not in script
     assert "--no-deps" not in shared
 
@@ -424,8 +426,10 @@ def test_runtime_junction_is_created_after_the_files_exist() -> None:
     assert windows.index("reusing $venvRoot") < windows.index(pin_call)
     assert "pin_runtime.py" in linux
     assert "requirements-gpu.txt" in linux
-    assert "9183489" in windows
-    assert "9183489" in linux
+    assert "engine-v1.2.1" in windows
+    assert "engine-v1.2.1" in linux
+    assert "MinGit" not in windows
+    assert "python install 3.14" in linux
     assert "ExtractTemporaryFile('pin_runtime.py')" in iss
     assert "ExtractTemporaryFile('requirements-gpu.txt')" in iss
     assert "-PinScript" in iss

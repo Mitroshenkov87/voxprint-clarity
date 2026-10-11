@@ -2,7 +2,7 @@
 # Windows Server 2025, RTX 4090, NVIDIA driver 600+. See docs/TESTING-GPU.md.
 #requires -Version 5.1
 
-$script:ClarityEngineUrl = "voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489"
+$script:ClarityEngineUrl = "voxprint-engine @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz"
 $script:ClarityFfmpegUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip"
 $script:ClarityUvUrl = "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip"
 
@@ -105,23 +105,6 @@ function Get-ClarityUv {
     return $found.FullName
 }
 
-function Get-ClarityGit {
-    param([string]$Tools)
-    $cmd = Get-Command git -ErrorAction SilentlyContinue
-    if ($cmd) { return $cmd.Source }
-    $git = Join-Path $Tools "mingit\cmd\git.exe"
-    if (Test-Path -LiteralPath $git) { return $git }
-    Write-Host "downloading MinGit"
-    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/git-for-windows/git/releases/latest" -Headers @{ "User-Agent" = "voxprint-clarity" }
-    $asset = $release.assets | Where-Object { $_.name -like "MinGit-*-64-bit.zip" } | Select-Object -First 1
-    if (-not $asset) { throw "GitHub did not list a MinGit 64-bit zip on the latest Git for Windows release." }
-    $zip = Join-Path $Tools "mingit.zip"
-    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -UseBasicParsing
-    Expand-ClarityZip $zip (Join-Path $Tools "mingit")
-    if (-not (Test-Path -LiteralPath $git)) { throw "MinGit did not contain cmd\git.exe." }
-    return $git
-}
-
 function Get-ClarityFfmpeg {
     param([string]$Tools)
     $local = Join-Path $Tools "ffmpeg\bin\ffmpeg.exe"
@@ -173,7 +156,7 @@ function Install-ClarityGpuPython {
     Invoke-Native { & $Uv pip install --python $python "torch==2.14.1" --index-url "https://download.pytorch.org/whl/cu130" } "torch 2.14.1 cu130 failed to install"
     Write-Host "installing Clarity requirements"
     Invoke-Native { & $Uv pip install --python $python -r (Join-Path $Root "requirements.txt") -r (Join-Path $Root "requirements-bench.txt") } "requirements failed to install"
-    Write-Host "installing the shared engine 9183489"
+    Write-Host "installing the shared engine engine-v1.2.1"
     Invoke-Native { & $Uv pip install --python $python $script:ClarityEngineUrl } "the public engine install failed"
     $pin = Join-Path $Root "installer\pin_runtime.py"
     $lock = Join-Path $Root "installer\runtime_lock.json"

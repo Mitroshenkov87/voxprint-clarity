@@ -128,7 +128,9 @@ def test_clip_hash_matches_the_benchmark() -> None:
     bench = (_ROOT / "clarity" / "bench.py").read_text(encoding="utf-8")
     assert module.CLIP_SHA256 in bench
     assert module.CLIP_URL in bench
-    assert module.ENGINE_COMMIT == "9183489"
+    assert module.ENGINE_TAG == "engine-v1.2.1"
+    assert "engine-v1.2.1.tar.gz" in module.ENGINE_URL
+    assert "git+" not in module.ENGINE_URL
 
 
 def test_entries_share_flags_and_exit_codes() -> None:
@@ -145,8 +147,10 @@ def test_entries_share_flags_and_exit_codes() -> None:
     assert "EXIT_NO_GPU = 3" in texts["vm_test.py"]
     assert "gpu-common.ps1" in texts["vm_test.ps1"]
     shared = (_ROOT / "scripts" / "gpu-common.ps1").read_text(encoding="utf-8")
-    assert "9183489" in shared
-    assert "9183489" in texts["vm_test.py"]
+    assert "engine-v1.2.1" in shared
+    assert "engine-v1.2.1" in texts["vm_test.py"]
+    assert "MinGit" not in shared
+    assert "MinGit" not in texts["vm_test.py"]
     assert "--enable-gpl" in texts["vm_test.py"]
 
 

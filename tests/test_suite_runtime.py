@@ -13,8 +13,8 @@ from PySide6.QtWidgets import QApplication
 
 from clarity.cli import _ensure_shared, main
 from clarity.engine import (
-    ENGINE_COMMIT,
     ENGINE_REQUIREMENT,
+    ENGINE_TAG,
     NVIDIA_DRIVER_URL,
     EngineUnavailable,
     assess_launch,
@@ -51,7 +51,7 @@ def test_runtime_holder_is_clarity_and_install_errors_become_clarity_errors(
     class _Module:
         SuiteInstallError = _SuiteInstallError
 
-        def ensure_runtime(self, app: str, progress: object = None) -> _Report:
+        def ensure_runtime(self, app: str, progress: object = None, **_extra: object) -> _Report:
             seen["ensure"] = app
             if callable(progress):
                 progress("Checking python 3.14")
@@ -76,7 +76,7 @@ def test_runtime_holder_is_clarity_and_install_errors_become_clarity_errors(
     assert report.ok is True
     assert released.ok is True
 
-    def refuse(app: str, progress: object = None) -> _Report:
+    def refuse(app: str, progress: object = None, **_extra: object) -> _Report:
         del app, progress
         raise _SuiteInstallError("Python 3.14 was not found")
 
@@ -87,10 +87,168 @@ def test_runtime_holder_is_clarity_and_install_errors_become_clarity_errors(
 
 def test_missing_suite_runtime_names_the_pinned_engine(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("clarity.engine._load_module", lambda name: None)
-    with pytest.raises(EngineUnavailable, match="9183489"):
+    with pytest.raises(EngineUnavailable, match="run repair"):
         ensure_shared_runtime()
-    with pytest.raises(EngineUnavailable, match="9183489"):
+    with pytest.raises(EngineUnavailable, match="run repair"):
         release_shared_runtime()
+    with pytest.raises(EngineUnavailable, match="Voxprint inference engine missing"):
+        ensure_shared_runtime()
+
+
+def test_enlarge_bundle_message_stands_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Module:
+        SuiteInstallError = _SuiteInstallError
+
+        def ensure_runtime(self, app: str, progress: object = None, **_extra: object) -> _Report:
+            del app, progress, _extra
+            raise _SuiteInstallError(
+                "Python 3.14 was not found. Install the Enlarge bundle, which carries that runtime."
+            )
+
+    monkeypatch.setattr("clarity.engine._load_module", lambda name: _Module())
+    with pytest.raises(ClarityError, match="Clarity installs Python 3.14 with uv") as caught:
+        ensure_shared_runtime()
+    assert "Enlarge" not in str(caught.value)
+
+
+def test_clarity_drops_a_sole_hold_on_the_default_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    manifest = {
+        "schema": 1,
+        "components": {"model": {"holders": ["clarity"], "version": "4x-nomos2-realplksr-dysample"}},
+    }
+    deleted: list[tuple[str, str]] = []
+    written: dict[str, object] = {}
+
+    class _Model:
+        id = "4x-nomos2-realplksr-dysample"
+
+    class _Store:
+        class StoreError(RuntimeError):
+            pass
+
+        @staticmethod
+        def delete_weight(model: _Model, root: object = None, *, user: str = "enlarge") -> None:
+            del root
+            deleted.append((model.id, user))
+
+    class _Registry:
+        DEFAULT_MODEL_ID = "4x-nomos2-realplksr-dysample"
+
+        @staticmethod
+        def load_builtin(*, release: bool) -> dict[str, _Model]:
+            assert release is True
+            return {_Registry.DEFAULT_MODEL_ID: _Model()}
+
+    class _Module:
+        SuiteInstallError = _SuiteInstallError
+
+        @staticmethod
+        def shared_dir() -> Path:
+            return tmp_path
+
+        @staticmethod
+        def read_manifest() -> dict[str, object]:
+            return manifest
+
+        @staticmethod
+        def _write_manifest(doc: dict[str, object], root: Path) -> None:
+            written["doc"] = doc
+            written["root"] = root
+
+        @staticmethod
+        def ensure_runtime(app: str, progress: object = None, **extra: object) -> _Report:
+            assert app == "clarity"
+            probes = extra["probes"]
+            installers = extra["installers"]
+            assert isinstance(probes, dict)
+            assert probes["model"](tmp_path) is True
+            installers["model"](tmp_path, progress or (lambda _message: None))
+            return _Report(ok=True)
+
+    def load(name: str) -> object:
+        if name == "voxprint_engine.suite_runtime":
+            return _Module()
+        if name == "voxprint_engine.store":
+            return _Store()
+        if name == "voxprint_engine.registry":
+            return _Registry()
+        if name == "voxprint_engine.onnx_export":
+            return type("Onnx", (), {"cached_onnx": staticmethod(lambda _model: None)})()
+        return None
+
+    monkeypatch.setattr("clarity.engine._load_module", load)
+    report = ensure_shared_runtime()
+    assert report.ok is True
+    components = manifest["components"]
+    assert isinstance(components, dict)
+    assert "model" not in components
+    assert written["root"] == tmp_path
+    assert deleted == [("4x-nomos2-realplksr-dysample", "clarity")]
+
+
+def test_clarity_keeps_another_apps_default_model(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    manifest = {
+        "schema": 1,
+        "components": {"model": {"holders": ["enlarge", "clarity"], "version": "4x-nomos2-realplksr-dysample"}},
+    }
+
+    class _Module:
+        SuiteInstallError = _SuiteInstallError
+
+        @staticmethod
+        def shared_dir() -> Path:
+            return tmp_path
+
+        @staticmethod
+        def read_manifest() -> dict[str, object]:
+            return manifest
+
+        @staticmethod
+        def _write_manifest(doc: dict[str, object], root: Path) -> None:
+            del doc, root
+
+        @staticmethod
+        def ensure_runtime(app: str, progress: object = None, **_extra: object) -> _Report:
+            del app, progress, _extra
+            return _Report(ok=True)
+
+    def load(name: str) -> object | None:
+        if name == "voxprint_engine.suite_runtime":
+            return _Module()
+        if name == "voxprint_engine.store":
+            raise AssertionError("weight delete")
+        return None
+
+    monkeypatch.setattr("clarity.engine._load_module", load)
+    ensure_shared_runtime()
+    components = manifest["components"]
+    assert isinstance(components, dict)
+    entry = components["model"]
+    assert isinstance(entry, dict)
+    assert entry["holders"] == ["enlarge"]
+
+
+def test_skipped_runtime_does_not_touch_the_model_manifest(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Skipped:
+        ok = True
+        skipped = True
+        components: tuple[object, ...] = ()
+
+    class _Module:
+        SuiteInstallError = _SuiteInstallError
+
+        @staticmethod
+        def read_manifest() -> dict[str, object]:
+            raise AssertionError("manifest")
+
+        @staticmethod
+        def ensure_runtime(app: str, progress: object = None, **_extra: object) -> _Skipped:
+            del app, progress, _extra
+            return _Skipped()
+
+    monkeypatch.setattr("clarity.engine._load_module", lambda name: _Module() if "suite_runtime" in name else None)
+    report = ensure_shared_runtime()
+    assert report.skipped is True
 
 
 def test_shared_check_repairs_ffmpeg_after_the_engine(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -306,7 +464,14 @@ def test_install_suite_fetches_clarity_models(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("clarity.cli.ensure_ffmpeg", lambda progress: "ready")
     monkeypatch.setattr("clarity.cli.fetch_weights", fetch)
     assert main(["--install-suite"]) == 0
-    assert fetched == ["drunet-deblocking-color", "drunet-color", "scunet-color-real-psnr"]
+    assert fetched == [
+        "drunet-deblocking-color",
+        "drunet-color",
+        "scunet-color-real-psnr",
+        "realesr-general-x4v3",
+        "realesr-general-wdn-x4v3",
+        "realesr-animevideov3",
+    ]
 
 
 def test_uninstall_releases_the_clarity_holder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -395,9 +560,13 @@ def test_ffmpeg_repairs_once_and_skips_in_ci(monkeypatch: pytest.MonkeyPatch, tm
 
 
 def test_engine_pin_and_pillow_stay() -> None:
-    assert ENGINE_COMMIT == "9183489"
-    assert ENGINE_REQUIREMENT.endswith("@" + ENGINE_COMMIT)
-    assert "git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489" in ENGINE_REQUIREMENT
+    assert ENGINE_TAG == "engine-v1.2.1"
+    assert ENGINE_REQUIREMENT == (
+        "voxprint-engine @ https://github.com/Mitroshenkov87/voxprint-enlarge"
+        "/archive/refs/tags/engine-v1.2.1.tar.gz"
+    )
+    assert "git+" not in ENGINE_REQUIREMENT
+    assert "#subdirectory" not in ENGINE_REQUIREMENT
     engine = (_ROOT / "clarity" / "engine.py").read_text(encoding="utf-8")
     windows = (_ROOT / "installer" / "install-runtime.ps1").read_text(encoding="utf-8")
     linux = (_ROOT / "installer" / "linux" / "install-shared.sh").read_text(encoding="utf-8")
@@ -406,15 +575,21 @@ def test_engine_pin_and_pillow_stay() -> None:
     lock = json.loads((_ROOT / "installer" / "runtime_lock.json").read_text(encoding="utf-8"))
     assert lock["pillow"] == "12.3.0"
     assert 'Pillow==$pillow' in windows
-    assert "ensure_runtime('clarity'" in windows
+    assert 'probes={"model": lambda _root: True}' in windows
+    assert 'installers={"model": lambda _root, _progress: None}' in windows
+    assert 'delete_weight(model, user="clarity")' in windows
     assert ENGINE_REQUIREMENT in windows
     assert ENGINE_REQUIREMENT in linux
     assert ENGINE_REQUIREMENT in package
     assert ENGINE_REQUIREMENT in workflow
-    assert 'ENGINE_COMMIT = "9183489"' in engine
-    assert "enlarge@{ENGINE_COMMIT}" in engine
-    assert "engine-v1.2.0" in engine
+    assert 'ENGINE_TAG = "engine-v1.2.1"' in engine
+    assert "engine-v1.2.1.tar.gz" in engine
+    assert "switch to tag" not in engine
+    assert "python install 3.14" in linux
+    assert "Enlarge bundle" not in linux
+    assert "MinGit" not in windows
     assert "Pillow==12.3.0" in linux
     assert "--install-suite" in linux
     for text in (windows, linux, package, workflow, engine):
         assert "d11d609" not in text
+        assert "9183489" not in text

@@ -35,17 +35,17 @@ A live restore runs these steps in order:
 
 ## Engine
 
-Clarity does not reimplement the GPU lock, the VRAM budget, the thermal rule, the model store, the hardware query, or the shared runtime. Those live in `voxprint_engine` from Voxprint AI Enlarge, commit `9183489` (package 1.2.0, API 1). The pin moves to tag `engine-v1.2.0` when that tag is published.
+Clarity does not reimplement the GPU lock, the VRAM budget, the thermal rule, the model store, the hardware query, or the shared runtime. Those live in `voxprint_engine` at tag `engine-v1.2.1`. The package metadata is at the repository root, so the archive URL has no subdirectory.
 
 ```text
-voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489
+voxprint-engine @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz
 ```
 
 `clarity.engine` loads that package with `importlib` and forwards the calls. The requirement string is `ENGINE_REQUIREMENT`. The lock owner and the runtime holder are `OWNER` (`clarity`). API stays 1.
 
 ## Shared dependencies
 
-The installer, every launch, and `selftest` call `ensure_runtime("clarity")`. Uninstall calls `release_runtime("clarity")`. The engine installs Python 3.14, the CUDA 13 torch, ONNX Runtime GPU, and TensorRT wheels, and its default model. Holders are a list in `shared/manifest.json`. A payload is removed when that list is empty.
+The installer, every launch, and `selftest` call `ensure_runtime("clarity")` through `clarity.engine.ensure_shared_runtime`. Uninstall calls `release_runtime("clarity")`. The engine installs Python 3.14, the CUDA 13 torch, ONNX Runtime GPU, and TensorRT wheels. Clarity tells that call to skip the engine's default upscale weight, then drops its own holder on that component. When Clarity is the only holder, the weight file is deleted. Other holders keep the file. Clarity's own weights are registered under `clarity` in the shared models folder. Holders are a list in `shared/manifest.json`. A payload is removed when that list is empty.
 
 The folder is `%LOCALAPPDATA%\Voxprint\shared` on Windows and `$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared` on Linux. `VOXPRINT_HOME` replaces the Voxprint directory.
 

@@ -128,8 +128,10 @@ workflow both run `python -m clarity --selftest --no-gpu`.
 
 ## install-suite
 
-`python -m clarity --install-suite` calls `ensure_runtime("clarity")`, repairs
-ffmpeg, and fetches the Clean and Strong weights through the engine registry.
+`python -m clarity --install-suite` calls `ensure_shared_runtime`, repairs
+ffmpeg, and fetches every catalogue weight Clarity uses. It does not download
+the engine's default upscale weight. A missing engine package says
+`Voxprint inference engine missing, run repair.`
 The Windows setup and `voxprint-clarity-install` run it. Uninstall calls
 `release_runtime("clarity")` from `--unregister-models-user`.
 

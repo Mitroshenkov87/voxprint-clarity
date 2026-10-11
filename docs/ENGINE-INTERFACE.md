@@ -1,17 +1,18 @@
 # Engine interface
 
 Clarity uses the shared package `voxprint_engine` (distribution name
-`voxprint-engine`) from Voxprint AI Enlarge.
+`voxprint-engine`).
 
 | | |
 |---|---|
-| Commit | `9183489` (package 1.2.0, API 1). TODO: tag `engine-v1.2.0` when it is published. |
-| Requirement | `voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@9183489` |
-| CI install | the same `git+https` requirement. Enlarge is public, so there is no deploy key. |
+| Tag | `engine-v1.2.1` |
+| Requirement | `voxprint-engine @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.2.1.tar.gz` |
+| Layout | `pyproject.toml` is at the repository root, so the archive URL has no `#subdirectory` fragment. pip does not need git. |
+| CI install | the same archive URL. The repository is public, so there is no deploy key. |
 | Import package | `voxprint_engine` |
 | Video names | `voxprint_engine.api` |
 
-The video API is in that commit. Clarity does not vendor a copy of the engine.
+The video API is in that tag. Clarity does not vendor a copy of the engine.
 
 `iter_tile_frames` yields one restored frame. The accumulator stays one frame.
 Clarity still limits the source window with `host_batch_count` (512 MiB for the

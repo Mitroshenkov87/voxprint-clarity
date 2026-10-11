@@ -1,7 +1,7 @@
 """LGPL ffmpeg in the shared suite folder.
 
-``voxprint_engine.suite_runtime`` installs Python, the CUDA wheels, and the
-engine's default model. It does not install ffmpeg. Clarity keeps this one
+``voxprint_engine.suite_runtime`` installs Python and the CUDA wheels.
+It does not install ffmpeg. Clarity keeps this one
 piece: an https download of the BtbN LGPL build into ``shared/ffmpeg``.
 """
 from __future__ import annotations

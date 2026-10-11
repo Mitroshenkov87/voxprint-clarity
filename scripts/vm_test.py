@@ -46,8 +46,11 @@ EXIT_NO_GPU = 3
 RAM_BOUND_MIB = 8192
 VRAM_BOUND_MIB = 16384
 SMOKE_SECONDS = 15
-ENGINE_COMMIT = "9183489"
-ENGINE_URL = f"voxprint-engine @ git+https://github.com/Mitroshenkov87/voxprint-enlarge@{ENGINE_COMMIT}"
+ENGINE_TAG = "engine-v1.2.1"
+ENGINE_URL = (
+    "voxprint-engine @ https://github.com/Mitroshenkov87/voxprint-enlarge"
+    "/archive/refs/tags/engine-v1.2.1.tar.gz"
+)
 CLIP_URL = "https://archive.org/download/ElephantsDream/ed_1024_512kb.mp4"
 CLIP_SHA256 = "fd6dc0e9da3a2f63487957325983f197f23c6ff1cd2b29bb71e64db567e0994c"
 CLIP_NAME = "elephants-dream-ed_1024_512kb.mp4"
@@ -917,8 +920,6 @@ def _pin_runtime(run: _Run, uv: str, python: Path) -> None:
 def _install(run: _Run) -> None:
     started = time.perf_counter()
     uv = _ensure_uv(run.tools)
-    git = _ensure_git(run.tools)
-    os.environ["PATH"] = str(git.parent) + os.pathsep + os.environ.get("PATH", "")
     _checked([uv, "python", "install", "3.14"], 600, "uv could not install CPython 3.14", setup=True)
     found = _checked([uv, "python", "find", "3.14"], 120, "Python 3.14 was not found", setup=True)
     base = (found.stdout or "").strip()
@@ -950,7 +951,7 @@ def _install(run: _Run) -> None:
         "requirements failed to install",
         setup=True,
     )
-    _checked([uv, "pip", "install", "--python", str(py), ENGINE_URL], 900, "the public engine install failed", setup=True)
+    _checked([uv, "pip", "install", "--python", str(py), ENGINE_URL], 900, "the inference engine install failed", setup=True)
     _pin_runtime(run, uv, py)
     _ensure_ffmpeg(run.tools)
     elapsed = round(time.perf_counter() - started, 3)
@@ -986,34 +987,6 @@ def _ensure_uv(tools: Path) -> str:
         local.chmod(local.stat().st_mode | 0o755)
     archive.unlink(missing_ok=True)
     return str(local)
-
-
-def _ensure_git(tools: Path) -> Path:
-    found = shutil.which("git")
-    if found:
-        return Path(found)
-    if os.name != "nt":
-        raise _VmError("git was not found. The engine install is a git URL.", EXIT_SETUP)
-    git = tools / "mingit" / "cmd" / "git.exe"
-    if git.is_file():
-        return git
-    release = _read_json("https://api.github.com/repos/git-for-windows/git/releases/latest")
-    assets = release.get("assets") if isinstance(release, dict) else None
-    url = ""
-    if isinstance(assets, list):
-        for asset in assets:
-            if isinstance(asset, dict) and str(asset.get("name") or "").startswith("MinGit-") and str(asset.get("name")).endswith("-64-bit.zip"):
-                url = str(asset.get("browser_download_url") or "")
-                break
-    if not url.startswith("https://"):
-        raise _VmError("GitHub did not list a MinGit 64-bit zip", EXIT_SETUP)
-    archive = tools / "mingit.zip"
-    _download(url, archive, 80 * 1024 * 1024)
-    _extract_zip_tree(archive, tools / "mingit")
-    archive.unlink(missing_ok=True)
-    if not git.is_file():
-        raise _VmError("MinGit did not contain cmd/git.exe", EXIT_SETUP)
-    return git
 
 
 def _ensure_ffmpeg(tools: Path) -> None:
@@ -1104,18 +1077,6 @@ def _download(url: str, dest: Path, limit: int) -> None:
         raise _VmError(f"download failed: {exc}", EXIT_SETUP) from exc
 
 
-def _read_json(url: str) -> Any:
-    if not url.startswith("https://"):
-        raise _VmError("downloads must use https", EXIT_SETUP)
-    _install_trust()
-    request = urllib.request.Request(url, headers={"User-Agent": "voxprint-clarity", "Accept": "application/vnd.github+json"})
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise _VmError(f"could not read {url} ({exc})", EXIT_SETUP) from exc
-
-
 class _HttpsRedirect(urllib.request.HTTPRedirectHandler):
     """Refuse a redirect that leaves https."""
 
@@ -1173,22 +1134,6 @@ def _extract_named(archive: Path, wanted: str, target: Path) -> None:
             raise _VmError(f"the archive has no {wanted}", EXIT_SETUP)
         with extracted, target.open("wb") as handle:
             shutil.copyfileobj(extracted, handle)
-
-
-def _extract_zip_tree(archive: Path, dest: Path) -> None:
-    if dest.exists():
-        shutil.rmtree(dest)
-    dest.mkdir(parents=True)
-    root = dest.resolve()
-    with zipfile.ZipFile(archive) as bundle:
-        for member in bundle.infolist():
-            path = Path(member.filename)
-            if path.is_absolute() or ".." in path.parts:
-                raise _VmError("the archive tried to write outside its folder", EXIT_SETUP)
-            target = (dest / path).resolve()
-            if target != root and not str(target).startswith(str(root) + os.sep):
-                raise _VmError("the archive tried to write outside its folder", EXIT_SETUP)
-        bundle.extractall(dest)
 
 
 def _named_member(names: list[str], wanted: str) -> str | None:

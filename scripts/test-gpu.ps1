@@ -48,15 +48,13 @@ try {
 
 try {
     $uv = Get-ClarityUv $Tools
-    $git = Get-ClarityGit $Tools
     $ffmpeg = Get-ClarityFfmpeg $Tools
 } catch {
     Fail $_.Exception.Message
 }
 $ffprobe = Join-Path (Split-Path -Parent $ffmpeg) "ffprobe.exe"
-$env:Path = "$(Split-Path -Parent $git);$(Split-Path -Parent $ffmpeg);$env:Path"
+$env:Path = "$(Split-Path -Parent $ffmpeg);$env:Path"
 Write-Host "uv: $uv"
-Write-Host "git: $git"
 Write-Host "ffmpeg: $ffmpeg"
 
 $env:PYTHONPATH = $Root

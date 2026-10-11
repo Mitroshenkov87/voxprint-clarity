@@ -38,8 +38,9 @@ python -m clarity.bench
 
 `requirements-bench.txt` pulls the CUDA 13.0 torch wheel, `spandrel`,
 `onnx`, and `onnxruntime-gpu==1.31.0`. TensorRT EP has to be in that build.
-Engine commit `9183489` installs the matching library
-`tensorrt-cu13-libs==10.14.1.48` (`nvinfer_10`) and removes the CPU wheel.
+Engine tag `engine-v1.2.1` is the shared library. The bench file and
+`installer/pin_runtime.py` still install `tensorrt-cu13-libs==10.14.1.48`
+(`nvinfer_10`) and remove the CPU wheel.
 `--skip-download` reuses files already in `--clip-dir` and still exits 2
 when one of them is absent.
 
