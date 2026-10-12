@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -232,6 +233,21 @@ def test_selftest_json_includes_the_engine_report(
     assert result["type"] == "result"
     assert result["ok"] is True
     assert result["runtime"]["ok"] is True
+
+
+def test_release_tag_accepts_plain_and_rc_build() -> None:
+    version = json.loads((_ROOT / "BUILD.json").read_text(encoding="utf-8"))["version"]
+    assert version == "1.0.0"
+    pattern = r"v\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?"
+    shared = (_ROOT / ".github" / "workflows" / "suite-test.yml").read_text(encoding="utf-8")
+    release = (_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert pattern in shared
+    assert pattern in release
+    assert "tag.startswith('v'+version)" in shared
+    compiled = re.compile(pattern)
+    for tag in ("v1.0.0", "v1.0.0-rc.1005"):
+        assert compiled.fullmatch(tag), tag
+        assert tag.startswith("v" + version)
 
 
 def test_ci_and_release_share_one_selftest() -> None:

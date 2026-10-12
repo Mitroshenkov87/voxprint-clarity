@@ -8,7 +8,7 @@ the new codename here in the same commit as the `BUILD.json` change. Published p
 including the two historical duplicates below.
 
 `BUILD.json` (`offset`, `codename`) is the single source of truth. The release title, the window footer, the splash and
-`--version` all show the `voxprint_common.buildinfo` label, `X.Y.Z RC build N "Codename"`.
+`--version` all show the `voxprint_common.buildinfo` label. A plain version is `X.Y.Z build N "Codename"`. A version string that contains `-rc` is `X.Y.Z RC build N "Codename"`.
 
 ## Used codenames
 

@@ -43,8 +43,8 @@ UTF-8 JSON, no BOM, one object. Duplicate keys are rejected.
 ```json
 {
   "format_version": "1.0",
-  "created_by": {"app": "VOXPrint AI Clarity", "version": "1.0.0-rc"},
-  "generator": {"app": "VOXPrint AI Clarity", "version": "1.0.0-rc"},
+  "created_by": {"app": "VOXPrint AI Clarity", "version": "1.0.0"},
+  "generator": {"app": "VOXPrint AI Clarity", "version": "1.0.0"},
   "created": "2026-10-10T08:52:00Z",
   "source": {"format": "mkv", "filename": "in.mkv"},
   "files": {

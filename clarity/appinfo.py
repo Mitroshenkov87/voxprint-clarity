@@ -85,11 +85,12 @@ def version_label() -> str:
     """Human version from ``voxprint_common.buildinfo.label``.
 
     Returns:
-        Text such as ``1.0.0 RC build 1002 "Codename"``.
+        Text such as ``1.0.0 build 1005 "Codename"``. A ``version`` string
+        that contains ``-rc`` inserts ``RC`` after the number.
     """
     return label(build_info())
 
 
 def release_title() -> str:
-    """GitHub pre-release title."""
+    """GitHub release title."""
     return f"{APP_NAME} {version_label()}"

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Record version `1.0.0` in `BUILD.json`. The version label is
+  `1.0.0 build N "…"`, with no RC word. `version --json` reports that
+  version string. The release tag check accepts `v1.0.0` and
+  `v1.0.0-rc.1005`.
 - Build 1005. On Windows, register `site-packages/torch/lib` and every directory
   under `site-packages/nvidia` and `site-packages/tensorrt_libs` that contains
   a CUDA 13 or TensorRT library, including a nested `bin/x86_64`. A session

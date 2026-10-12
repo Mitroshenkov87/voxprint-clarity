@@ -196,7 +196,10 @@ def test_version_models_and_selftest_dry_run(capsys: pytest.CaptureFixture[str])
     assert main(["version", "--json"]) == 0
     info = _result(capsys.readouterr().out)
     data = json.loads((_ROOT / "BUILD.json").read_text(encoding="utf-8"))
-    assert info["version"] == data["version"]
+    assert data["version"] == "1.0.0"
+    assert info["version"] == "1.0.0"
+    assert info["label"].startswith("1.0.0 build ")
+    assert "RC" not in info["label"]
     assert info["build"] == build_info().build
     assert info["codename"] == data["codename"]
     assert main(["--json", "models", "list"]) == 0

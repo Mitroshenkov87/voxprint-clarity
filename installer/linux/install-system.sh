@@ -27,10 +27,10 @@ else
   version=""
 fi
 if [ -z "$version" ]; then
-  version=1.0.0-rc
+  version=1.0.0
 fi
 case $version in
-  *[!0-9A-Za-z._-]*) version=1.0.0-rc ;;
+  *[!0-9A-Za-z._-]*) version=1.0.0 ;;
 esac
 sed "s#^Exec=.*#Exec=\"$target/voxprint-clarity\" %f#; s#^X-Voxprint-Version=.*#X-Voxprint-Version=$version#" \
   "$script_dir/ai.voxprint.Clarity.desktop" > /usr/local/share/applications/ai.voxprint.Clarity.desktop
