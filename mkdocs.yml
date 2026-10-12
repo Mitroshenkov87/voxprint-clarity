@@ -4,6 +4,8 @@ site_url: https://mitroshenkov87.github.io/voxprint-clarity/
 repo_url: https://github.com/Mitroshenkov87/voxprint-clarity
 repo_name: Mitroshenkov87/voxprint-clarity
 docs_dir: docs
+exclude_docs: |
+  release-notes/**
 strict: true
 
 theme:

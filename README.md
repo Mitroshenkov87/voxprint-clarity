@@ -19,10 +19,12 @@ The longer guide is [docs/USER-GUIDE.md](docs/USER-GUIDE.md).
 
 ## Install
 
-Download the pre-release recorded in `BUILD.json` (published tag
-`v1.0.0-rc.999`). The version, build number, and codename in that file are
+Download the release for the version recorded in `BUILD.json`. A tag that
+contains `-rc` is a pre-release. A plain `vX.Y.Z` tag is the stable release.
+The version, build number, and codename in that file are
 the source of truth. A codename is a Hebrew word from the Torah or Tanakh.
-The Windows file is `VoxprintClarity-Setup.exe`.
+The Windows file is `voxprint-clarity-setup-<version>-win-x64.exe`
+(tag `v1.0.0` publishes `voxprint-clarity-setup-1.0.0-win-x64.exe`).
 Check `SHA256SUMS` in that release. Setup downloads Python 3.14, the CUDA 13.0
 PyTorch wheel, the restore libraries, `voxprint-common` 0.1.1 "Menuchah"
 from its release wheel (checked against the published `.sha256` file), and
@@ -35,8 +37,9 @@ The window program is `voxprint-clarity.exe`. The command line is
 `voxprint-clarity-cli.exe`. An older install under `C:\Program Files\VoxprintClarity`
 is removed on upgrade. Your files in `%LOCALAPPDATA%\Voxprint` stay where they are.
 Put ffmpeg on `PATH` before the first restore. Linux is the experimental
-tarball `voxprint-clarity-linux.tar.gz` in the same release. It installs into
-`/opt/voxprint-ai-suite/clarity`. Details:
+tarball `voxprint-clarity_<version>_linux-x64.tar.gz` in the same release.
+Tag `v1.0.0` publishes `voxprint-clarity_1.0.0_linux-x64.tar.gz`. It installs
+into `/opt/voxprint-ai-suite/clarity`. Details:
 [docs/USER-GUIDE.md](docs/USER-GUIDE.md) and [docs/INSTALL.md](docs/INSTALL.md).
 
 ## First run and a basic restore
