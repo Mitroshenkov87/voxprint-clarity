@@ -1,8 +1,11 @@
-# Tag-triggered pre-release. Push a tag that starts with v plus the version
-# in BUILD.json after this workflow is on the default branch.
+# Tag-triggered release. Push a tag that starts with v plus the version in
+# BUILD.json after this workflow is on the default branch.
+# A tag that contains -rc is a pre-release. A plain vX.Y.Z tag is a normal release.
 # The test job is .github/workflows/suite-test.yml, the same job CI runs.
 # The Windows asset is the full online installer. /RUNTIME=skip is only the
 # smoke test. The Linux tarball is experimental.
+# The publish job copies the built files onto the suite asset names.
+# The Inno output name and the CI artifact stay VoxprintClarity-Setup.exe.
 name: Release
 on:
   push:
@@ -95,7 +98,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish the pre-release
+    name: Publish the release
     needs: [installer, linux-package]
     runs-on: ubuntu-latest
     steps:
@@ -104,25 +107,213 @@ jobs:
         with:
           path: release-assets
           merge-multiple: true
-      - name: Write SHA256SUMS and publish
+      - name: Rename assets, write SHA256SUMS, and publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -eu
-          title=$(python -c 'from clarity.appinfo import release_title; print(release_title())')
-          cd release-assets
-          rm -f SHA256SUMS
-          find . -type f ! -name SHA256SUMS -printf '%P\n' | sort | while read -r name; do
-            sha256sum "$name"
-          done > SHA256SUMS
-          echo "SHA256SUMS:"
-          cat SHA256SUMS
-          notes="Pre-release. The codename is a Hebrew word from the Torah or Tanakh, read from BUILD.json. The Windows file is the full online installer: setup downloads Python 3.14, the CUDA 13.0 PyTorch wheel, the restore libraries, and the public engine. It is not code-signed. Windows program files go in C:\\Program Files\\VOXPrint AI Suite\\Clarity (voxprint-clarity.exe and voxprint-clarity-cli.exe). The Start menu folder is VOXPrint AI Suite. Linux installs into /opt/voxprint-ai-suite/clarity. An upgrade removes an older install and keeps %LOCALAPPDATA%\\Voxprint. The Linux tarball is experimental. Built from commit ${GITHUB_SHA}."
-          printf '%s\n\nInstall and first-run notes: docs/USER-GUIDE.md\n' "$notes" > ../release-notes.md
-          mapfile -t files < <(find . -type f -printf '%P\n' | sort)
-          gh release create "${GITHUB_REF_NAME}" \
-            --prerelease \
-            --title "$title" \
-            --verify-tag \
-            --notes-file ../release-notes.md \
-            "${files[@]}"
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          import shutil
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          REPO = "https://github.com/Mitroshenkov87/voxprint-clarity"
+          DOCS = "https://mitroshenkov87.github.io/voxprint-clarity/"
+          INSTALL_DIR = r"C:\Program Files\VOXPrint AI Suite\Clarity"
+          TAG_RE = re.compile(r"v\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?")
+
+
+          def fail(message: str) -> None:
+              print(message, file=sys.stderr)
+              sys.exit(1)
+
+
+          def strip_front_matter(text: str) -> str:
+              if not text.startswith("---\n"):
+                  return text
+              end = text.find("\n---\n", 4)
+              if end == -1:
+                  return text
+              body = text[end + len("\n---\n") :]
+              return body.lstrip("\n")
+
+
+          def final_notes(version: str, linux_names: list[str]) -> str:
+              tag = f"v{version}"
+              windows = f"voxprint-clarity-setup-{version}-win-x64.exe"
+              linux = "\n".join(f"The Linux package is `{name}`." for name in linux_names)
+              return f"""# VOXPrint AI Clarity {version}
+
+          Clarity is non-generative video cleanup. It denoises, deblocks, sharpens,
+          and cleans colour on the frames you already have. Optional 2x upscale stays
+          off unless you turn it on. The default output is AV1, and the audio is
+          passed through.
+
+          ## Requirements
+
+          - Windows 11 (24H2 or newer) or Linux
+          - An NVIDIA RTX 40-series GPU or newer
+          - A current NVIDIA driver (600 series or newer)
+
+          ## Install
+
+          The Windows installer is `{windows}`.
+          It installs into `{INSTALL_DIR}`.
+
+          {linux}
+          It installs into `/opt/voxprint-ai-suite/clarity`.
+
+          The Windows installer is not code-signed.
+
+          ## Check the download
+
+          `SHA256SUMS` in this release lists the published files under those names.
+          From the folder that contains the files and `SHA256SUMS`:
+
+          ```bash
+          sha256sum -c SHA256SUMS
+          ```
+
+          On Windows PowerShell:
+
+          ```powershell
+          Get-FileHash .\\{windows} -Algorithm SHA256
+          ```
+
+          The digest must match the line for that file in `SHA256SUMS`.
+
+          ## Documentation
+
+          - [README]({REPO}/blob/{tag}/README.md)
+          - [Docs]({DOCS})
+          - [Roadmap]({REPO}/blob/{tag}/ROADMAP.md)
+          """
+
+
+          def rc_notes(version: str, commit: str, linux_names: list[str]) -> str:
+              windows = f"voxprint-clarity-setup-{version}-win-x64.exe"
+              linux = ", ".join(f"`{name}`" for name in linux_names)
+              return (
+                  "Pre-release. The codename is a Hebrew word from the Torah or Tanakh, "
+                  "read from BUILD.json. "
+                  f"The Windows file is `{windows}`, the full online installer: "
+                  "setup downloads Python 3.14, the CUDA 13.0 PyTorch wheel, the restore "
+                  "libraries, and the public engine. It is not code-signed. "
+                  f"Windows program files go in `{INSTALL_DIR}` "
+                  "(`voxprint-clarity.exe` and `voxprint-clarity-cli.exe`). "
+                  "The Start menu folder is VOXPrint AI Suite. "
+                  "Linux installs into `/opt/voxprint-ai-suite/clarity`. "
+                  f"The Linux package {linux} is experimental. "
+                  "An upgrade removes an older install and keeps `%LOCALAPPDATA%\\Voxprint`. "
+                  f"Built from commit {commit}.\n\n"
+                  "Check the files against `SHA256SUMS` in this release. "
+                  "`SHA256SUMS` lists the published names.\n\n"
+                  "Install and first-run notes: docs/USER-GUIDE.md\n"
+              )
+
+
+          tag = os.environ.get("GITHUB_REF_NAME", "")
+          if TAG_RE.fullmatch(tag) is None:
+              fail(f"refusing tag {tag!r}")
+          version = tag[1:]
+          prerelease = "-rc" in tag
+          commit = os.environ.get("GITHUB_SHA", "")
+          meta = json.loads(Path("BUILD.json").read_text(encoding="utf-8"))
+          codename = meta.get("codename")
+          if not isinstance(codename, str) or not codename.strip():
+              fail("BUILD.json codename is empty")
+          codename = codename.strip()
+          title = f'VOXPrint AI Clarity {version} "{codename}"'
+
+          source = Path("release-assets")
+          if not source.is_dir():
+              fail("release-assets is missing")
+          stage = Path(os.environ.get("RUNNER_TEMP", "/tmp")) / "clarity-publish"
+          if stage.exists():
+              shutil.rmtree(stage)
+          stage.mkdir(parents=True)
+
+          exes = sorted(path for path in source.rglob("*.exe") if path.is_file())
+          tarballs = sorted(path for path in source.rglob("*.tar.gz") if path.is_file())
+          debs = sorted(path for path in source.rglob("*.deb") if path.is_file())
+          images = sorted(path for path in source.rglob("*.AppImage") if path.is_file())
+          if len(exes) != 1:
+              fail(f"expected one Windows installer, found {len(exes)}")
+          if not tarballs and not debs:
+              fail("Linux package was not downloaded")
+          if len(tarballs) > 1:
+              fail(f"expected one Linux tarball, found {len(tarballs)}")
+          if len(debs) > 1:
+              fail(f"expected one Linux deb, found {len(debs)}")
+
+          windows_name = f"voxprint-clarity-setup-{version}-win-x64.exe"
+          shutil.copy2(exes[0], stage / windows_name)
+          linux_names: list[str] = []
+          if tarballs:
+              linux_name = f"voxprint-clarity_{version}_linux-x64.tar.gz"
+              shutil.copy2(tarballs[0], stage / linux_name)
+              linux_names.append(linux_name)
+          if debs:
+              deb_name = f"voxprint-clarity_{version}_amd64.deb"
+              shutil.copy2(debs[0], stage / deb_name)
+              linux_names.append(deb_name)
+          for image in images:
+              shutil.copy2(image, stage / image.name)
+
+          checksums = []
+          for path in sorted(stage.iterdir()):
+              if not path.is_file():
+                  continue
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              checksums.append(f"{digest}  {path.name}")
+          sums = stage / "SHA256SUMS"
+          sums.write_text("".join(f"{line}\n" for line in checksums), encoding="utf-8")
+          sums_text = sums.read_text(encoding="utf-8")
+          if windows_name not in sums_text:
+              fail("SHA256SUMS is missing the Windows installer name")
+          for name in linux_names:
+              if name not in sums_text:
+                  fail(f"SHA256SUMS is missing {name}")
+          print("SHA256SUMS:")
+          print(sums_text, end="")
+
+          notes_path = Path("docs/release-notes") / f"{version}.md"
+          if notes_path.is_file():
+              body = strip_front_matter(notes_path.read_text(encoding="utf-8"))
+              print(f"release notes: {notes_path.as_posix()}")
+          elif prerelease:
+              body = rc_notes(version, commit, linux_names)
+              print("release notes: generated pre-release text")
+          else:
+              body = final_notes(version, linux_names)
+              print("release notes: generated final text")
+          if not body.endswith("\n"):
+              body += "\n"
+          notes_file = stage.parent / "release-notes.md"
+          notes_file.write_text(body, encoding="utf-8")
+          print(f"title: {title}")
+          print(f"prerelease: {str(prerelease).lower()}")
+
+          command = [
+              "gh",
+              "release",
+              "create",
+              tag,
+              "--title",
+              title,
+              "--verify-tag",
+              "--notes-file",
+              str(notes_file),
+          ]
+          if prerelease:
+              command.append("--prerelease")
+          else:
+              command.append("--latest")
+          command.extend(str(path) for path in sorted(stage.iterdir()) if path.is_file())
+          subprocess.run(command, check=True)
+          PY

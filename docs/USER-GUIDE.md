@@ -26,10 +26,12 @@ GPU: Clarity prints the reason and exits.
 
 ### Windows
 
-Download `VoxprintClarity-Setup.exe` from the GitHub pre-release recorded in
-`BUILD.json` (published tag `v1.0.0-rc.999`). The version, the build number,
-and the codename all come from that file. A codename is a Hebrew word from
-the Torah or Tanakh. Check the download against
+Download `voxprint-clarity-setup-<version>-win-x64.exe` from the GitHub release
+for the version recorded in `BUILD.json`. Tag `v1.0.0` publishes
+`voxprint-clarity-setup-1.0.0-win-x64.exe`. A tag that contains `-rc` is a
+pre-release. A plain `vX.Y.Z` tag is the stable release. The version, the
+build number, and the codename all come from that file. A codename is a
+Hebrew word from the Torah or Tanakh. Check the download against
 `SHA256SUMS` in that same release. The file is not code-signed, so SmartScreen
 can warn.
 
@@ -49,9 +51,11 @@ its Start menu shortcut and uninstall entry. It leaves
 
 ### Linux
 
-The Linux package in the same release, `voxprint-clarity-linux.tar.gz`, is
-experimental. Extract it and run `voxprint-clarity-install` once, with
-permission to write `/opt`. That copies the app to
+The Linux package in the same release,
+`voxprint-clarity_<version>_linux-x64.tar.gz`, is experimental. Tag `v1.0.0`
+publishes `voxprint-clarity_1.0.0_linux-x64.tar.gz`. Extract it and run
+`voxprint-clarity-install` once, with permission to write `/opt`. That copies
+the app to
 `/opt/voxprint-ai-suite/clarity` and links `voxprint-clarity` and
 `voxprint-clarity-cli` onto `PATH`. If uv is
 missing, that script downloads it and runs `uv python install 3.14`. It then

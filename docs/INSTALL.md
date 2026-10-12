@@ -181,6 +181,10 @@ real CUDA session. `--no-gpu` does not.
 
 CI is GitHub Actions on `ubuntu-latest` and `windows-latest` (lint and unit
 tests, with the public engine installed), plus an installer job and an
-experimental Linux package job. A tag `v1.0.0-rc.999` runs
-`.github/workflows/release.yml`, which publishes the full Windows installer
-and the Linux package as a pre-release with `SHA256SUMS`.
+experimental Linux package job. A tag that starts with `v` runs
+`.github/workflows/release.yml`. The publish step copies the built installer
+to `voxprint-clarity-setup-<version>-win-x64.exe` and the Linux tarball to
+`voxprint-clarity_<version>_linux-x64.tar.gz` (a `.deb`, when the job built
+one, is `voxprint-clarity_<version>_amd64.deb`). `SHA256SUMS` lists those
+names. A tag that contains `-rc` is a pre-release. A plain `vX.Y.Z` tag is a
+normal release. The Inno output file stays `VoxprintClarity-Setup.exe`.
