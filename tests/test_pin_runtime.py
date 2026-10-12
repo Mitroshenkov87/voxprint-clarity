@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from clarity.gpu_runtime import native_gap_directories
+
 _ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -123,6 +125,25 @@ def test_missing_providers_fail_loudly(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(module.subprocess, "run", fake_run)
     with pytest.raises(module.PinError, match="still missing"):
         module.require_gpu_providers("python")
+
+
+def test_gap_directories_match_the_app_scan(tmp_path: Path) -> None:
+    module = _pin()
+    root = tmp_path / "site-packages"
+    arch = root / "nvidia" / "cuda_runtime" / "cu13" / "bin" / "x86_64"
+    arch.mkdir(parents=True)
+    (arch / "cudart64_13.dll").write_bytes(b"x")
+    torch_lib = root / "torch" / "lib"
+    torch_lib.mkdir(parents=True)
+    (torch_lib / "cublas64_13.dll").write_bytes(b"x")
+    (torch_lib / "cublasLt64_13.dll").write_bytes(b"x")
+    app = [path.resolve() for path in native_gap_directories([root])]
+    installer = [path.resolve() for path in module._gap_directories([root])]
+    assert installer == app
+    assert arch.resolve() in installer
+    assert torch_lib.resolve() in installer
+    text = module._missing_runtime_message(installer)
+    assert text == "Missing from the DLL search path: cudnn*, nvinfer_10"
 
 
 def test_lock_rejects_a_damaged_file(tmp_path: Path) -> None:

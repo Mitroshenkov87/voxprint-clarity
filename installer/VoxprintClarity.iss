@@ -8,7 +8,7 @@
 ; Per-user data stays in %LOCALAPPDATA%\Voxprint. This script does not delete it.
 
 #define AppDisplayName "VOXPrint AI Clarity"
-#define Publisher "VOXPrint"
+#define Publisher "VOXPrint AI Suite"
 #define SuiteFolder "VOXPrint AI Suite"
 #define AppFolder "Clarity"
 #define GuiExe "voxprint-clarity.exe"

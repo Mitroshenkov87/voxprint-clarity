@@ -22,6 +22,7 @@ from clarity.install_layout import (
     OLD_DESKTOP_FILE,
     OLD_MENU,
     OLD_WINDOWS_DIR_NAME,
+    PUBLISHER,
     REGISTRY_SUBKEY,
     SETUP_LOG,
     SUITE_MENU,
@@ -49,6 +50,8 @@ def test_display_name_and_user_data_path(monkeypatch) -> None:
 
 def test_windows_script_uses_the_suite_folder() -> None:
     iss = (_ROOT / "installer" / "VoxprintClarity.iss").read_text(encoding="utf-8")
+    assert PUBLISHER == "VOXPrint AI Suite"
+    assert f'#define Publisher "{PUBLISHER}"' in iss
     assert f'#define SuiteFolder "{SUITE_MENU}"' in iss
     assert f'#define AppFolder "{WINDOWS_APP_FOLDER}"' in iss
     assert r"DefaultDirName={autopf}\{#SuiteFolder}\{#AppFolder}" in iss

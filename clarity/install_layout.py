@@ -25,6 +25,6 @@ REGISTRY_SUBKEY = r"Software\Voxprint\Clarity"
 APP_PATHS = r"Software\Microsoft\Windows\CurrentVersion\App Paths"
 DESKTOP_FILE = "ai.voxprint.Clarity.desktop"
 OLD_DESKTOP_FILE = "voxprint-clarity.desktop"
-PUBLISHER = "VOXPrint"
+PUBLISHER = "VOXPrint AI Suite"
 SETUP_LOG = "voxprint-clarity-setup.log"
 DISPLAY_NAME = APP_NAME

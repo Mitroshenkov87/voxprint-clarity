@@ -12,6 +12,7 @@ Clarity package is importable.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import subprocess
@@ -141,7 +142,8 @@ def require_gpu_providers(python: str) -> None:
 
     Raises:
         PinError: When either session fails or the probe cannot run. The
-            message names ``nvinfer_10.dll``.
+            probe lists which of ``cudart64_13``, ``cublas64_13``,
+            ``cublasLt64_13``, ``cudnn*``, and ``nvinfer_10`` is missing.
     """
     script = str(Path(__file__).resolve())
     completed = subprocess.run(
@@ -155,8 +157,7 @@ def require_gpu_providers(python: str) -> None:
     detail = (completed.stdout or completed.stderr or "").strip()
     raise PinError(
         "CPU onnxruntime was uninstalled, but CUDAExecutionProvider or "
-        "TensorrtExecutionProvider is still missing. nvinfer_10.dll is missing "
-        f"from the DLL search path. {detail}".strip()
+        f"TensorrtExecutionProvider is still missing. {detail}".strip()
     )
 
 
@@ -208,47 +209,71 @@ def _probe_without_app() -> int:
         prepare_native_runtime = None
     if prepare_native_runtime is not None:
         prepare_native_runtime()
-    # The helper does not walk nvidia/*/bin/x86_64. The pinned tag has no helper.
-    _register_gap()
+    # The helper can miss torch/lib. The pinned tag has no helper at all.
+    folders = _register_gap()
     try:
         from voxprint_engine.session import session_providers
     except ImportError:
-        return _identity_probe()
+        return _identity_probe(folders)
     missing: list[str] = []
     for name in ("TensorrtExecutionProvider", "CUDAExecutionProvider"):
         active, reason = session_providers(name)
         if name not in [str(item) for item in active]:
             missing.append(str(reason or active))
     if missing:
-        print("nvinfer_10.dll is missing from the DLL search path. " + "; ".join(missing), flush=True)
+        print(f"{_missing_runtime_message(folders)}. " + "; ".join(missing), flush=True)
         return 1
     return 0
 
 
-def _register_gap() -> None:
-    """Pinned engine-v1.4.0 has no ``prepare_native_runtime``."""
+# Same globs as clarity.gpu_runtime. This file is copied alone into the installer temp dir.
+_RUNTIME_GLOBS = (
+    "*64_13.dll",
+    "nvinfer*.dll",
+    "cudnn*.dll",
+    "libnvinfer.so*",
+    "libcudnn.so*",
+    "*.so.13",
+)
+_REQUIRED_LIBS = (
+    ("cudart64_13.dll", "cudart64_13"),
+    ("cublas64_13.dll", "cublas64_13"),
+    ("cublaslt64_13.dll", "cublasLt64_13"),
+    ("cudnn*.dll", "cudnn*"),
+    ("nvinfer_10.dll", "nvinfer_10"),
+)
+
+
+def _gap_directories(roots: list[Path]) -> list[Path]:
+    """``torch/lib`` plus CUDA 13 and TensorRT directories at any nest depth.
+
+    Args:
+        roots: Site-packages directories to scan.
+
+    Returns:
+        Existing directories, without duplicates.
+    """
+    found: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        _scan_runtime_tree(found, seen, root / "nvidia")
+        _scan_runtime_tree(found, seen, root / "tensorrt_libs")
+        _add_dir(found, seen, root / "torch" / "lib")
+    return found
+
+
+def _register_gap() -> list[Path]:
+    """Register the gap directories. Keeps the Windows DLL-directory handles.
+
+    Returns:
+        The directories that were found.
+    """
     roots: list[Path] = []
     for key in ("purelib", "platlib"):
         value = sysconfig.get_path(key)
         if value:
             roots.append(Path(value))
-    folders: list[Path] = []
-    for root in roots:
-        trt = root / "tensorrt_libs"
-        if trt.is_dir():
-            folders.append(trt)
-        nvidia = root / "nvidia"
-        if not nvidia.is_dir():
-            continue
-        for child in nvidia.iterdir():
-            if not child.is_dir():
-                continue
-            bin_dir = child / "bin"
-            if bin_dir.is_dir():
-                folders.append(bin_dir)
-            arch = bin_dir / "x86_64"
-            if arch.is_dir():
-                folders.append(arch)
+    folders = _gap_directories(roots)
     handles: list[object] = []
     if sys.platform == "win32":
         add = getattr(os, "add_dll_directory", None)
@@ -260,15 +285,63 @@ def _register_gap() -> None:
                     continue
     # The list has to stay referenced or Windows drops the search path.
     _register_gap.handles = handles  # type: ignore[attr-defined]
-    if not folders:
+    if folders:
+        key = "PATH" if sys.platform == "win32" else "LD_LIBRARY_PATH"
+        current = os.environ.get(key, "")
+        prefix = os.pathsep.join(str(folder) for folder in folders)
+        os.environ[key] = prefix + (os.pathsep + current if current else "")
+    return folders
+
+
+def _scan_runtime_tree(found: list[Path], seen: set[Path], root: Path) -> None:
+    if not root.is_dir():
         return
-    key = "PATH" if sys.platform == "win32" else "LD_LIBRARY_PATH"
-    current = os.environ.get(key, "")
-    prefix = os.pathsep.join(str(folder) for folder in folders)
-    os.environ[key] = prefix + (os.pathsep + current if current else "")
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        folder = Path(dirpath)
+        dirnames[:] = [name for name in dirnames if not (folder / name).is_symlink()]
+        if _has_runtime_library(filenames):
+            _add_dir(found, seen, folder)
 
 
-def _identity_probe() -> int:
+def _has_runtime_library(names: list[str]) -> bool:
+    for name in names:
+        lowered = name.lower()
+        if any(fnmatch.fnmatch(lowered, pattern) for pattern in _RUNTIME_GLOBS):
+            return True
+    return False
+
+
+def _add_dir(found: list[Path], seen: set[Path], folder: Path) -> None:
+    if not folder.is_dir():
+        return
+    try:
+        resolved = folder.resolve()
+    except OSError:
+        return
+    if resolved in seen:
+        return
+    seen.add(resolved)
+    found.append(folder)
+
+
+def _missing_runtime_message(folders: list[Path]) -> str:
+    """List the CUDA 13 and TensorRT libraries ``folders`` does not contain."""
+    present: list[str] = []
+    for folder in folders:
+        try:
+            present.extend(path.name.lower() for path in folder.iterdir() if path.is_file())
+        except OSError:
+            continue
+    missing: list[str] = []
+    for pattern, label in _REQUIRED_LIBS:
+        if not any(fnmatch.fnmatch(name, pattern) for name in present):
+            missing.append(label)
+    if not missing:
+        return "CUDA and TensorRT libraries were on the DLL search path, but the session did not keep a GPU provider"
+    return "Missing from the DLL search path: " + ", ".join(missing)
+
+
+def _identity_probe(folders: list[Path]) -> int:
     """One Identity op on TensorRT and on CUDA. Imports ORT after DLL setup."""
     import numpy as np
     import onnx
@@ -299,7 +372,7 @@ def _identity_probe() -> int:
             continue
         session.run(None, {"X": sample})
     if errors:
-        print("nvinfer_10.dll is missing from the DLL search path. " + "; ".join(errors), flush=True)
+        print(f"{_missing_runtime_message(folders)}. " + "; ".join(errors), flush=True)
         return 1
     return 0
 

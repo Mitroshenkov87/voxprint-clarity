@@ -26,7 +26,7 @@ from voxprint_common.thermal import decide as decide_thermal
 
 from clarity.appinfo import APP_NAME
 from clarity.errors import Cancelled, ClarityError
-from clarity.gpu_runtime import prepare_gpu_runtime, require_gpu_session
+from clarity.gpu_runtime import missing_runtime_message, prepare_gpu_runtime, require_gpu_session
 from clarity.i18n import tr
 from clarity.progress import progress_stage, pulse_until
 
@@ -468,7 +468,9 @@ def open_restore_session(onnx_path: Path, on_progress: Callable[[float, str], No
 
     Raises:
         ClarityError: When no provider accepts the file, or the session
-            stays on CPU. That message names ``nvinfer_10.dll``.
+            stays on CPU. That message lists which of ``cudart64_13``,
+            ``cublas64_13``, ``cublasLt64_13``, ``cudnn*``, and ``nvinfer_10``
+            the search path does not contain.
         EngineUnavailable: When the engine session helpers are not installed.
     """
     prepare_gpu_runtime()
@@ -506,8 +508,9 @@ def open_restore_session(onnx_path: Path, on_progress: Callable[[float, str], No
             session, provider = session_mod.open_session(onnx_path, choices)
         except session_mod.EngineBuildError as exc:
             detail = str(exc)
-            if "nvinfer_10.dll" not in detail:
-                detail = f"{detail}; nvinfer_10.dll is missing from the DLL search path"
+            gap = missing_runtime_message()
+            if gap not in detail:
+                detail = f"{detail}; {gap}"
             errors.append(detail)
             continue
         else:
