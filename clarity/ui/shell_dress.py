@@ -266,9 +266,9 @@ def _compact_presets(screen: SimpleWidget) -> None:
     grid.setContentsMargins(0, 0, 0, 0)
     grid.setHorizontalSpacing(12)
     grid.setVerticalSpacing(2)
-    by_id = {_row_id(item.layout()): item for item in items}
+    by_id = {_row_id(_item_layout(item)): item for item in items}
     for item in items:
-        layout = item.layout()
+        layout = _item_layout(item)
         if layout is not None:
             layout.setSpacing(6)
             _narrow_labels(layout)
@@ -295,7 +295,7 @@ def _compact_presets(screen: SimpleWidget) -> None:
         grid_row += 1
     column = 0
     for item in items:
-        row_id = _row_id(item.layout())
+        row_id = _row_id(_item_layout(item))
         if row_id in placed:
             continue
         grid.addItem(item, grid_row, column)
@@ -444,6 +444,15 @@ def _narrow_labels(layout: QLayout) -> None:
         if isinstance(widget, QLabel) and widget.property("presetLabel") == "true":
             widget.setWordWrap(False)
             widget.setMinimumWidth(72)
+
+
+def _item_layout(item: QLayoutItem) -> QLayout | None:
+    """Return a row's layout; 0.2.5 wraps each preset row in a widget."""
+    found = item.layout()
+    if found is not None:
+        return found
+    widget = item.widget()
+    return None if widget is None else widget.layout()
 
 
 def _row_id(layout: QLayout | None) -> str:
