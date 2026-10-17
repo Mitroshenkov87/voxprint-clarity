@@ -1,0 +1,104 @@
+{
+  "schema": "voxprint-presets/1",
+  "groups": [
+    {
+      "id": "cleanup",
+      "label_key": "simple.preset.cleanup",
+      "default": "light",
+      "options": [
+        {
+          "id": "light",
+          "label_key": "simple.preset.cleanup.light",
+          "values": {
+            "job.mode": "clean",
+            "job.restore_models": "drunet-deblocking-color,drunet-color",
+            "job.sharpen": 0.35
+          }
+        },
+        {
+          "id": "strong",
+          "label_key": "simple.preset.cleanup.strong",
+          "values": {
+            "job.mode": "strong",
+            "job.restore_models": "scunet-color-real-psnr",
+            "job.sharpen": 0.35
+          }
+        }
+      ]
+    },
+    {
+      "id": "size",
+      "label_key": "simple.preset.size",
+      "default": "same",
+      "options": [
+        {
+          "id": "same",
+          "label_key": "simple.preset.size.same",
+          "values": {"job.upscale": false}
+        },
+        {
+          "id": "2x",
+          "label_key": "simple.preset.size.twice",
+          "values": {"job.upscale": true}
+        }
+      ]
+    },
+    {
+      "id": "look",
+      "label_key": "simple.preset.look",
+      "default": "normal",
+      "options": [
+        {
+          "id": "normal",
+          "label_key": "simple.preset.look.normal",
+          "values": {
+            "job.anime": false,
+            "job.upscale_model": "realesr-general-x4v3"
+          }
+        },
+        {
+          "id": "anime",
+          "label_key": "simple.preset.look.anime",
+          "values": {
+            "job.anime": true,
+            "job.upscale_model": "realesr-animevideov3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "colours",
+      "label_key": "simple.preset.colours",
+      "default": "fix",
+      "options": [
+        {
+          "id": "fix",
+          "label_key": "simple.preset.colours.fix",
+          "values": {"job.white_balance": true, "job.levels": true}
+        },
+        {
+          "id": "leave",
+          "label_key": "simple.preset.colours.leave",
+          "values": {"job.white_balance": false, "job.levels": false}
+        }
+      ]
+    },
+    {
+      "id": "file",
+      "label_key": "simple.preset.file",
+      "default": "mkv",
+      "options": [
+        {
+          "id": "mkv",
+          "label_key": "simple.preset.file.mkv",
+          "values": {"job.container": "mkv"}
+        },
+        {
+          "id": "mp4",
+          "label_key": "simple.preset.file.mp4",
+          "values": {"job.container": "mp4"}
+        }
+      ]
+    }
+  ]
+}
