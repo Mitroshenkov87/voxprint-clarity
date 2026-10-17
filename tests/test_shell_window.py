@@ -58,6 +58,11 @@ def _app() -> QApplication:
     return QApplication.instance() or QApplication([])
 
 
+def _elided_from(shown: str, full: str) -> bool:
+    head, sep, tail = shown.partition("\u2026")
+    return bool(sep) and len(head) + len(tail) < len(full) and full.startswith(head) and full.endswith(tail)
+
+
 def _isolate(monkeypatch: pytest.MonkeyPatch, folder: Path) -> None:
     monkeypatch.setenv("VOXPRINT_HOME", str(folder / "home"))
     monkeypatch.setenv("VOXPRINT_CLARITY_STATE", str(folder / "state"))
@@ -206,7 +211,12 @@ def test_screen_uses_the_width_and_shows_names(
     assert panel.height() > 400
     thumb = window.findChild(QPushButton, "thumb-item-1")
     assert thumb is not None
-    assert re.fullmatch(r"clip\.mkv\n\d{2}:\d{2}\nLight", thumb.text())
+    shown, clock, preset = thumb.text().split("\n")
+    # The name may be elided in the middle on some platform fonts (cl…kv on Windows).
+    assert shown == "clip.mkv" or _elided_from(shown, "clip.mkv")
+    assert re.fullmatch(r"\d{2}:\d{2}", clock)
+    assert preset == "Light"
+    assert thumb.accessibleName() == f"clip.mkv · {clock} · Light"
     assert str(source) in thumb.toolTip()
     assert "Light" in thumb.toolTip()
     _assert_expert_labels(

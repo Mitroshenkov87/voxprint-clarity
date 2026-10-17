@@ -580,6 +580,7 @@ def _dress_history(root: QWidget, layout: SimpleLayout) -> None:
             lines.append(preset)
         button.setText("\n".join(lines))
         button.setToolTip("\n".join(part for part in (item.prompt, clock, preset) if part))
+        button.setAccessibleName(" · ".join(part for part in (name, clock, preset) if part))
 
 
 def _seen_at(layout: SimpleLayout, item_id: str) -> datetime:
