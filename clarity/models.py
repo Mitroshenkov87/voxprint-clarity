@@ -1,5 +1,8 @@
 """Clarity's model catalogue. Weights stay in the shared models folder.
 
+``mdl.json`` at the repository root publishes the same six weights to the
+suite model downloader. ``tests/test_mdl_catalogue.py`` keeps the two in step.
+
 The suite gate is ``voxprint_common.licence``. Clarity still fetches only MIT,
 Apache-2.0, and BSD. A non-commercial, copyleft, or missing licence is refused
 before a download. Hashes were computed from the official release assets.
@@ -34,6 +37,7 @@ class ClarityModel:
     attribution: str
     source_url: str
     sha256: str
+    size: int
     vram_mb: int
     tile: int
     filename: str
@@ -103,6 +107,7 @@ CATALOG: tuple[ClarityModel, ...] = (
         attribution="DRUNet deblocking_color from the KAIR v1.0 release (MIT). DPIR, Kai Zhang.",
         source_url="https://github.com/cszn/KAIR",
         sha256="b26323e888230b1b5b58957add8dc9b9ea7fa2f69bdf6a0c3cca9db82167209f",
+        size=130_590_513,
         vram_mb=1800,
         tile=512,
         filename="drunet_deblocking_color.pth",
@@ -123,6 +128,7 @@ CATALOG: tuple[ClarityModel, ...] = (
         attribution="DRUNet color denoiser from the KAIR v1.0 release (MIT). DPIR, Kai Zhang.",
         source_url="https://github.com/cszn/KAIR",
         sha256="479abe3c5327dfd10ff54a80ec7d4098ca80752a5c9492cdff31cee430bec4b4",
+        size=130_579_305,
         vram_mb=1800,
         tile=512,
         filename="drunet_color.pth",
@@ -146,6 +152,7 @@ CATALOG: tuple[ClarityModel, ...] = (
         ),
         source_url="https://github.com/cszn/SCUNet",
         sha256="fa78899ba2caec9d235a900e91d96c689da71c42029230c2028b00f09f809c2e",
+        size=71_982_841,
         vram_mb=3600,
         tile=256,
         filename="scunet_color_real_psnr.pth",
@@ -165,6 +172,7 @@ CATALOG: tuple[ClarityModel, ...] = (
         attribution="Compact Real-ESRGAN general v3, BSD-3-Clause, Real-ESRGAN v0.2.5.0.",
         source_url="https://github.com/xinntao/Real-ESRGAN",
         sha256="8dc7edb9ac80ccdc30c3a5dca6616509367f05fbc184ad95b731f05bece96292",
+        size=4_885_111,
         vram_mb=1100,
         tile=512,
         filename="realesr-general-x4v3.pth",
@@ -184,6 +192,7 @@ CATALOG: tuple[ClarityModel, ...] = (
         attribution="Compact Real-ESRGAN general v3 denoise twin, BSD-3-Clause. Blended with the general net by strength.",
         source_url="https://github.com/xinntao/Real-ESRGAN",
         sha256="1641f8c4464b9f097c9fdda5589273713f67cf59f3d909e0bd688f0cee269dca",
+        size=4_885_111,
         vram_mb=1100,
         tile=512,
         filename="realesr-general-wdn-x4v3.pth",
@@ -203,6 +212,7 @@ CATALOG: tuple[ClarityModel, ...] = (
         attribution="Compact anime video v3, BSD-3-Clause, Real-ESRGAN v0.2.5.0. Anime preset only.",
         source_url="https://github.com/xinntao/Real-ESRGAN",
         sha256="b8a8376811077954d82ca3fcf476f1ac3da3e8a68a4f4d71363008000a18b75d",
+        size=2_504_012,
         vram_mb=1100,
         tile=512,
         filename="realesr-animevideov3.pth",

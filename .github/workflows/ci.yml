@@ -53,7 +53,7 @@ jobs:
           $setup = (Resolve-Path installer\Output\VoxprintClarity-Setup.exe).Path
           $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=C:\clarity","/RUNTIME=skip" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "install failed ($($p.ExitCode))" }
-          foreach ($f in @("C:\clarity\main.py","C:\clarity\LICENSE","C:\clarity\branding\clarity.ico","C:\clarity\clarity\__main__.py","C:\clarity\voxprint-clarity.exe","C:\clarity\voxprint-clarity-cli.exe")) {
+          foreach ($f in @("C:\clarity\main.py","C:\clarity\mdl.json","C:\clarity\LICENSE","C:\clarity\branding\clarity.ico","C:\clarity\clarity\__main__.py","C:\clarity\voxprint-clarity.exe","C:\clarity\voxprint-clarity-cli.exe")) {
             if (-not (Test-Path $f)) { throw "missing $f" }
           }
           $menu = Get-ChildItem "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\VOXPrint AI Suite" -Filter "*.lnk"
