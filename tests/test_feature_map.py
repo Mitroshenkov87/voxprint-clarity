@@ -1,4 +1,4 @@
-"""The feature map names every parser flag and records an owner decision."""
+"""The feature map names every parser flag."""
 from __future__ import annotations
 
 import argparse
@@ -23,10 +23,12 @@ def _names(parser: argparse.ArgumentParser) -> set[str]:
     return found
 
 
-def test_feature_map_covers_the_cli_and_keeps_the_owner_decision() -> None:
+def test_feature_map_covers_the_cli() -> None:
     text = _MAP.read_text(encoding="utf-8")
     required = _names(build_parser()) | _names(_command_parser())
     missing = sorted(name for name in required if name not in text)
     assert missing == []
-    assert "needs owner decision" in text
+    assert "needs owner decision" not in text
+    assert "Check the graphics card" in text
+    assert "| done |" in text
     assert "| kept |" in text

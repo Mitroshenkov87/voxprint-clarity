@@ -7,8 +7,8 @@ Project and Setup tabs, the menus, and the Expert panel are the places. The
 CLI program itself is unchanged: the same flags, the same subcommands, and the
 same exit codes.
 
-Status is `kept` when the action is reachable. `needs owner decision` means it
-has no place in this shell yet and was not removed.
+Status is `kept` when the action is reachable. `done` means an owner decision
+was settled and the action is in this shell.
 
 ## Current window
 
@@ -77,7 +77,7 @@ reaches that option without typing it. `--help` and `-h` stay on the program.
 | `--version` | Prints the build label and exits | CLI unchanged. Tools → the version label shows the same text | kept |
 | `--help`, `-h` | Parser help | CLI unchanged | kept |
 | `--selftest` | Opens the window offscreen and checks Start | CLI unchanged. The window it opens is this shell | kept |
-| `--selftest` GPU TensorRT and CUDA sessions | A GPU selftest opens real sessions and fails if either falls back to CPU | No shell control starts those sessions. The CLI flag is unchanged | needs owner decision |
+| `--selftest` GPU TensorRT and CUDA sessions | A GPU selftest opens real sessions and fails if either falls back to CPU | Tools → Check the graphics card runs `python -m clarity --selftest` in a subprocess and shows pass or fail, with the process output behind Details. Setup has the same button. The CLI flag is unchanged | done |
 | `--no-gpu` | With `--selftest`, skip the CUDA and TensorRT sessions. The plan is still built | CLI unchanged. Setup tab Check the restore plan shows that plan. Tools → Check the restore plan is the same action | kept |
 | `--register-models-user` | Register Clarity in the shared models folder | CLI unchanged. Setup tab Register, and Models → Register | kept |
 | `--unregister-models-user` | Release the runtime and unregister | CLI unchanged. Setup tab Unregister, and Models → Unregister. The repair dialog is shown while runtimes are removed | kept |
@@ -104,4 +104,4 @@ reaches that option without typing it. `--help` and `-h` stay on the program.
 | `models fetch` | Fetch weights | CLI unchanged. Setup tab Fetch, Project tab Download models, and Models → Fetch and Download models | kept |
 | `models fetch --id` | Repeat to fetch selected ids | CLI unchanged. Setup tab model checklist, then Fetch or Fetch dry-run. An empty checklist fetches the catalogue | kept |
 | `selftest` | Headless selftest, including `--no-gpu`, `--json`, and `--dry-run` | CLI unchanged. The window half is this shell. The plan half is Check the restore plan | kept |
-| `selftest` GPU sessions | Opens real TensorRT and CUDA sessions unless `--no-gpu` is set | No shell control starts those sessions | needs owner decision |
+| `selftest` GPU sessions | Opens real TensorRT and CUDA sessions unless `--no-gpu` is set | Tools → Check the graphics card, and Setup → Check the graphics card. The same subprocess shows pass or fail | done |

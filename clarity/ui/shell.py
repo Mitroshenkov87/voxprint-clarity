@@ -76,9 +76,11 @@ from clarity.ui.job_presets import (
     output_suffix,
 )
 from clarity.ui.job_presets import adopted_video as load_adopted_video
+from clarity.ui.shell_dress import install as install_dress
+from clarity.ui.shell_dress import run_graphics_check
 from clarity.ui.shell_pages import ProjectPage, SetupPage
 from clarity.ui.suite_dialog import RepairProgress
-from clarity.ui.theme import IDENTITY
+from clarity.ui.theme import CONTROL_BG, CONTROL_BORDER, IDENTITY, TEXT_MUTED, TEXT_ON_PRIMARY
 
 Runner = Callable[..., None]
 
@@ -230,12 +232,35 @@ def hold_float_precision(root: QWidget, state: SettingState) -> None:
 
 
 def shell_style() -> str:
-    """Return the shared shell stylesheet with Clarity's teal identity.
+    """Return the shared shell stylesheet with Clarity's teal on the actions.
+
+    The shared sheet paints primary buttons and selected chips yellow. The
+    rules appended here paint those same controls in Clarity's teal. A
+    disabled Restore button stays muted.
 
     Returns:
-        A Qt stylesheet. The primary buttons stay yellow.
+        A Qt stylesheet.
     """
-    return build_shell_style(False).replace(ACCENT, IDENTITY)
+    sheet = build_shell_style(False).replace(ACCENT, IDENTITY)
+    teal = IDENTITY
+    ink = TEXT_ON_PRIMARY
+    muted = f"background: {CONTROL_BG}; color: {TEXT_MUTED}; border-color: {CONTROL_BORDER};"
+    override = (
+        f"QPushButton#generate {{ background: {teal}; color: {ink}; border-color: {teal}; }}\n"
+        f"QPushButton#primary {{ background: {teal}; color: {ink}; border-color: {teal}; }}\n"
+        f"QPushButton#expertToggle:checked {{ background: {teal}; color: {ink}; border-color: {teal}; }}\n"
+        f'QPushButton[chip="true"]:checked {{ background: {teal}; color: {ink}; border-color: {teal}; }}\n'
+        f"QPushButton#generate:disabled {{ {muted} }}\n"
+        f'QPushButton[chip="true"]:disabled {{ {muted} }}\n'
+        f"QCheckBox::indicator:checked {{ background: {teal}; border-color: {teal}; }}\n"
+        f'QPushButton[thumb="true"]:checked {{ border: 2px solid {teal}; }}\n'
+        'QPushButton[chip="true"] { min-height: 26px; padding: 1px 12px; }\n'
+        "QLabel#fileDrop { padding: 8px 16px; }\n"
+        "QLabel#settingGroup { padding: 4px 0 0 0; }\n"
+        "QFrame#expertPanel QSpinBox, QFrame#expertPanel QDoubleSpinBox,\n"
+        "QFrame#expertPanel QComboBox { min-height: 22px; padding: 0 6px; }\n"
+    )
+    return f"{sheet}\n{override}"
 
 
 def reference_shell(*, state_dir: Path | None = None) -> ReferenceShell:
@@ -683,6 +708,10 @@ class MainWindow(QMainWindow):
         """Release the shared runtime and remove Clarity from the models folder."""
         self._register(remove=True)
 
+    def check_graphics_card(self) -> None:
+        """Run the GPU selftest in a subprocess and show pass or fail."""
+        run_graphics_check(self)
+
     def plan_check(self) -> None:
         """Show the self-test plan. It does not open a CUDA session."""
         try:
@@ -730,10 +759,12 @@ class MainWindow(QMainWindow):
         subtitle = QLabel(tr("app.subtitle"))
         subtitle.setObjectName("subtitle")
         subtitle.setWordWrap(True)
+        subtitle.setStyleSheet("padding: 12px 16px 8px 16px; background: transparent;")
         column.addWidget(subtitle)
         column.addWidget(tabs, 1)
         footer = QLabel(version_label())
         footer.setObjectName("versionLabel")
+        footer.setStyleSheet("padding: 8px 16px 12px 16px; background: transparent;")
         column.addWidget(footer)
         self.setCentralWidget(chrome)
         self.setWindowTitle(tr("splash.app.clarity"))
@@ -761,6 +792,7 @@ class MainWindow(QMainWindow):
                 hold_float_precision(screen.root, self.settings_state)
 
         screen.set_expert = set_expert  # type: ignore[method-assign]
+        install_dress(screen, self._layout)
         drop = screen.root.findChild(QLabel, "fileDrop")
         if drop is not None:
             watcher = _KeepPath(self, drop)
@@ -799,6 +831,7 @@ class MainWindow(QMainWindow):
         tools.addAction(tr("clarity.action.install_suite"), self.install_suite)
         tools.addAction(tr("clarity.action.dry_run"), self.dry_run_restore)
         tools.addAction(tr("clarity.action.plan_check"), self.plan_check)
+        tools.addAction(tr("clarity.action.check_gpu"), self.check_graphics_card)
         tools.addAction(version_label(), self.show_version)
 
     def _on_expert_mode(self, enabled: bool) -> None:

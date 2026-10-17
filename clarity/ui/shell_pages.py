@@ -261,6 +261,7 @@ class SetupPage(QWidget):
         self.register_button = self._action("registerModels", "clarity.action.register", window.register_models)
         self.unregister_button = self._action("unregisterModels", "clarity.action.unregister", window.unregister_models)
         self.plan_button = self._action("planCheck", "clarity.action.plan_check", window.plan_check)
+        self.gpu_button = self._action("checkGpu", "clarity.action.check_gpu", window.check_graphics_card)
         for button in (
             self.repair_button,
             self.install_button,
@@ -272,6 +273,7 @@ class SetupPage(QWidget):
             self.register_button,
             self.unregister_button,
             self.plan_button,
+            self.gpu_button,
         ):
             right.addWidget(button)
 
@@ -294,6 +296,7 @@ class SetupPage(QWidget):
             self.register_button,
             self.unregister_button,
             self.plan_button,
+            self.gpu_button,
         )
 
     def sync(self, *, busy: bool) -> None:

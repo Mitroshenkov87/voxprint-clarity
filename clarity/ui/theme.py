@@ -1,9 +1,9 @@
 """Suite theme from ``voxprint_common.ui.theme``, plus Clarity's splash identity.
 
-The window uses the shared yellow primary actions. The splash progress bar
-is Clarity's teal identity from the shared token file, not the shared
-``GREEN`` success token. ``IDENTITY`` is passed to
-``voxprint_common.ui.splash.Splash``.
+The splash progress bar is Clarity's teal identity from the shared token
+file, not the shared ``GREEN`` success token. ``IDENTITY`` is passed to
+``voxprint_common.ui.splash.Splash``. The product window appends the same
+teal to the shared stylesheet for the primary action and selected chips.
 """
 from __future__ import annotations
 

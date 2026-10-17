@@ -64,8 +64,8 @@ def adopted_video() -> AdoptedVideo:
 def clarity_settings() -> Settings:
     """Return descriptors whose defaults match :class:`~clarity.pipeline.job.Settings`.
 
-    Expert rows share the group ``restore``. Simple chips write the same keys
-    the old form wrote, including the codec and the sharpen amount.
+    Expert rows are Restoration, Upscale, Encoding, and Advanced, in that
+    order. Simple chips write the same keys the old form wrote.
 
     Returns:
         A new settings list. The caller owns it.
@@ -93,7 +93,7 @@ def clarity_settings() -> Settings:
             SettingType.TEXT,
             "",
             expert=True,
-            group="restore",
+            group="restoration",
         )
     )
     settings.add(
@@ -104,7 +104,7 @@ def clarity_settings() -> Settings:
             SettingType.FLOAT,
             0.35,
             expert=True,
-            group="restore",
+            group="restoration",
             minimum=0.0,
             maximum=1.0,
         )
@@ -137,7 +137,20 @@ def clarity_settings() -> Settings:
             SettingType.TEXT,
             "",
             expert=True,
-            group="restore",
+            group="upscale",
+        )
+    )
+    settings.add(
+        SettingSpec(
+            "job.upscale_strength",
+            "setting.job.upscale_strength",
+            "setting.job.upscale_strength.help",
+            SettingType.FLOAT,
+            0.0,
+            expert=True,
+            group="upscale",
+            minimum=0.0,
+            maximum=1.0,
         )
     )
     settings.add(
@@ -182,11 +195,24 @@ def clarity_settings() -> Settings:
             SettingType.ENUM,
             "av1",
             expert=True,
-            group="restore",
+            group="encoding",
             choices=(
                 Choice("av1", "codec.av1"),
                 Choice("hevc", "codec.hevc"),
             ),
+        )
+    )
+    settings.add(
+        SettingSpec(
+            "job.quality_factor",
+            "setting.job.quality_factor",
+            "setting.job.quality_factor.help",
+            SettingType.FLOAT,
+            40.0,
+            expert=True,
+            group="encoding",
+            minimum=0.0,
+            maximum=100.0,
         )
     )
     settings.add(
@@ -197,7 +223,7 @@ def clarity_settings() -> Settings:
             SettingType.FLOAT,
             15.0,
             expert=True,
-            group="restore",
+            group="advanced",
             minimum=0.0,
             maximum=100.0,
         )
@@ -210,7 +236,7 @@ def clarity_settings() -> Settings:
             SettingType.INT,
             0,
             expert=True,
-            group="restore",
+            group="advanced",
             minimum=0,
             maximum=2048,
         )
@@ -223,7 +249,7 @@ def clarity_settings() -> Settings:
             SettingType.INT,
             2,
             expert=True,
-            group="restore",
+            group="advanced",
             minimum=1,
             maximum=16,
         )
@@ -236,35 +262,9 @@ def clarity_settings() -> Settings:
             SettingType.INT,
             16,
             expert=True,
-            group="restore",
+            group="advanced",
             minimum=0,
             maximum=256,
-        )
-    )
-    settings.add(
-        SettingSpec(
-            "job.quality_factor",
-            "setting.job.quality_factor",
-            "setting.job.quality_factor.help",
-            SettingType.FLOAT,
-            40.0,
-            expert=True,
-            group="restore",
-            minimum=0.0,
-            maximum=100.0,
-        )
-    )
-    settings.add(
-        SettingSpec(
-            "job.upscale_strength",
-            "setting.job.upscale_strength",
-            "setting.job.upscale_strength.help",
-            SettingType.FLOAT,
-            0.0,
-            expert=True,
-            group="restore",
-            minimum=0.0,
-            maximum=1.0,
         )
     )
     return settings

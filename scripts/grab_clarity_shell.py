@@ -42,7 +42,7 @@ def _show_wipe(window: MainWindow, sample: Path, item_id: str) -> None:
     screen.refresh()
     frame = window.findChild(QLabel, "compareView")
     if frame is not None and frame.height() < 40:
-        frame.setMinimumHeight(420)
+        frame.setMinimumHeight(200)
         screen.refresh()
     app = QApplication.instance()
     if app is not None:
@@ -69,6 +69,12 @@ def main() -> None:
     _shot(window, "clarity-simple-ru.png")
     _show_wipe(window, sample, "shot-ru")
     _shot(window, "clarity-expert-ru.png")
+    tabs = window._tabs
+    setup = window._setup_page
+    if tabs is None or setup is None:
+        raise RuntimeError("the setup tab is missing")
+    tabs.setCurrentWidget(setup)
+    _shot(window, "clarity-setup-ru.png")
     window.close()
 
 
