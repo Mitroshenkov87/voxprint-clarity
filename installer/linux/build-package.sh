@@ -9,7 +9,7 @@ mkdir -p "$stage/share/applications" "$stage/share/icons/hicolor/256x256/apps" "
 cp -a "$root/clarity" "$root/locales" "$root/docs" "$root/assets" "$stage/"
 find "$stage" -depth -type d -name __pycache__ -exec rm -rf {} +
 find "$stage" -type f -name '*.pyc' -delete
-cp "$root/main.py" "$root/LICENSE" "$root/NOTICE" "$root/requirements.txt" "$root/requirements-gpu.txt" "$root/pyproject.toml" "$root/BUILD.json" "$stage/"
+cp "$root/main.py" "$root/LICENSE" "$root/NOTICE" "$root/requirements.txt" "$root/requirements-gpu.txt" "$root/pyproject.toml" "$root/BUILD.json" "$root/mdl.json" "$stage/"
 cp "$root/branding/clarity-256.png" "$stage/share/icons/hicolor/256x256/apps/voxprint-clarity.png"
 cp "$root/branding/clarity-256.png" "$stage/clarity.png"
 cp "$root/branding/clarity-256.png" "$stage/voxprint-clarity.png"

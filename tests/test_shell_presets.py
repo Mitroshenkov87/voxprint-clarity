@@ -17,7 +17,6 @@ from clarity.ui.job_presets import (
     job_from_state,
     load_clarity_manifest,
     model_choices,
-    models_ready,
 )
 from voxprint_common.ui.expert import ExpertMode
 from voxprint_common.ui.presets import PresetMatch
@@ -153,16 +152,14 @@ def test_shared_video_sample_uses_h264_and_the_app_file_does_not() -> None:
         assert token not in text
 
 
-def test_placeholder_manifest_covers_the_catalogue_and_stays_unavailable() -> None:
+def test_manifest_covers_the_catalogue_with_real_files() -> None:
     manifest = load_clarity_manifest()
     assert manifest is not None
-    assert model_choices(manifest) == ()
-    assert models_ready() is True
     published = {model.id: model for model in manifest.models}
+    assert [choice.value for choice in model_choices(manifest)] == list(published)
     for row in published.values():
-        assert row.unavailable is True
-        assert row.reason == "placeholder"
-        assert row.files == ()
+        assert row.unavailable is False
+        assert len(row.files) == 1
     jobs = (
         Settings(),
         Settings(mode="strong"),
