@@ -88,11 +88,11 @@
   "setting.job.container.help": "MKV или MP4.",
   "setting.job.codec": "Видеокодек",
   "setting.job.codec.help": "Обычный кодек — AV1. HEVC только для кодировщика GPU.",
-  "setting.job.sigma": "Шум",
+  "setting.job.sigma": "Сила шумоподавления (σ)",
   "setting.job.sigma.help": "Оценка шума для модели. Обычное значение — 15.",
-  "setting.job.tile": "Плитка",
+  "setting.job.tile": "Размер тайла",
   "setting.job.tile.help": "Размер плитки в пикселях. 0 — выбрать автоматически.",
-  "setting.job.batch": "Кадров за раз",
+  "setting.job.batch": "Кадров в пакете",
   "setting.job.batch.help": "Сколько кадров восстанавливать вместе.",
   "setting.job.overlap": "Перекрытие",
   "setting.job.overlap.help": "Сколько пикселей плитки делят между собой.",
@@ -131,7 +131,7 @@
   "model.drunet-deblocking-color": "Убрать блоки",
   "model.drunet-color": "Убрать шум",
   "model.scunet-color-real-psnr": "Сильная очистка",
-  "model.realesr-general-x4v3": "Больше картинка",
+  "model.realesr-general-x4v3": "Увеличение ×2",
   "model.realesr-general-wdn-x4v3": "Больше и меньше шума",
   "model.realesr-animevideov3": "Аниме"
 }
