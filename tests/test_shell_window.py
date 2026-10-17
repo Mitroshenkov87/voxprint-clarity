@@ -211,9 +211,12 @@ def test_screen_uses_the_width_and_shows_names(
     assert "Light" in thumb.toolTip()
     _assert_expert_labels(
         window,
-        {"Denoise blend", "AV1 quality (CRF)", "Block removal", "Denoise strength (σ)"},
+        {"Softer 2× mix", "AV1 quality (CRF)", "Block removal", "Denoise strength (σ)"},
         "Auto",
     )
+    assert _expert_groups(window)["Block removal"] == "Restoration"
+    assert _expert_groups(window)["Softer 2× mix"] == "Upscale"
+    assert _expert_groups(window)["AV1 quality (CRF)"] == "Encoding"
     _assert_simple_chips(window, "en")
     window.set_language_code("ru")
     app.processEvents()
@@ -237,9 +240,12 @@ def test_screen_uses_the_width_and_shows_names(
     app.processEvents()
     _assert_expert_labels(
         chrome,
-        {"Смесь шумоподавления", "Качество AV1 (CRF)", "Удаление блоков", "Сила шумоподавления (σ)"},
+        {"Мягкая смесь ×2", "Качество AV1 (CRF)", "Удаление блоков", "Сила шумоподавления (σ)"},
         "Авто",
     )
+    assert _expert_groups(chrome)["Удаление блоков"] == "Восстановление"
+    assert _expert_groups(chrome)["Мягкая смесь ×2"] == "Увеличение"
+    assert _expert_groups(chrome)["Качество AV1 (CRF)"] == "Кодирование"
     _assert_simple_chips(chrome, "ru")
     toggle = chrome.findChild(QPushButton, "expertToggle")
     assert toggle is not None
@@ -249,6 +255,33 @@ def test_screen_uses_the_width_and_shows_names(
     advance = QFontMetrics(font).horizontalAdvance(toggle.text())
     assert toggle.minimumWidth() >= advance + 32
     window.close()
+
+
+def _expert_groups(root: QWidget) -> dict[str, str]:
+    panel = root.findChild(QFrame, "expertPanel")
+    assert panel is not None
+    form = panel.findChild(QWidget, "expertForm")
+    assert form is not None
+    layout = form.layout()
+    assert layout is not None
+    current = ""
+    found: dict[str, str] = {}
+    for index in range(layout.count()):
+        item = layout.itemAt(index)
+        if item is None:
+            continue
+        widget = item.widget()
+        if isinstance(widget, QLabel) and widget.objectName() == "settingGroup":
+            current = widget.text()
+            continue
+        nested = item.layout()
+        if nested is None:
+            continue
+        first = nested.itemAt(0)
+        label = None if first is None else first.widget()
+        if isinstance(label, QLabel):
+            found[label.text()] = current
+    return found
 
 
 def _assert_expert_labels(root: QWidget, names: set[str], auto: str) -> None:

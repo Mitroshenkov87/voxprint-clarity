@@ -65,7 +65,9 @@ def clarity_settings() -> Settings:
     """Return descriptors whose defaults match :class:`~clarity.pipeline.job.Settings`.
 
     Expert rows are Restoration, Upscale, Encoding, and Advanced, in that
-    order. Simple chips write the same keys the old form wrote. Cleanup owns
+    order. Block removal is the deblocker's strength, so it is in Restoration.
+    The softer 2× mix stays in Upscale. Simple chips write the same keys the
+    old form wrote. Cleanup owns
     the mode, the model list, and sigma. What to fix owns white balance and
     levels together. Sharpness, file quality, and the container each own one
     key, so any other value is Custom.
@@ -110,6 +112,19 @@ def clarity_settings() -> Settings:
             group="restoration",
             minimum=0.0,
             maximum=1.0,
+        )
+    )
+    settings.add(
+        SettingSpec(
+            "job.quality_factor",
+            "setting.job.quality_factor",
+            "setting.job.quality_factor.help",
+            SettingType.FLOAT,
+            40.0,
+            expert=True,
+            group="restoration",
+            minimum=0.0,
+            maximum=100.0,
         )
     )
     settings.add(
@@ -216,19 +231,6 @@ def clarity_settings() -> Settings:
             group="encoding",
             minimum=0,
             maximum=63,
-        )
-    )
-    settings.add(
-        SettingSpec(
-            "job.quality_factor",
-            "setting.job.quality_factor",
-            "setting.job.quality_factor.help",
-            SettingType.FLOAT,
-            40.0,
-            expert=True,
-            group="encoding",
-            minimum=0.0,
-            maximum=100.0,
         )
     )
     settings.add(

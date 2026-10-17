@@ -62,9 +62,9 @@ either of those.
 | Tile | Default 0, no control | Expert panel. The stored value stays 0, and the field shows Auto | kept |
 | Batch | Default 2, no control | Expert panel | kept |
 | Overlap | Default 16, no control | Expert panel | kept |
-| Quality factor | Default 40, no control | Expert panel, labeled Block removal. It sets how hard the deblocker removes compression blocks. A lower number removes more. It is not the file size | kept |
+| Quality factor | Default 40, no control | Expert panel, under Restoration, labeled Block removal. It sets how hard the deblocker removes compression blocks. A lower number removes more. It is not the file size | kept |
 | File quality | The encoder used a fixed AV1 CQ of 20 | Video tab File quality chips: Smaller file (CRF 32), Balanced (CRF 20), Best quality (CRF 16). Balanced is the previous fixed value. HEVC receives the same number as its CQ. The Expert field is labeled AV1 quality (CRF) | kept |
-| Upscale strength | Default 0, no control | Expert panel, labeled Denoise blend. It mixes in the softer denoised 2× model. 0 leaves that mix off | kept |
+| Upscale strength | Default 0, no control | Expert panel, under Upscale, labeled Softer 2× mix. It mixes the softer denoised 2× model into the upscale. 0 leaves that mix off | kept |
 | Restore model list | Chosen from the mode, no field | Expert panel text. Presets write it. Manage models edits the catalogue | kept |
 | Upscale model | Chosen from the anime switch, no field | Expert panel text. The Look chip writes it | kept |
 | Copy audio | Always on, no control | Always on, no control | kept |

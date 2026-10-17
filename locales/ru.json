@@ -113,7 +113,7 @@
   "setting.job.overlap.help": "Сколько пикселей плитки делят между собой.",
   "setting.job.quality_factor": "Удаление блоков",
   "setting.job.quality_factor.help": "Насколько сильно убирать блоки сжатия. Обычное значение — 40. Меньше число убирает сильнее.",
-  "setting.job.upscale_strength": "Смесь шумоподавления",
+  "setting.job.upscale_strength": "Мягкая смесь ×2",
   "setting.job.upscale_strength.help": "Сколько более мягкой, менее шумной модели ×2 подмешать. 0 — выключено.",
   "clarity.tab.video": "Видео",
   "clarity.tab.project": "Проект",

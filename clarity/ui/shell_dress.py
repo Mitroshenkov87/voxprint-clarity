@@ -590,7 +590,7 @@ def _seen_at(layout: SimpleLayout, item_id: str) -> datetime:
     stamp = times.get(item_id)
     if isinstance(stamp, datetime):
         return stamp
-    stamp = datetime.now()
+    stamp = datetime.now().astimezone()
     times[item_id] = stamp
     return stamp
 
