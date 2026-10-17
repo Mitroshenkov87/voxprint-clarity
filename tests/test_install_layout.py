@@ -126,7 +126,7 @@ def test_user_desktop_registration_keeps_user_data(tmp_path: Path) -> None:
     (apps / OLD_DESKTOP_FILE).write_text("old\n", encoding="utf-8")
     app = tmp_path / "clarity"
     app.mkdir()
-    (app / "BUILD.json").write_text('{"version": "1.0.0"}\n', encoding="utf-8")
+    (app / "BUILD.json").write_text('{"version": "1.0.0-rc"}\n', encoding="utf-8")
     env = os.environ.copy()
     env["HOME"] = str(home)
     env.pop("XDG_DATA_HOME", None)
@@ -138,6 +138,6 @@ def test_user_desktop_registration_keeps_user_data(tmp_path: Path) -> None:
     desktop = (apps / DESKTOP_FILE).read_text(encoding="utf-8")
     assert "Name=VOXPrint AI Clarity" in desktop
     assert f'Exec="{app}/voxprint-clarity" %f' in desktop
-    assert "X-Voxprint-Version=1.0.0" in desktop
+    assert "X-Voxprint-Version=1.0.0-rc" in desktop
     assert not (apps / OLD_DESKTOP_FILE).exists()
     assert weight.read_text(encoding="utf-8") == "keep"

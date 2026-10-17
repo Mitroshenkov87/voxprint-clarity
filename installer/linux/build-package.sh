@@ -16,7 +16,7 @@ cp "$root/branding/clarity-256.png" "$stage/voxprint-clarity.png"
 cp "$root/branding/clarity-256.png" "$stage/.DirIcon"
 version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$root/BUILD.json")
 if [ -z "$version" ]; then
-  version=1.0.0
+  version=1.0.0-rc
 fi
 sed "s/^X-Voxprint-Version=.*/X-Voxprint-Version=$version/" "$root/installer/linux/ai.voxprint.Clarity.desktop" > "$stage/share/applications/ai.voxprint.Clarity.desktop"
 sed "s/^X-Voxprint-Version=.*/X-Voxprint-Version=$version/" "$root/installer/linux/voxprint-clarity.desktop" > "$stage/voxprint-clarity.desktop"

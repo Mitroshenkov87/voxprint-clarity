@@ -22,6 +22,7 @@ from clarity.gpu_runtime import (
     require_tensorrt_and_cuda,
     reset_gpu_runtime,
 )
+from clarity.native_gap import call_capturing_stderr
 from clarity.progress import pulse_until
 
 
@@ -189,6 +190,16 @@ def test_cpu_only_session_is_refused(monkeypatch: pytest.MonkeyPatch, tmp_path: 
         require_gpu_session(_Session())
     assert "nvinfer_10" in str(caught.value)
     assert require_gpu_session(object()) == []
+
+
+def test_stderr_capture_reads_the_process_stream() -> None:
+    def write() -> str:
+        os.write(2, b"loader line\n")
+        return "ok"
+
+    result, text = call_capturing_stderr(write)
+    assert result == "ok"
+    assert "loader line" in text
 
 
 def test_json_event_flushes_phase_and_frame_fields(capsys: pytest.CaptureFixture[str]) -> None:

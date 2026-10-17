@@ -2,10 +2,19 @@
 
 ## Unreleased
 
-- Record version `1.0.0` in `BUILD.json`. The version label is
-  `1.0.0 build N "…"`, with no RC word. `version --json` reports that
-  version string. The release tag check accepts `v1.0.0` and
-  `v1.0.0-rc.1005`.
+- Build 1005 is an RC again. `BUILD.json` version is `1.0.0-rc` while the
+  first final release waits for the shared UI. The label is
+  `1.0.0 RC build N "…"`. `version --json` reports `1.0.0-rc`.
+  Tag `v1.0.0-rc.1005` matches this file. A plain `v1.0.0` tag matches a
+  later file whose version is `1.0.0`.
+- The installer session probe and the worker share `clarity/native_gap.py`.
+  A failed session names which of `cudart64_13`, `cublas64_13`,
+  `cublasLt64_13`, `cudnn*`, and `nvinfer_10` are actually missing, and
+  appends the ONNX Runtime log line when one was captured.
+- The setup log receives the pin script's stdout and stderr after
+  `pinning torch and spandrel into the shared venv`.
+- The identity probe model is ONNX IR 10 and opset 13. ONNX Runtime 1.31
+  rejects an IR version above 13, and the onnx helper default is higher.
 - Build 1005. On Windows, register `site-packages/torch/lib` and every directory
   under `site-packages/nvidia` and `site-packages/tensorrt_libs` that contains
   a CUDA 13 or TensorRT library, including a nested `bin/x86_64`. A session

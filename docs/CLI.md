@@ -105,9 +105,9 @@ Opening the window on a project is still `python -m clarity PATH.vxclarity`.
 ## info and version
 
 Both print the label from `BUILD.json`: version, build, and codename.
-A plain version is `1.0.0 build 1005 "Codename"`. A version string that
-contains `-rc` inserts `RC` after the number. `--json` reports the version
-string as it is written in `BUILD.json`.
+This file is `1.0.0-rc`, so the label is `1.0.0 RC build 1005 "Codename"`.
+`--json` reports `1.0.0-rc`, the version string as it is written.
+A version string without `-rc` omits the RC word.
 `--version` on the window launcher prints the same label and does not need
 `--json`. `--dry-run` does not change the text.
 

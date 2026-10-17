@@ -12,12 +12,11 @@ Clarity package is importable.
 from __future__ import annotations
 
 import argparse
-import fnmatch
+import importlib.util
 import json
 import os
 import subprocess
 import sys
-import sysconfig
 from pathlib import Path
 from typing import Any
 
@@ -154,7 +153,7 @@ def require_gpu_providers(python: str) -> None:
     )
     if completed.returncode == 0:
         return
-    detail = (completed.stdout or completed.stderr or "").strip()
+    detail = "\n".join(part.strip() for part in (completed.stdout, completed.stderr) if part and part.strip())
     raise PinError(
         "CPU onnxruntime was uninstalled, but CUDAExecutionProvider or "
         f"TensorrtExecutionProvider is still missing. {detail}".strip()
@@ -183,11 +182,14 @@ def apply_pin(python: str, lock_path: Path, requirements: Path, *, uv: str = "")
 
 
 def probe_sessions() -> int:
-    """Open TensorRT and CUDA in this process. 1 names the missing DLL.
+    """Open TensorRT and CUDA in this process.
 
-    The repo checkout imports ``clarity.gpu_runtime``. The Windows installer
-    extracts this file to a temp directory before the app exists, so that
-    path uses the engine helper directly.
+    The message lists which required libraries are actually missing, and the
+    ONNX Runtime log line when the loader wrote one. It does not assume
+    ``nvinfer_10.dll`` is the library that failed. The repo checkout imports
+    ``clarity.gpu_runtime``. The Windows installer extracts this file to a
+    temp directory before the app exists, so that path uses the engine helper
+    directly.
 
     Returns:
         0 when both providers stay active, otherwise 1.
@@ -215,33 +217,68 @@ def _probe_without_app() -> int:
         from voxprint_engine.session import session_providers
     except ImportError:
         return _identity_probe(folders)
+    gap = _load_gap()
     missing: list[str] = []
+    logs: list[str] = []
     for name in ("TensorrtExecutionProvider", "CUDAExecutionProvider"):
-        active, reason = session_providers(name)
+
+        def open_provider(provider: str = name) -> tuple[object, object]:
+            return session_providers(provider)
+
+        (active, reason), log = gap.call_capturing_stderr(open_provider)
+        if log:
+            logs.append(log)
         if name not in [str(item) for item in active]:
             missing.append(str(reason or active))
     if missing:
-        print(f"{_missing_runtime_message(folders)}. " + "; ".join(missing), flush=True)
+        print(_failure_text(folders, missing, "\n".join(logs)), flush=True)
         return 1
     return 0
 
 
-# Same globs as clarity.gpu_runtime. This file is copied alone into the installer temp dir.
-_RUNTIME_GLOBS = (
-    "*64_13.dll",
-    "nvinfer*.dll",
-    "cudnn*.dll",
-    "libnvinfer.so*",
-    "libcudnn.so*",
-    "*.so.13",
-)
-_REQUIRED_LIBS = (
-    ("cudart64_13.dll", "cudart64_13"),
-    ("cublas64_13.dll", "cublas64_13"),
-    ("cublaslt64_13.dll", "cublasLt64_13"),
-    ("cudnn*.dll", "cudnn*"),
-    ("nvinfer_10.dll", "nvinfer_10"),
-)
+_GAP: Any = None
+
+
+def _load_gap() -> Any:
+    """Return :mod:`clarity.native_gap`, the directory list the worker uses.
+
+    The repo and an installed tree find ``clarity/native_gap.py`` next to
+    this file's parent. The Windows installer extracts both files to a temp
+    directory before the package exists, so the copy beside this file is
+    loaded by path. The import of the package stays inside this function
+    because that package is not always on ``sys.path``.
+
+    Returns:
+        The loaded module.
+
+    Raises:
+        PinError: When neither copy can be loaded.
+    """
+    global _GAP
+    if _GAP is not None:
+        return _GAP
+    here = Path(__file__).resolve().parent
+    candidates = (
+        here / "native_gap.py",
+        here / "clarity" / "native_gap.py",
+        here.parent / "clarity" / "native_gap.py",
+    )
+    for path in candidates:
+        if not path.is_file():
+            continue
+        spec = importlib.util.spec_from_file_location("clarity_native_gap_pin", path)
+        if spec is None or spec.loader is None:
+            continue
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _GAP = module
+        return module
+    try:
+        import clarity.native_gap as module
+    except ImportError as exc:
+        raise PinError("native_gap.py was not found beside pin_runtime.py or in clarity/") from exc
+    _GAP = module
+    return module
 
 
 def _gap_directories(roots: list[Path]) -> list[Path]:
@@ -251,36 +288,27 @@ def _gap_directories(roots: list[Path]) -> list[Path]:
         roots: Site-packages directories to scan.
 
     Returns:
-        Existing directories, without duplicates.
+        The directories :func:`clarity.native_gap.native_gap_directories` returns.
     """
-    found: list[Path] = []
-    seen: set[Path] = set()
-    for root in roots:
-        _scan_runtime_tree(found, seen, root / "nvidia")
-        _scan_runtime_tree(found, seen, root / "tensorrt_libs")
-        _add_dir(found, seen, root / "torch" / "lib")
-    return found
+    found: list[Path] = _load_gap().native_gap_directories(roots)
+    return list(found)
 
 
 def _register_gap() -> list[Path]:
-    """Register the gap directories. Keeps the Windows DLL-directory handles.
+    """Register the same directories the worker registers.
 
     Returns:
         The directories that were found.
     """
-    roots: list[Path] = []
-    for key in ("purelib", "platlib"):
-        value = sysconfig.get_path(key)
-        if value:
-            roots.append(Path(value))
-    folders = _gap_directories(roots)
+    gap = _load_gap()
+    folders = list(gap.native_gap_directories(gap.site_package_roots()))
     handles: list[object] = []
     if sys.platform == "win32":
         add = getattr(os, "add_dll_directory", None)
         if add is not None:
             for folder in folders:
                 try:
-                    handles.append(add(str(folder)))
+                    handles.append(add(os.fspath(folder)))
                 except OSError:
                     continue
     # The list has to stay referenced or Windows drops the search path.
@@ -288,91 +316,57 @@ def _register_gap() -> list[Path]:
     if folders:
         key = "PATH" if sys.platform == "win32" else "LD_LIBRARY_PATH"
         current = os.environ.get(key, "")
-        prefix = os.pathsep.join(str(folder) for folder in folders)
+        prefix = os.pathsep.join(os.fspath(folder) for folder in folders)
         os.environ[key] = prefix + (os.pathsep + current if current else "")
     return folders
 
 
-def _scan_runtime_tree(found: list[Path], seen: set[Path], root: Path) -> None:
-    if not root.is_dir():
-        return
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        folder = Path(dirpath)
-        dirnames[:] = [name for name in dirnames if not (folder / name).is_symlink()]
-        if _has_runtime_library(filenames):
-            _add_dir(found, seen, folder)
-
-
-def _has_runtime_library(names: list[str]) -> bool:
-    for name in names:
-        lowered = name.lower()
-        if any(fnmatch.fnmatch(lowered, pattern) for pattern in _RUNTIME_GLOBS):
-            return True
-    return False
-
-
-def _add_dir(found: list[Path], seen: set[Path], folder: Path) -> None:
-    if not folder.is_dir():
-        return
-    try:
-        resolved = folder.resolve()
-    except OSError:
-        return
-    if resolved in seen:
-        return
-    seen.add(resolved)
-    found.append(folder)
-
-
 def _missing_runtime_message(folders: list[Path]) -> str:
     """List the CUDA 13 and TensorRT libraries ``folders`` does not contain."""
-    present: list[str] = []
-    for folder in folders:
-        try:
-            present.extend(path.name.lower() for path in folder.iterdir() if path.is_file())
-        except OSError:
-            continue
-    missing: list[str] = []
-    for pattern, label in _REQUIRED_LIBS:
-        if not any(fnmatch.fnmatch(name, pattern) for name in present):
-            missing.append(label)
-    if not missing:
-        return "CUDA and TensorRT libraries were on the DLL search path, but the session did not keep a GPU provider"
-    return "Missing from the DLL search path: " + ", ".join(missing)
+    return str(_load_gap().format_missing_runtime(folders))
+
+
+def _failure_text(folders: list[Path], details: list[str], ort_log: str) -> str:
+    """Missing libraries, the loader error, and the ORT log line when captured."""
+    return str(_load_gap().format_probe_failure(folders, details, ort_log))
 
 
 def _identity_probe(folders: list[Path]) -> int:
-    """One Identity op on TensorRT and on CUDA. Imports ORT after DLL setup."""
+    """One Identity op on TensorRT and on CUDA. Imports ORT after DLL setup.
+
+    ``onnxruntime`` is imported here, after :func:`_register_gap`, because
+    importing it earlier makes Windows load the provider DLLs before
+    ``torch/lib`` and the CUDA 13 bins are on the search path.
+    """
     import numpy as np
-    import onnx
-    from onnx import helper
 
     import onnxruntime as ort
 
-    node = helper.make_node("Identity", ["X"], ["Y"])
-    graph = helper.make_graph(
-        [node],
-        "identity",
-        [helper.make_tensor_value_info("X", onnx.TensorProto.FLOAT, [1, 1])],
-        [helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [1, 1])],
-    )
-    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-    payload = model.SerializeToString()
+    gap = _load_gap()
+    payload = gap.build_identity_model()
     sample = np.zeros((1, 1), dtype=np.float32)
     errors: list[str] = []
+    logs: list[str] = []
     for name in ("TensorrtExecutionProvider", "CUDAExecutionProvider"):
-        try:
-            session = ort.InferenceSession(payload, providers=[name])
-            active = [str(item) for item in session.get_providers()]
-        except (OSError, RuntimeError, ValueError) as exc:
-            errors.append(f"{name}: {exc}")
-            continue
-        if name not in active:
-            errors.append(f"{name} fell back to {active}")
-            continue
-        session.run(None, {"X": sample})
+
+        def open_session(provider: str = name) -> list[str] | str:
+            try:
+                session = ort.InferenceSession(payload, providers=[provider])
+                active = [str(item) for item in session.get_providers()]
+                if provider not in active:
+                    return f"{provider} fell back to {active}"
+                session.run(None, {"X": sample})
+            except (OSError, RuntimeError, ValueError) as exc:
+                return f"{provider}: {exc}"
+            return active
+
+        outcome, log = gap.call_capturing_stderr(open_session)
+        if log:
+            logs.append(log)
+        if isinstance(outcome, str):
+            errors.append(outcome)
     if errors:
-        print(f"{_missing_runtime_message(folders)}. " + "; ".join(errors), flush=True)
+        print(_failure_text(folders, errors, "\n".join(logs)), flush=True)
         return 1
     return 0
 

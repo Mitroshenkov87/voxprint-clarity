@@ -73,7 +73,7 @@ def test_project_round_trip_preserves_unknown_fields(tmp_path: Path) -> None:
     assert loaded.manifest["format_version"] == "1.0"
     assert loaded.manifest["created"] == first.manifest["created"]
     assert loaded.manifest["created_by"]["app"] == "VOXPrint AI Clarity"
-    assert loaded.manifest["generator"]["version"] == "1.0.0"
+    assert loaded.manifest["generator"]["version"] == "1.0.0-rc"
     assert loaded.manifest["source"]["format"] == "mkv"
     assert loaded.manifest["source"]["filename"] == "in.mkv"
     video = loaded.manifest["x_clarity"]["video"]

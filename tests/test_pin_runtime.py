@@ -5,9 +5,12 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import onnx
 import pytest
 
+from clarity import native_gap
 from clarity.gpu_runtime import native_gap_directories
+from clarity.native_gap import IDENTITY_IR_VERSION, IDENTITY_OPSET, build_identity_model
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -144,6 +147,58 @@ def test_gap_directories_match_the_app_scan(tmp_path: Path) -> None:
     assert torch_lib.resolve() in installer
     text = module._missing_runtime_message(installer)
     assert text == "Missing from the DLL search path: cudnn*, nvinfer_10"
+
+
+def test_probe_failure_names_the_libraries_that_are_absent(tmp_path: Path) -> None:
+    module = _pin()
+    root = tmp_path / "site-packages"
+    torch_lib = root / "torch" / "lib"
+    torch_lib.mkdir(parents=True)
+    (torch_lib / "cublas64_13.dll").write_bytes(b"x")
+    (torch_lib / "cublasLt64_13.dll").write_bytes(b"x")
+    folders = module._gap_directories([root])
+    captured = "\n".join(
+        [
+            "session start",
+            "[E:onnxruntime:Default, provider_bridge_ort.cc:12] LoadLibrary failed with error 126",
+        ]
+    )
+    text = module._failure_text(folders, ["CUDAExecutionProvider: load failed"], captured)
+    assert "nvinfer_10.dll is missing" not in text
+    assert text.startswith("Missing from the DLL search path: cudart64_13, cudnn*, nvinfer_10")
+    assert "cublas64_13" not in text
+    assert "CUDAExecutionProvider: load failed" in text
+    assert "LoadLibrary failed with error 126" in text
+    source = (_ROOT / "installer" / "pin_runtime.py").read_text(encoding="utf-8")
+    assert "nvinfer_10.dll is missing" not in source
+
+
+def test_installer_probe_uses_the_worker_directory_list() -> None:
+    module = _pin()
+    loaded = module._load_gap()
+    assert Path(loaded.__file__).resolve() == Path(native_gap.__file__).resolve()
+    assert loaded.IDENTITY_IR_VERSION == native_gap.IDENTITY_IR_VERSION == 10
+    script = (_ROOT / "installer" / "install-runtime.ps1").read_text(encoding="utf-8")
+    start = script.index('Write-Log "pinning torch and spandrel into the shared venv"')
+    stop = script.index('throw "runtime pin failed"', start)
+    pinned = script[start:stop]
+    assert "& $venvPython $PinScript --python $venvPython" in pinned
+    assert "2>&1" in pinned
+    assert "Write-Log ([string]$line)" in pinned
+    iss = (_ROOT / "installer" / "VoxprintClarity.iss").read_text(encoding="utf-8")
+    assert "ExtractTemporaryFile('native_gap.py')" in iss
+    assert "..\\clarity\\native_gap.py" in iss
+
+
+def test_identity_probe_model_is_ir_version_10() -> None:
+    model = onnx.ModelProto()
+    model.ParseFromString(build_identity_model())
+    assert model.ir_version == IDENTITY_IR_VERSION == 10
+    assert model.opset_import[0].version == IDENTITY_OPSET == 13
+    other = onnx.ModelProto()
+    other.ParseFromString(_pin()._load_gap().build_identity_model())
+    assert other.ir_version == 10
+    assert other.opset_import[0].version == 13
 
 
 def test_lock_rejects_a_damaged_file(tmp_path: Path) -> None:

@@ -19,7 +19,7 @@ apps=$data/applications
 mkdir -p "$apps"
 rm -f "$apps/voxprint-clarity.desktop"
 
-version=1.0.0
+version=1.0.0-rc
 if [ -f "$app/BUILD.json" ]; then
   parsed=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$app/BUILD.json")
   if [ -n "$parsed" ]; then
@@ -27,7 +27,7 @@ if [ -f "$app/BUILD.json" ]; then
   fi
 fi
 case $version in
-  *[!0-9A-Za-z._-]*) version=1.0.0 ;;
+  *[!0-9A-Za-z._-]*) version=1.0.0-rc ;;
 esac
 
 cat > "$apps/ai.voxprint.Clarity.desktop" << EOF

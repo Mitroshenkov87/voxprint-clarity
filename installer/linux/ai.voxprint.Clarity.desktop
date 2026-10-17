@@ -10,4 +10,4 @@ Categories=AudioVideo;Video;
 StartupWMClass=voxprint-clarity
 X-Voxprint-Ipc=
 X-Voxprint-Protocol=0
-X-Voxprint-Version=1.0.0
+X-Voxprint-Version=1.0.0-rc

@@ -553,12 +553,11 @@ def test_version_label_reads_build_json() -> None:
     data = json.loads(Path("BUILD.json").read_text(encoding="utf-8"))
     info = build_info()
     text = version_label()
-    assert data["version"] == "1.0.0"
+    assert data["version"] == "1.0.0-rc"
     assert info.version == "1.0.0"
     assert info.rc is None
-    assert info.show_rc is False
-    assert text.startswith("1.0.0 build ")
-    assert "RC" not in text
+    assert info.show_rc is True
+    assert text.startswith("1.0.0 RC build ")
     if info.build is None:
         assert "dev" in text
         assert "build 0" not in text
