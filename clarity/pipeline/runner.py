@@ -351,6 +351,7 @@ def build_restore_plan(
                     height=out_h,
                     fps=probe.fps,
                     pix_fmt=encoder_pix_fmt(probe.pix_fmt),
+                    cq=spec.settings.crf,
                 ),
             }
         )

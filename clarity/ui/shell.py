@@ -254,7 +254,7 @@ def shell_style() -> str:
         f'QPushButton[chip="true"]:disabled {{ {muted} }}\n'
         f"QCheckBox::indicator:checked {{ background: {teal}; border-color: {teal}; }}\n"
         f'QPushButton[thumb="true"]:checked {{ border: 2px solid {teal}; }}\n'
-        'QPushButton[chip="true"] { min-height: 26px; padding: 1px 12px; }\n'
+        'QPushButton[chip="true"] { min-height: 24px; max-height: 26px; padding: 0 10px; }\n'
         "QLabel#fileDrop { padding: 8px 16px; }\n"
         "QLabel#settingGroup { padding: 4px 0 0 0; }\n"
         "QFrame#expertPanel QSpinBox, QFrame#expertPanel QDoubleSpinBox,\n"

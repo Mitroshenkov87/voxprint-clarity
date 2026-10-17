@@ -23,10 +23,12 @@ from PySide6.QtWidgets import (
 
 from clarity.i18n import tr
 from clarity.pipeline.encode import VideoCodec
-from clarity.pipeline.job import Settings
+from clarity.pipeline.job import Settings, models_for
 from clarity.project import load_project, load_recent
+from clarity.ui.job_presets import job_from_state
 from clarity.ui.shell import MainWindow, reference_shell
 from clarity.ui.shell_dress import PANEL_WIDTH, gpu_selftest_command, gpu_selftest_passed
+from voxprint_common.ui.presets import PresetMatch
 
 _NAMES = (
     "openProject",
@@ -201,11 +203,13 @@ def test_screen_uses_the_width_and_shows_names(
     assert thumb.text() != "1"
     stamp = datetime.fromtimestamp(source.stat().st_mtime).strftime("%Y-%m-%d")
     assert stamp in thumb.text()
+    _assert_simple_chips(window, "en")
     window.set_language_code("ru")
     app.processEvents()
     app.processEvents()
     chrome = window.centralWidget()
     assert chrome is not None
+    _assert_simple_chips(chrome, "ru")
     toggle = chrome.findChild(QPushButton, "expertToggle")
     assert toggle is not None
     assert toggle.text() == "Режим эксперта"
@@ -213,6 +217,109 @@ def test_screen_uses_the_width_and_shows_names(
     font.setWeight(QFont.Weight.DemiBold)
     advance = QFontMetrics(font).horizontalAdvance(toggle.text())
     assert toggle.minimumWidth() >= advance + 32
+    window.close()
+
+
+def _assert_simple_chips(root: QWidget, language: str) -> None:
+    expected = {
+        "en": {
+            "chip-cleanup-light": "Light",
+            "chip-cleanup-medium": "Medium",
+            "chip-cleanup-strong": "Strong",
+            "chip-fix-noise": "Noise",
+            "chip-fix-blocks": "Compression blocks",
+            "chip-fix-colours": "Colours",
+            "chip-sharpness-off": "Off",
+            "chip-sharpness-normal": "Normal",
+            "chip-sharpness-sharper": "Sharper",
+            "chip-size-same": "Same size",
+            "chip-size-2x": "2x larger",
+            "chip-quality-smaller": "Smaller file",
+            "chip-quality-balanced": "Balanced",
+            "chip-quality-best": "Best quality",
+            "chip-file-mkv": "MKV",
+            "chip-file-mp4": "MP4",
+        },
+        "ru": {
+            "chip-cleanup-light": "Лёгкая",
+            "chip-cleanup-medium": "Средняя",
+            "chip-cleanup-strong": "Сильная",
+            "chip-fix-noise": "Шум",
+            "chip-fix-blocks": "Блоки сжатия",
+            "chip-fix-colours": "Цвета",
+            "chip-sharpness-off": "Не трогать",
+            "chip-sharpness-normal": "Обычная",
+            "chip-sharpness-sharper": "Чётче",
+            "chip-size-same": "Тот же размер",
+            "chip-size-2x": "В два раза больше",
+            "chip-quality-smaller": "Меньше файл",
+            "chip-quality-balanced": "Баланс",
+            "chip-quality-best": "Лучше качество",
+            "chip-file-mkv": "MKV",
+            "chip-file-mp4": "MP4",
+        },
+    }[language]
+    host = root.findChild(QWidget, "mainColumn")
+    assert host is not None
+    for name, text in expected.items():
+        button = host.findChild(QPushButton, name)
+        assert button is not None, name
+        assert button.text() == text
+        assert button.geometry().right() <= host.width() + 1
+    noise = host.findChild(QPushButton, "chip-fix-noise")
+    blocks = host.findChild(QPushButton, "chip-fix-blocks")
+    colours = host.findChild(QPushButton, "chip-fix-colours")
+    plain = host.findChild(QPushButton, "chip-fix-plain")
+    assert noise is not None and blocks is not None and colours is not None and plain is not None
+    assert noise.isChecked() and blocks.isChecked() and colours.isChecked()
+    assert plain.isHidden()
+
+
+def test_simple_chips_write_the_shared_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _isolate(monkeypatch, tmp_path)
+    app = _app()
+    window = MainWindow(runner=lambda *_args, **_kwargs: None)
+    window.resize(1280, 800)
+    window.show()
+    app.processEvents()
+    host = window.findChild(QWidget, "mainColumn")
+    assert host is not None
+    colours = host.findChild(QPushButton, "chip-fix-colours")
+    noise = host.findChild(QPushButton, "chip-fix-noise")
+    blocks = host.findChild(QPushButton, "chip-fix-blocks")
+    medium = host.findChild(QPushButton, "chip-cleanup-medium")
+    sharper = host.findChild(QPushButton, "chip-sharpness-sharper")
+    smaller = host.findChild(QPushButton, "chip-quality-smaller")
+    assert None not in {colours, noise, blocks, medium, sharper, smaller}
+    assert colours is not None and noise is not None and blocks is not None
+    assert medium is not None and sharper is not None and smaller is not None
+    colours.click()
+    app.processEvents()
+    assert window.settings_state.get("job.white_balance") is False
+    assert window.settings_state.get("job.levels") is False
+    assert noise.isChecked() and blocks.isChecked() and not colours.isChecked()
+    noise.click()
+    blocks.click()
+    assert window.settings_state.get("job.white_balance") is False
+    medium.click()
+    sharper.click()
+    smaller.click()
+    app.processEvents()
+    assert window.settings_state.get("job.mode") == "clean"
+    assert window.settings_state.get("job.sigma") == 25
+    assert window.settings_state.get("job.sharpen") == 0.6
+    assert window.settings_state.get("job.crf") == 32
+    assert [model.id for model in models_for(job_from_state(window.settings_state.values))] == [
+        model.id for model in models_for(Settings(mode="clean"))
+    ]
+    window.settings_state.set_value("job.sharpen", 0.5)
+    screen = window._screen
+    assert screen is not None
+    screen.refresh()
+    app.processEvents()
+    assert window.settings_state.status("sharpness").kind is PresetMatch.CUSTOM
+    custom = host.findChild(QPushButton, "chip-sharpness-custom")
+    assert custom is not None and custom.isVisible()
     window.close()
 
 

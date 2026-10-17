@@ -21,14 +21,14 @@ was settled and the action is in this shell.
 | Output path | Output field | Project tab Output field. The Video tab note shows the same path | kept |
 | Export (choose the output video) | Export button | Project tab Export, and File → Export | kept |
 | Default output name | `.clarity.mkv` or `.clarity.mp4` from the container | Same suffix from the File chip. An empty Output field uses it | kept |
-| Cleanup strength | Mode combo, Clean or Strong | Video tab Cleanup chip: Light or Strong | kept |
-| Container | Container combo, MKV or MP4 | Video tab File chip: MKV or MP4 | kept |
+| Cleanup strength | Mode combo, Clean or Strong | Video tab Cleanup chips: Light, Medium, or Strong. Light is clean mode and sigma 15. Medium stays on clean mode and raises sigma to 25. Strong is the strong model and leaves sigma at 15, because that model does not read sigma | kept |
+| Container | Container combo, MKV or MP4 | Video tab Format chips: MKV or MP4 | kept |
 | Codec | Codec combo, AV1 or HEVC | Setup tab Codec combo, and the Expert panel codec field | kept |
 | Language | Language combo (shown, not wired) | Setup tab Language combo. It switches English and Russian | kept |
 | Upscale | Upscale checkbox | Video tab Size chip: Same size or Twice as big | kept |
 | Anime look | Anime checkbox, disabled unless upscale is on | Video tab Look chip, and the Setup tab Anime checkbox. The checkbox stays disabled unless Size is Twice as big. The job turns anime on only when upscale is on | kept |
-| Colour cleanup | Colour checkbox. It set white balance and levels together | Video tab Colours chip: Fix colours or Leave colours. Both flags move together | kept |
-| Sharpen | Sharpen slider, 0 to 100 | Setup tab Sharpen slider, and the Expert panel sharpen field | kept |
+| Colour cleanup | Colour checkbox. It set white balance and levels together | Video tab What to fix. Colours turns white balance and levels on or off together. Noise and compression blocks are not separate switches: clean mode always runs both models, and strong mode runs one blind model for both. Those two chips stay selected | kept |
+| Sharpen | Sharpen slider, 0 to 100 | Video tab Sharpness chips: Off, Normal, or Sharper (0, 0.35, 0.6). The Setup slider and the Expert field write the same number. Normal is 0.35 | kept |
 | Upscale hint | Hint under the options | Setup tab hint under Anime | kept |
 | Progress | Progress bar, 0 to 100 | Video tab progress, with the stage label | kept |
 | Status text | Ready, running, cancelling, done, cancelled, saved, resumed, downloaded, and errors | Video tab note, and the stage label while a job runs | kept |
@@ -52,14 +52,18 @@ was settled and the action is in this shell.
 
 The old form left these at the `Settings` defaults. They stay reachable. Audio
 copy and the frame cap had no control before, and they still have none.
+Clarity does not change the frame rate, and it does not stabilise the picture.
+The only geometry change is the optional 2x size. There is no control for
+either of those.
 
 | Setting | Old place | New place | Status |
 |---|---|---|---|
-| Sigma | Default 15, no control | Expert panel | kept |
+| Sigma | Default 15, no control | Expert panel, and the Cleanup chips (Light 15, Medium 25, Strong 15) | kept |
 | Tile | Default 0, no control | Expert panel | kept |
 | Batch | Default 2, no control | Expert panel | kept |
 | Overlap | Default 16, no control | Expert panel | kept |
-| Quality factor | Default 40, no control | Expert panel | kept |
+| Quality factor | Default 40, no control | Expert panel. This is the deblock strength, not the file-size control | kept |
+| File quality | The encoder used a fixed AV1 CQ of 20 | Video tab File quality chips: Smaller file (CRF 32), Balanced (CRF 20), Best quality (CRF 16). Balanced is the previous fixed value. HEVC receives the same number as its CQ. The Expert field shows the number | kept |
 | Upscale strength | Default 0, no control | Expert panel | kept |
 | Restore model list | Chosen from the mode, no field | Expert panel text. Presets write it. Manage models edits the catalogue | kept |
 | Upscale model | Chosen from the anime switch, no field | Expert panel text. The Look chip writes it | kept |
@@ -90,7 +94,7 @@ reaches that option without typing it. `--help` and `-h` stay on the program.
 | `restore --output` | Destination video | CLI unchanged. Project tab Output and Export | kept |
 | `restore --mode` | `clean` or `strong` | CLI unchanged. Video tab Cleanup chip | kept |
 | `restore --upscale` | Optional 2x | CLI unchanged. Video tab Size chip | kept |
-| `restore --format` | `mkv`, `mp4`, `av1`, or `hevc` | CLI unchanged. File chip sets `mkv` or `mp4`. Codec combo and the Expert panel set `av1` or `hevc` | kept |
+| `restore --format` | `mkv`, `mp4`, `av1`, or `hevc` | CLI unchanged. Format chips set `mkv` or `mp4`. Codec combo and the Expert panel set `av1` or `hevc` | kept |
 | `restore --codec` | `av1` or `hevc` | CLI unchanged. Setup tab Codec, and the Expert panel | kept |
 | `restore --ffmpeg` | ffmpeg binary | CLI unchanged. Setup tab ffmpeg field. `project resume` uses the same field | kept |
 | `restore --ffprobe` | ffprobe binary | CLI unchanged. Setup tab ffprobe field. `project resume` uses the same field | kept |

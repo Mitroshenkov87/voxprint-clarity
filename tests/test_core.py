@@ -296,6 +296,7 @@ def test_commands_use_nvdec_and_refuse_hdr() -> None:
     assert "bwdif" in commands["decode"]
     encode = " ".join(commands["encode"])
     assert "av1_nvenc" in encode
+    assert "-cq 20" in encode
     assert "-s 2560x1440" in encode
     probe_hdr = parse_probe(
         {"streams": [{"codec_type": "video", "width": 10, "height": 10, "color_transfer": "smpte2084", "nb_frames": "1"}]}

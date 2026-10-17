@@ -12,7 +12,16 @@
           "values": {
             "job.mode": "clean",
             "job.restore_models": "drunet-deblocking-color,drunet-color",
-            "job.sharpen": 0.35
+            "job.sigma": 15
+          }
+        },
+        {
+          "id": "medium",
+          "label_key": "simple.preset.cleanup.medium",
+          "values": {
+            "job.mode": "clean",
+            "job.restore_models": "drunet-deblocking-color,drunet-color",
+            "job.sigma": 25
           }
         },
         {
@@ -21,8 +30,47 @@
           "values": {
             "job.mode": "strong",
             "job.restore_models": "scunet-color-real-psnr",
-            "job.sharpen": 0.35
+            "job.sigma": 15
           }
+        }
+      ]
+    },
+    {
+      "id": "fix",
+      "label_key": "simple.preset.fix",
+      "default": "colours",
+      "options": [
+        {
+          "id": "colours",
+          "label_key": "simple.preset.fix.colours",
+          "values": {"job.white_balance": true, "job.levels": true}
+        },
+        {
+          "id": "plain",
+          "label_key": "simple.preset.fix.plain",
+          "values": {"job.white_balance": false, "job.levels": false}
+        }
+      ]
+    },
+    {
+      "id": "sharpness",
+      "label_key": "simple.preset.sharpness",
+      "default": "normal",
+      "options": [
+        {
+          "id": "off",
+          "label_key": "simple.preset.sharpness.off",
+          "values": {"job.sharpen": 0}
+        },
+        {
+          "id": "normal",
+          "label_key": "simple.preset.sharpness.normal",
+          "values": {"job.sharpen": 0.35}
+        },
+        {
+          "id": "sharper",
+          "label_key": "simple.preset.sharpness.sharper",
+          "values": {"job.sharpen": 0.6}
         }
       ]
     },
@@ -67,19 +115,24 @@
       ]
     },
     {
-      "id": "colours",
-      "label_key": "simple.preset.colours",
-      "default": "fix",
+      "id": "quality",
+      "label_key": "simple.preset.quality",
+      "default": "balanced",
       "options": [
         {
-          "id": "fix",
-          "label_key": "simple.preset.colours.fix",
-          "values": {"job.white_balance": true, "job.levels": true}
+          "id": "smaller",
+          "label_key": "simple.preset.quality.smaller",
+          "values": {"job.crf": 32}
         },
         {
-          "id": "leave",
-          "label_key": "simple.preset.colours.leave",
-          "values": {"job.white_balance": false, "job.levels": false}
+          "id": "balanced",
+          "label_key": "simple.preset.quality.balanced",
+          "values": {"job.crf": 20}
+        },
+        {
+          "id": "best",
+          "label_key": "simple.preset.quality.best",
+          "values": {"job.crf": 16}
         }
       ]
     },

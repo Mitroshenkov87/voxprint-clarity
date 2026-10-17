@@ -59,6 +59,7 @@ _SETTING_FIELDS = (
     "overlap",
     "container",
     "codec",
+    "crf",
     "copy_audio",
     "max_frames",
 )

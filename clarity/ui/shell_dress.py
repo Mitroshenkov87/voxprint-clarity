@@ -108,6 +108,7 @@ def apply(screen: SimpleWidget, layout: SimpleLayout) -> None:
     """
     root = screen.root
     _compact_presets(screen)
+    _present_fix(screen, layout)
     _dock_expert_column(screen)
     _dress_compare(root)
     _dress_drop(root, layout.prompt)
@@ -261,29 +262,152 @@ def _compact_presets(screen: SimpleWidget) -> None:
         return
     grid = QGridLayout()
     grid.setContentsMargins(0, 0, 0, 0)
-    grid.setHorizontalSpacing(16)
-    grid.setVerticalSpacing(4)
-    paired = [item for item in items if _row_id(item.layout()) != "size"]
-    spanned = [item for item in items if _row_id(item.layout()) == "size"]
+    grid.setHorizontalSpacing(12)
+    grid.setVerticalSpacing(2)
+    by_id = {_row_id(item.layout()): item for item in items}
     for item in items:
         layout = item.layout()
         if layout is not None:
             layout.setSpacing(6)
             _narrow_labels(layout)
+    placed: set[str] = set()
     grid_row = 0
-    for index in range(0, len(paired), 2):
-        grid.addItem(paired[index], grid_row, 0)
-        if index + 1 < len(paired):
-            grid.addItem(paired[index + 1], grid_row, 1)
+    for left_id, right_id in (
+        ("cleanup", "fix"),
+        ("sharpness", "size"),
+        ("look", "file"),
+    ):
+        left = by_id.get(left_id)
+        right = by_id.get(right_id)
+        if left is not None:
+            grid.addItem(left, grid_row, 0)
+            placed.add(left_id)
+        if right is not None:
+            grid.addItem(right, grid_row, 1)
+            placed.add(right_id)
         grid_row += 1
-        if grid_row == 1:
-            for item in spanned:
-                grid.addItem(item, grid_row, 0, 1, 2)
-                grid_row += 1
+    quality = by_id.get("quality")
+    if quality is not None:
+        grid.addItem(quality, grid_row, 0, 1, 2)
+        placed.add("quality")
+        grid_row += 1
+    column = 0
+    for item in items:
+        row_id = _row_id(item.layout())
+        if row_id in placed:
+            continue
+        grid.addItem(item, grid_row, column)
+        column += 1
+        if column == 2:
+            column = 0
+            grid_row += 1
+    grid.setColumnStretch(0, 1)
+    grid.setColumnStretch(1, 1)
     rows.setSpacing(0)
     rows.addLayout(grid)
     host.setProperty("clarityColumns", True)
     host.setProperty("clarityPresetItems", items)
+
+
+def _present_fix(screen: SimpleWidget, layout: SimpleLayout) -> None:
+    """Show noise, blocks, and colours as one multi-select row.
+
+    Clean runs the deblock model and the denoise model. Strong runs one blind
+    model. Those two chips stay selected. Colours is the switch the pipeline
+    actually has: white balance and levels move together.
+    """
+    root = screen.root
+    colours = root.findChild(QPushButton, "chip-fix-colours")
+    parent = None if colours is None else colours.parentWidget()
+    if colours is None or parent is None:
+        return
+    found = _layout_containing(parent, colours)
+    if not isinstance(found, QBoxLayout):
+        return
+    row = found
+    if root.property("clarityFix") is not True:
+        index = row.indexOf(colours)
+        for offset, name, key in (
+            (0, "chip-fix-noise", "simple.preset.fix.noise"),
+            (1, "chip-fix-blocks", "simple.preset.fix.blocks"),
+        ):
+            button = QPushButton(tr(key), parent)
+            button.setObjectName(name)
+            button.setProperty("chip", "true")
+            button.setCheckable(True)
+            button.setChecked(True)
+            button.setAutoDefault(False)
+            button.setToolTip(tr("simple.preset.fix.note"))
+            _fit_chip_width(button)
+            button.clicked.connect(lambda _checked=False, button=button: button.setChecked(True))
+            row.insertWidget(index + offset, button)
+        try:
+            colours.clicked.disconnect()
+        except RuntimeError:
+            pass
+        colours.clicked.connect(lambda _checked=False: _toggle_colours(screen, layout))
+        colours.setToolTip(tr("simple.preset.fix.note"))
+        root.setProperty("clarityFix", True)
+    _paint_fix(screen, layout)
+
+
+def _toggle_colours(screen: SimpleWidget, layout: SimpleLayout) -> None:
+    on = layout.get("job.white_balance") is True and layout.get("job.levels") is True
+    layout.choose("fix", "plain" if on else "colours")
+    screen.refresh()
+
+
+def _paint_fix(screen: SimpleWidget, layout: SimpleLayout) -> None:
+    root = screen.root
+    groups = getattr(screen, "_chip_groups", None)
+    if isinstance(groups, dict):
+        group = groups.get("fix")
+        setter = getattr(group, "setExclusive", None)
+        if setter is not None:
+            setter(False)
+    plain = root.findChild(QPushButton, "chip-fix-plain")
+    if plain is not None:
+        plain.hide()
+    on = layout.get("job.white_balance") is True and layout.get("job.levels") is True
+    colours = root.findChild(QPushButton, "chip-fix-colours")
+    if colours is not None:
+        colours.blockSignals(True)
+        colours.setChecked(on)
+        colours.blockSignals(False)
+    for name in ("chip-fix-noise", "chip-fix-blocks"):
+        button = root.findChild(QPushButton, name)
+        if button is None:
+            continue
+        button.blockSignals(True)
+        button.setChecked(True)
+        button.setToolTip(tr("simple.preset.fix.note"))
+        button.blockSignals(False)
+
+
+def _layout_containing(root: QWidget, widget: QWidget) -> QLayout | None:
+    pending: list[QLayout] = []
+    found = root.layout()
+    if found is not None:
+        pending.append(found)
+    while pending:
+        layout = pending.pop()
+        for index in range(layout.count()):
+            item = layout.itemAt(index)
+            if item is None:
+                continue
+            if item.widget() is widget:
+                return layout
+            nested = item.layout()
+            if nested is not None:
+                pending.append(nested)
+    return None
+
+
+def _fit_chip_width(button: QPushButton) -> None:
+    font = QFont(button.font())
+    font.setWeight(QFont.Weight.DemiBold)
+    advance = QFontMetrics(font).horizontalAdvance(button.text())
+    button.setMinimumWidth(advance + 32)
 
 
 def _restore_item(rows: QVBoxLayout, item: QLayoutItem) -> None:
@@ -303,6 +427,7 @@ def _narrow_labels(layout: QLayout) -> None:
             continue
         widget = child.widget()
         if isinstance(widget, QLabel) and widget.property("presetLabel") == "true":
+            widget.setWordWrap(False)
             widget.setMinimumWidth(72)
 
 

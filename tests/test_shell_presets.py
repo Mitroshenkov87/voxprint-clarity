@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from clarity.models import CATALOG
-from clarity.pipeline.encode import Container, VideoCodec
+from clarity.pipeline.encode import Container, VideoCodec, encode_chunk_command
 from clarity.pipeline.job import Settings
 from clarity.pipeline.job import models_for
 from clarity.ui.job_presets import (
@@ -35,37 +35,95 @@ def test_preset_choices_pick_the_catalogue_models() -> None:
     state.choose("cleanup", "light")
     light = job_from_state(state.values)
     assert [model.id for model in models_for(light)] == [model.id for model in models_for(Settings())]
+    state.choose("cleanup", "medium")
+    medium = job_from_state(state.values)
+    assert medium.mode == "clean"
+    assert medium.sigma == 25
+    assert [model.id for model in models_for(medium)] == [model.id for model in models_for(Settings())]
     state.choose("cleanup", "strong")
     state.choose("size", "2x")
     state.choose("look", "anime")
-    state.choose("colours", "leave")
+    state.choose("fix", "plain")
+    state.choose("sharpness", "sharper")
+    state.choose("quality", "best")
     state.choose("file", "mp4")
     job = job_from_state(state.values)
     expect = Settings(
         mode="strong",
         upscale=True,
         anime=True,
+        sharpen=0.6,
         white_balance=False,
         levels=False,
         container=Container.MP4,
+        crf=16,
     )
     assert job == expect
+    assert job.sigma == 15
     assert [model.id for model in models_for(job)] == [model.id for model in models_for(expect)]
     assert state.values["job.upscale_model"] == models_for(expect)[-1].id
+
+
+def test_file_quality_is_the_av1_crf_and_balanced_is_the_old_default() -> None:
+    state = fresh_state()
+    assert job_from_state(state.values).crf == 20
+    state.choose("quality", "smaller")
+    smaller = job_from_state(state.values)
+    assert smaller.crf == 32
+    assert smaller.quality_factor == 40
+    command = encode_chunk_command(
+        "ffmpeg",
+        encoder="av1_nvenc",
+        destination="chunk.mkv",
+        width=16,
+        height=16,
+        fps=24,
+        cq=smaller.crf,
+    )
+    assert command[command.index("-cq") + 1] == "32"
+    state.choose("quality", "balanced")
+    assert state.status("quality").kind is PresetMatch.EXACT
+    state.set_value("job.crf", 22)
+    assert state.status("quality").kind is PresetMatch.CUSTOM
+    state.reset_group("quality")
+    assert state.values["job.crf"] == 20
+    assert state.status("quality").kind is PresetMatch.EXACT
+
+
+def test_colours_off_still_runs_noise_and_blocks() -> None:
+    state = fresh_state()
+    state.choose("fix", "plain")
+    job = job_from_state(state.values)
+    assert job.white_balance is False
+    assert job.levels is False
+    assert [model.id for model in models_for(job)] == [model.id for model in models_for(Settings())]
+    state.set_value("job.white_balance", True)
+    assert state.status("fix").kind is PresetMatch.MODIFIED
+    state.set_value("job.levels", False)
+    state.set_value("job.white_balance", False)
+    state.set_value("job.levels", True)
+    assert state.status("fix").kind is PresetMatch.MODIFIED
 
 
 def test_cleanup_edit_is_modified_then_custom_and_reset_keeps_size() -> None:
     state = fresh_state()
     state.set_value("job.sharpen", 0.5)
+    assert state.status("sharpness").kind is PresetMatch.CUSTOM
+    assert state.status("cleanup").kind is PresetMatch.EXACT
+    state.set_value("job.sigma", 20.0)
     assert state.status("cleanup").kind is PresetMatch.MODIFIED
     state.set_value("job.restore_models", "edited")
     assert state.status("cleanup").kind is PresetMatch.CUSTOM
     state.choose("size", "2x")
     state.reset_group("cleanup")
     assert state.status("cleanup").kind is PresetMatch.EXACT
-    assert state.values["job.sharpen"] == 0.35
+    assert state.values["job.sigma"] == 15
+    assert state.values["job.sharpen"] == 0.5
     assert state.values["job.upscale"] is True
     assert job_from_state(state.values).upscale is True
+    state.reset_group("sharpness")
+    assert state.values["job.sharpen"] == 0.35
+    assert state.status("sharpness").kind is PresetMatch.EXACT
 
 
 def test_expert_mode_does_not_drop_values(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

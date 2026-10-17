@@ -65,7 +65,10 @@ def clarity_settings() -> Settings:
     """Return descriptors whose defaults match :class:`~clarity.pipeline.job.Settings`.
 
     Expert rows are Restoration, Upscale, Encoding, and Advanced, in that
-    order. Simple chips write the same keys the old form wrote.
+    order. Simple chips write the same keys the old form wrote. Cleanup owns
+    the mode, the model list, and sigma. What to fix owns white balance and
+    levels together. Sharpness, file quality, and the container each own one
+    key, so any other value is Custom.
 
     Returns:
         A new settings list. The caller owns it.
@@ -80,8 +83,8 @@ def clarity_settings() -> Settings:
             "clean",
             group="cleanup",
             choices=(
-                Choice("clean", "simple.preset.cleanup.light"),
-                Choice("strong", "simple.preset.cleanup.strong"),
+                Choice("clean", "mode.clean"),
+                Choice("strong", "mode.strong"),
             ),
         )
     )
@@ -204,6 +207,19 @@ def clarity_settings() -> Settings:
     )
     settings.add(
         SettingSpec(
+            "job.crf",
+            "setting.job.crf",
+            "setting.job.crf.help",
+            SettingType.INT,
+            20,
+            expert=True,
+            group="encoding",
+            minimum=0,
+            maximum=63,
+        )
+    )
+    settings.add(
+        SettingSpec(
             "job.quality_factor",
             "setting.job.quality_factor",
             "setting.job.quality_factor.help",
@@ -278,7 +294,7 @@ def load_clarity_presets(settings: Settings | None = None) -> PresetFile:
             :func:`clarity_settings`.
 
     Returns:
-        The cleanup, size, look, colours, and file groups.
+        Cleanup, what to fix, sharpness, size, look, file quality, and format.
     """
     return load_presets(_PRESETS, clarity_settings() if settings is None else settings)
 
@@ -342,6 +358,7 @@ def job_from_state(values: Mapping[str, object]) -> JobSettings:
         overlap=_int(values, "job.overlap"),
         container=container,
         codec=codec,
+        crf=_int(values, "job.crf"),
         copy_audio=True,
     )
 
@@ -366,6 +383,7 @@ def apply_job(state: SettingState, job: JobSettings) -> None:
     state.set_value("job.levels", job.levels)
     state.set_value("job.container", job.container.value)
     state.set_value("job.codec", job.codec.value)
+    state.set_value("job.crf", job.crf)
     state.set_value("job.sigma", job.sigma)
     state.set_value("job.tile", job.tile)
     state.set_value("job.batch", job.batch)
