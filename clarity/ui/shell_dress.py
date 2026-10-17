@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSpinBox,
     QSplitter,
     QStackedWidget,
     QToolButton,
@@ -33,7 +34,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from voxprint_common.i18n import tr
-from voxprint_common.ui.simple_image import SimpleLayout, SimpleWidget
+from voxprint_common.ui.simple_image import GalleryItem, SimpleLayout, SimpleWidget
 
 PANEL_WIDTH = 340
 _COMPARE_MIN = 200
@@ -112,7 +113,8 @@ def apply(screen: SimpleWidget, layout: SimpleLayout) -> None:
     _dock_expert_column(screen)
     _dress_compare(root)
     _dress_drop(root, layout.prompt)
-    _dress_history(root)
+    _dress_history(root, layout)
+    _dress_tile(root)
     _widen_expert_rows(root)
     _dress_models(root, layout)
     _dress_toggle(root)
@@ -555,26 +557,61 @@ def _dress_drop(root: QWidget, prompt: str) -> None:
     hint = tr(_DROP_KEY)
     cleaned = prompt.strip()
     name = Path(cleaned).name if cleaned else ""
-    drop.setText(f"{hint}\n{name}" if name else hint)
-    drop.setToolTip(cleaned)
+    if name:
+        drop.setText(f"{name} · {tr('simple.drop.another')}")
+        drop.setToolTip(cleaned)
+        return
+    drop.setText(hint)
+    drop.setToolTip("")
 
 
-def _dress_history(root: QWidget) -> None:
-    for button in root.findChildren(QPushButton):
-        if not button.objectName().startswith("thumb-"):
+def _dress_history(root: QWidget, layout: SimpleLayout) -> None:
+    for item in layout.history:
+        button = root.findChild(QPushButton, f"thumb-{item.item_id}")
+        if button is None:
             continue
-        path_text = button.toolTip().split("\n", 1)[0].strip()
-        path = Path(path_text) if path_text else None
-        name = path.name if path is not None and path.name else path_text
-        if not name:
-            continue
-        when = ""
-        if path is not None and path.is_file():
-            stamp = datetime.fromtimestamp(path.stat().st_mtime)
-            when = stamp.strftime("%Y-%m-%d")
+        stamp = _seen_at(layout, item.item_id)
+        clock = stamp.strftime("%H:%M")
+        preset = _cleanup_label(layout, item)
+        name = Path(item.prompt).name or item.prompt
         shown = QFontMetrics(button.font()).elidedText(name, Qt.TextElideMode.ElideMiddle, 76)
-        button.setText(f"{shown}\n{when}" if when else shown)
-        button.setToolTip(f"{path_text}\n{when}" if when else path_text)
+        lines = [shown, clock]
+        if preset:
+            lines.append(preset)
+        button.setText("\n".join(lines))
+        button.setToolTip("\n".join(part for part in (item.prompt, clock, preset) if part))
+
+
+def _seen_at(layout: SimpleLayout, item_id: str) -> datetime:
+    stored = getattr(layout, "_clarity_times", None)
+    times: dict[str, datetime] = stored if isinstance(stored, dict) else {}
+    if stored is not times:
+        setattr(layout, "_clarity_times", times)
+    stamp = times.get(item_id)
+    if isinstance(stamp, datetime):
+        return stamp
+    stamp = datetime.now()
+    times[item_id] = stamp
+    return stamp
+
+
+def _cleanup_label(layout: SimpleLayout, item: GalleryItem) -> str:
+    chosen = dict(item.presets).get("cleanup")
+    if not isinstance(chosen, str):
+        return ""
+    for row in layout.rows:
+        if row.row_id != "cleanup":
+            continue
+        for choice in row.choices:
+            if choice.value == chosen:
+                return tr(choice.label_key)
+    return ""
+
+
+def _dress_tile(root: QWidget) -> None:
+    tile = root.findChild(QSpinBox, "job.tile")
+    if tile is not None:
+        tile.setSpecialValueText(tr("setting.job.tile.auto"))
 
 
 def _widen_expert_rows(root: QWidget) -> None:
@@ -602,8 +639,12 @@ def _widen_layout(layout: QLayout) -> None:
         label = None if first is None else first.widget()
         control = None if second is None else second.widget()
         if isinstance(label, QLabel) and control is not None:
-            label.setMinimumWidth(0)
-            label.setMaximumWidth(max(label.sizeHint().width(), 64))
+            label.ensurePolished()
+            label.setWordWrap(False)
+            styled = label.font()
+            advance = QFontMetrics(styled, label).horizontalAdvance(label.text())
+            label.setMinimumWidth(advance)
+            label.setMaximumWidth(max(advance, 1))
             nested.setStretch(0, 0)
             nested.setStretch(1, 1)
             continue

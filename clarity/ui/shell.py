@@ -772,6 +772,7 @@ class MainWindow(QMainWindow):
         self._seed_recent()
         screen.refresh()
         self._sync_pages()
+        self._publish_output()
 
     def _make_screen(self) -> SimpleWidget:
         adopted = load_adopted_video()
@@ -1031,7 +1032,11 @@ class MainWindow(QMainWindow):
     def _publish_output(self) -> None:
         if self._screen is None or not self._layout.prompt.strip():
             return
-        self._screen.set_note(tr("clarity.output.note", path=str(self._destination())))
+        destination = self._destination()
+        self._screen.set_note(tr("clarity.output.note", path=destination.name))
+        note = self._screen.root.findChild(QLabel, "simpleNote")
+        if note is not None:
+            note.setToolTip(str(destination))
 
     def _source_path(self) -> Path | None:
         text = self._layout.prompt.strip()

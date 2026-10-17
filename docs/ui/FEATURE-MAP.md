@@ -16,9 +16,9 @@ was settled and the action is in this shell.
 |---|---|---|---|
 | Window title | Title bar, `app.title` | Title bar, `splash.app.clarity` | kept |
 | Subtitle | Label under the title | Label under the tab bar | kept |
-| Source video path | Source field | Video tab drop area, and Project tab Source field | kept |
+| Source video path | Source field | Video tab drop area, and Project tab Source field. Once a file is loaded the drop area shows that file name and Choose another video. The full path stays in the tooltip | kept |
 | Browse for a source | Browse button | Project tab Browse, and a click on the Video tab drop area | kept |
-| Output path | Output field | Project tab Output field. The Video tab note shows the same path | kept |
+| Output path | Output field | Project tab Output field. The Video tab note shows the output file name. The full path is the note tooltip, and Open folder opens that folder | kept |
 | Export (choose the output video) | Export button | Project tab Export, and File → Export | kept |
 | Default output name | `.clarity.mkv` or `.clarity.mp4` from the container | Same suffix from the File chip. An empty Output field uses it | kept |
 | Cleanup strength | Mode combo, Clean or Strong | Video tab Cleanup chips: Light, Medium, or Strong. Light is clean mode and sigma 15. Medium stays on clean mode and raises sigma to 25. Strong is the strong model and leaves sigma at 15, because that model does not read sigma | kept |
@@ -59,12 +59,12 @@ either of those.
 | Setting | Old place | New place | Status |
 |---|---|---|---|
 | Sigma | Default 15, no control | Expert panel, and the Cleanup chips (Light 15, Medium 25, Strong 15) | kept |
-| Tile | Default 0, no control | Expert panel | kept |
+| Tile | Default 0, no control | Expert panel. The stored value stays 0, and the field shows Auto | kept |
 | Batch | Default 2, no control | Expert panel | kept |
 | Overlap | Default 16, no control | Expert panel | kept |
-| Quality factor | Default 40, no control | Expert panel. This is the deblock strength, not the file-size control | kept |
-| File quality | The encoder used a fixed AV1 CQ of 20 | Video tab File quality chips: Smaller file (CRF 32), Balanced (CRF 20), Best quality (CRF 16). Balanced is the previous fixed value. HEVC receives the same number as its CQ. The Expert field shows the number | kept |
-| Upscale strength | Default 0, no control | Expert panel | kept |
+| Quality factor | Default 40, no control | Expert panel, labeled Block removal. It sets how hard the deblocker removes compression blocks. A lower number removes more. It is not the file size | kept |
+| File quality | The encoder used a fixed AV1 CQ of 20 | Video tab File quality chips: Smaller file (CRF 32), Balanced (CRF 20), Best quality (CRF 16). Balanced is the previous fixed value. HEVC receives the same number as its CQ. The Expert field is labeled AV1 quality (CRF) | kept |
+| Upscale strength | Default 0, no control | Expert panel, labeled Denoise blend. It mixes in the softer denoised 2× model. 0 leaves that mix off | kept |
 | Restore model list | Chosen from the mode, no field | Expert panel text. Presets write it. Manage models edits the catalogue | kept |
 | Upscale model | Chosen from the anime switch, no field | Expert panel text. The Look chip writes it | kept |
 | Copy audio | Always on, no control | Always on, no control | kept |

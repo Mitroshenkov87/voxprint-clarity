@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+import re
 from pathlib import Path
 
 import pytest
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
+    QSpinBox,
     QWidget,
 )
 
@@ -161,9 +162,15 @@ def test_screen_uses_the_width_and_shows_names(
     app.processEvents()
     drop = window.findChild(QLabel, "fileDrop")
     assert drop is not None
-    assert "clip.mkv" in drop.text()
+    assert drop.text() == "clip.mkv · Choose another video"
+    assert "Drop a video" not in drop.text()
     assert str(source) not in drop.text()
     assert str(source) in drop.toolTip()
+    note = window.findChild(QLabel, "simpleNote")
+    assert note is not None
+    assert note.text() == "Output: clip.clarity.mkv"
+    assert note.toolTip() == str(source.with_suffix(".clarity.mkv"))
+    assert "/" not in note.text()
     subtitle = window.findChild(QLabel, "subtitle")
     footer = window.findChild(QLabel, "versionLabel")
     assert subtitle is not None and "16px" in subtitle.styleSheet()
@@ -199,16 +206,40 @@ def test_screen_uses_the_width_and_shows_names(
     assert panel.height() > 400
     thumb = window.findChild(QPushButton, "thumb-item-1")
     assert thumb is not None
-    assert "clip.mkv" in thumb.text()
-    assert thumb.text() != "1"
-    stamp = datetime.fromtimestamp(source.stat().st_mtime).strftime("%Y-%m-%d")
-    assert stamp in thumb.text()
+    assert re.fullmatch(r"clip\.mkv\n\d{2}:\d{2}\nLight", thumb.text())
+    assert str(source) in thumb.toolTip()
+    assert "Light" in thumb.toolTip()
+    _assert_expert_labels(
+        window,
+        {"Denoise blend", "AV1 quality (CRF)", "Block removal", "Denoise strength (σ)"},
+        "Auto",
+    )
     _assert_simple_chips(window, "en")
     window.set_language_code("ru")
     app.processEvents()
     app.processEvents()
     chrome = window.centralWidget()
     assert chrome is not None
+    russian_drop = chrome.findChild(QLabel, "fileDrop")
+    assert russian_drop is not None
+    assert russian_drop.text() == "clip.mkv · Выбрать другое видео"
+    assert "Перетащите видео" not in russian_drop.text()
+    russian_note = chrome.findChild(QLabel, "simpleNote")
+    assert russian_note is not None
+    assert russian_note.text() == "Результат: clip.clarity.mkv"
+    assert russian_note.toolTip() == str(source.with_suffix(".clarity.mkv"))
+    russian_thumb = chrome.findChild(QPushButton, "thumb-item-1")
+    assert russian_thumb is not None
+    assert re.fullmatch(r"clip\.mkv\n\d{2}:\d{2}\nЛёгкая", russian_thumb.text())
+    rebuilt = window._screen
+    assert rebuilt is not None
+    rebuilt.set_expert(True)
+    app.processEvents()
+    _assert_expert_labels(
+        chrome,
+        {"Смесь шумоподавления", "Качество AV1 (CRF)", "Удаление блоков", "Сила шумоподавления (σ)"},
+        "Авто",
+    )
     _assert_simple_chips(chrome, "ru")
     toggle = chrome.findChild(QPushButton, "expertToggle")
     assert toggle is not None
@@ -218,6 +249,20 @@ def test_screen_uses_the_width_and_shows_names(
     advance = QFontMetrics(font).horizontalAdvance(toggle.text())
     assert toggle.minimumWidth() >= advance + 32
     window.close()
+
+
+def _assert_expert_labels(root: QWidget, names: set[str], auto: str) -> None:
+    texts = {label.text() for label in root.findChildren(QLabel, "panel")}
+    assert names <= texts
+    for label in root.findChildren(QLabel, "panel"):
+        assert label.wordWrap() is False
+        advance = QFontMetrics(label.font()).horizontalAdvance(label.text())
+        assert label.minimumWidth() >= advance
+    tile = root.findChild(QSpinBox, "job.tile")
+    assert tile is not None
+    assert tile.value() == 0
+    assert tile.specialValueText() == auto
+    assert tile.text() == auto
 
 
 def _assert_simple_chips(root: QWidget, language: str) -> None:
@@ -270,6 +315,9 @@ def _assert_simple_chips(root: QWidget, language: str) -> None:
     blocks = host.findChild(QPushButton, "chip-fix-blocks")
     colours = host.findChild(QPushButton, "chip-fix-colours")
     plain = host.findChild(QPushButton, "chip-fix-plain")
+    quality = host.findChild(QLabel, "preset-quality")
+    assert quality is not None
+    assert quality.text() == ("File quality" if language == "en" else "Качество файла")
     assert noise is not None and blocks is not None and colours is not None and plain is not None
     assert noise.isChecked() and blocks.isChecked() and colours.isChecked()
     assert plain.isHidden()
