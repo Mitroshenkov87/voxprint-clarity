@@ -324,7 +324,7 @@ def _present_fix(screen: SimpleWidget, layout: SimpleLayout) -> None:
     if colours is None or parent is None:
         return
     found = _layout_containing(parent, colours)
-    if not isinstance(found, QBoxLayout):
+    if found is None:
         return
     row = found
     if root.property("clarityFix") is not True:
@@ -342,7 +342,7 @@ def _present_fix(screen: SimpleWidget, layout: SimpleLayout) -> None:
             button.setToolTip(tr("simple.preset.fix.note"))
             _fit_chip_width(button)
             button.clicked.connect(lambda _checked=False, button=button: button.setChecked(True))
-            row.insertWidget(index + offset, button)
+            _insert_widget(row, index + offset, button)
         try:
             colours.clicked.disconnect()
         except RuntimeError:
@@ -351,6 +351,19 @@ def _present_fix(screen: SimpleWidget, layout: SimpleLayout) -> None:
         colours.setToolTip(tr("simple.preset.fix.note"))
         root.setProperty("clarityFix", True)
     _paint_fix(screen, layout)
+
+
+def _insert_widget(row: QLayout, index: int, widget: QWidget) -> None:
+    """Insert into a box row, or into the shared flow row (0.2.5), at ``index``."""
+    if isinstance(row, QBoxLayout):
+        row.insertWidget(index, widget)
+        return
+    row.addWidget(widget)
+    taken = [row.takeAt(0) for _ in range(row.count())]
+    items = [item for item in taken if item is not None]
+    items.insert(index, items.pop())
+    for item in items:
+        row.addItem(item)
 
 
 def _toggle_colours(screen: SimpleWidget, layout: SimpleLayout) -> None:

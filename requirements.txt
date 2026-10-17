@@ -5,5 +5,5 @@ numpy>=2,<3
 Pillow>=12.3.0,<13
 truststore>=0.10,<1
 onnx>=1.21,<2
-# Temporary pin until the shared UI tag. The installer stays on the 0.1.1 wheel.
-voxprint-common[ui] @ git+https://github.com/Mitroshenkov87/voxprint-common@f4e95ccfa25780abaf50412cb095a7843725102a
+# Shared UI tag v0.2.5 "Yitro" (commit pin). The installer stays on the 0.1.1 wheel until M2.
+voxprint-common[ui] @ git+https://github.com/Mitroshenkov87/voxprint-common@8a94b531cb4f3526425a80a86a1e64624b5de606

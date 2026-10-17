@@ -569,7 +569,7 @@ def test_engine_pin_and_pillow_stay() -> None:
     )
     app_common = (
         "voxprint-common[ui] @ git+https://github.com/Mitroshenkov87/voxprint-common"
-        "@f4e95ccfa25780abaf50412cb095a7843725102a"
+        "@8a94b531cb4f3526425a80a86a1e64624b5de606"
     )
     requirements = (_ROOT / "requirements.txt").read_text(encoding="utf-8")
     assert lock["voxprint-common"] == "0.1.1"
@@ -582,7 +582,7 @@ def test_engine_pin_and_pillow_stay() -> None:
     assert common not in package
     assert app_common in requirements
     assert app_common in package
-    assert "Temporary pin" in requirements
+    assert "Shared UI tag v0.2.5" in requirements
     assert "git+" not in common
     assert "MinGit" not in common
     assert 'Pillow==$pillow' in windows

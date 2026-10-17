@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QFrame,
     QLabel,
+    QLayout,
     QMenu,
     QPlainTextEdit,
     QPushButton,
@@ -30,6 +31,7 @@ from clarity.ui.job_presets import job_from_state
 from clarity.ui.shell import MainWindow, reference_shell
 from clarity.ui.shell_dress import PANEL_WIDTH, gpu_selftest_command, gpu_selftest_passed
 from voxprint_common.ui.presets import PresetMatch
+from voxprint_common.ui.safety import ReviewedOutput
 
 _NAMES = (
     "openProject",
@@ -136,6 +138,7 @@ def test_restore_click_uses_the_default_settings(tmp_path: Path, monkeypatch: py
     window.show()
     app.processEvents()
     window.start.click()
+    app.processEvents()
     thread = window._thread
     assert thread is not None
     assert thread.wait(5000)
@@ -186,7 +189,7 @@ def test_screen_uses_the_width_and_shows_names(
     assert any(action.text() == "Check the graphics card" for action in tools.actions())
     assert window._layout.generate()
     window._layout.progress(1, 2, "Restoring")
-    window._layout.finish("item-1")
+    window._layout.finish("item-1", ReviewedOutput(path=source))
     screen = window._screen
     assert screen is not None
     screen.set_expert(True)
@@ -274,23 +277,31 @@ def _expert_groups(root: QWidget) -> dict[str, str]:
     assert form is not None
     layout = form.layout()
     assert layout is not None
+    # Walk the form in order; 0.2.5 nests the rows in one form layout.
+    widgets: list[QWidget] = []
+
+    def walk(current_layout: QLayout) -> None:
+        for index in range(current_layout.count()):
+            item = current_layout.itemAt(index)
+            if item is None:
+                continue
+            if item.widget() is not None:
+                widgets.append(item.widget())
+            elif item.layout() is not None:
+                walk(item.layout())
+
+    walk(layout)
     current = ""
     found: dict[str, str] = {}
-    for index in range(layout.count()):
-        item = layout.itemAt(index)
-        if item is None:
+    for index, widget in enumerate(widgets):
+        if not isinstance(widget, QLabel):
             continue
-        widget = item.widget()
-        if isinstance(widget, QLabel) and widget.objectName() == "settingGroup":
+        if widget.objectName() == "settingGroup":
             current = widget.text()
             continue
-        nested = item.layout()
-        if nested is None:
-            continue
-        first = nested.itemAt(0)
-        label = None if first is None else first.widget()
-        if isinstance(label, QLabel):
-            found[label.text()] = current
+        following = widgets[index + 1] if index + 1 < len(widgets) else None
+        if current and following is not None and not isinstance(following, QLabel):
+            found[widget.text()] = current
     return found
 
 

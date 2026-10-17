@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QThread, QTimer, QUrl, Signal
@@ -34,6 +34,7 @@ from voxprint_common.suite_settings import set_ui_language
 from voxprint_common.ui.expert import ExpertMode
 from voxprint_common.ui.presets import SettingState
 from voxprint_common.ui.shell import ReferenceShell
+from voxprint_common.ui.safety import ReviewedOutput
 from voxprint_common.ui.simple_image import GalleryItem, Phase, SimpleLayout, SimpleWidget
 from voxprint_common.ui.theme import ACCENT, build_shell_style
 
@@ -101,12 +102,13 @@ class _PathGate:
             return None
         return tr("error.missing_source")
 
-    def review_result(self, prompt: str, item_id: str) -> str | None:
+    def review_result(self, prompt: str, item_id: str, output: ReviewedOutput) -> str | None:
         """Keep the finished restore.
 
         Args:
             prompt: The source path.
             item_id: The history id.
+            output: The restored file.
 
         Returns:
             None.
@@ -877,7 +879,15 @@ class MainWindow(QMainWindow):
         if phase is not Phase.BUSY:
             self._publish_output()
 
-    def _on_generate(self) -> None:
+    def _on_generate(self, settings: Mapping[str, object] | None = None) -> None:
+        # voxprint-common 0.2.5 calls this before the phase becomes busy.
+        # Start on the next turn so the checks below see the busy phase, as before.
+        del settings
+        QTimer.singleShot(0, self._start_restore)
+
+    def _start_restore(self) -> None:
+        if self._closing or self._layout.phase is not Phase.BUSY:
+            return
         try:
             ready = models_ready()
         except (CatalogError, OSError, ValueError) as exc:
@@ -932,7 +942,7 @@ class MainWindow(QMainWindow):
             return
         if ok and self._layout.phase is Phase.BUSY:
             self._runs += 1
-            self._layout.finish(f"restore-{self._runs}")
+            self._layout.finish(f"restore-{self._runs}", ReviewedOutput(path=self._destination()))
             self._screen.refresh()
             self._publish_output()
             self._sync_project(self._work_for(self._destination()))

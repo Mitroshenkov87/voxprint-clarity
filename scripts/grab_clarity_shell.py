@@ -13,6 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QLabel
 
 from voxprint_common.i18n import set_language
+from voxprint_common.ui.safety import ReviewedOutput
 
 from clarity.ui.shell import MainWindow
 
@@ -37,7 +38,7 @@ def _show_wipe(window: MainWindow, sample: Path, item_id: str) -> None:
     if screen is None or not layout.generate():
         raise RuntimeError("the sample did not start a restore")
     layout.progress(60, 100, "Restoring")
-    layout.finish(item_id)
+    layout.finish(item_id, ReviewedOutput(path=sample))
     screen.set_expert(True)
     screen.refresh()
     frame = window.findChild(QLabel, "compareView")
