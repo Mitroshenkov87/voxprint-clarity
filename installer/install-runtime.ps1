@@ -165,8 +165,19 @@ Write-Log "installing Pillow $pillow"
 & $venvPython -m pip install "Pillow==$pillow"
 if ($LASTEXITCODE -ne 0) { throw "Pillow install failed" }
 Write-Log "pinning torch and spandrel into the shared venv"
-& $venvPython $PinScript --python $venvPython --lock $Lock --requirements $GpuRequirements
-if ($LASTEXITCODE -ne 0) { throw "runtime pin failed" }
+$savedPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$pinOutput = & $venvPython $PinScript --python $venvPython --lock $Lock --requirements $GpuRequirements 2>&1
+$pinCode = $LASTEXITCODE
+$ErrorActionPreference = $savedPreference
+if ($null -ne $pinOutput) {
+    foreach ($line in @($pinOutput)) {
+        if ($null -ne $line -and "$line" -ne "") {
+            Write-Log ([string]$line)
+        }
+    }
+}
+if ($pinCode -ne 0) { throw "runtime pin failed" }
 Write-Log "installing Pillow $pillow"
 & $venvPython -m pip install "Pillow==$pillow"
 if ($LASTEXITCODE -ne 0) { throw "Pillow install failed" }

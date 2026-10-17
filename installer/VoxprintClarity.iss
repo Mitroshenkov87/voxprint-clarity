@@ -8,7 +8,7 @@
 ; Per-user data stays in %LOCALAPPDATA%\Voxprint. This script does not delete it.
 
 #define AppDisplayName "VOXPrint AI Clarity"
-#define Publisher "VOXPrint"
+#define Publisher "VOXPrint AI Suite"
 #define SuiteFolder "VOXPrint AI Suite"
 #define AppFolder "Clarity"
 #define GuiExe "voxprint-clarity.exe"
@@ -97,6 +97,7 @@ Source: "..\requirements.txt"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "..\requirements-gpu.txt"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "runtime_lock.json"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "pin_runtime.py"; DestDir: "{tmp}"; Flags: dontcopy
+Source: "..\clarity\native_gap.py"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "fetch_common.py"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "stage_suite_runtime.py"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "launchers\{#GuiExe}"; DestDir: "{app}"; Flags: ignoreversion
@@ -385,6 +386,7 @@ begin
   ExtractTemporaryFile('requirements-gpu.txt');
   ExtractTemporaryFile('runtime_lock.json');
   ExtractTemporaryFile('pin_runtime.py');
+  ExtractTemporaryFile('native_gap.py');
   ExtractTemporaryFile('fetch_common.py');
   ExtractTemporaryFile('stage_suite_runtime.py');
   Script := ExpandConstant('{tmp}\install-runtime.ps1');

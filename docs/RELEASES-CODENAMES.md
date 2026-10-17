@@ -8,31 +8,28 @@ the new codename here in the same commit as the `BUILD.json` change. Published p
 including the two historical duplicates below.
 
 `BUILD.json` (`offset`, `codename`) is the single source of truth. The release title, the window footer, the splash and
-`--version` all show the `voxprint_common.buildinfo` label, `X.Y.Z RC build N "Codename"`.
+`--version` all show the `voxprint_common.buildinfo` label. A plain version is `X.Y.Z build N "Codename"`. A version string that contains `-rc` is `X.Y.Z RC build N "Codename"`.
 
 ## Used codenames
 
 | App | Codenames used (oldest first) |
 |---|---|
-| audiobook-builder | Tikkun, Zahav, Menuchah, Kolot, Kaporet, Shalem, Shelishi, Toledot, Achim, Nachon, Chazak |
-| enlarge | Gadol, Hagdil, Petach, Bahir |
-| movie-dubber | Hineni, Chazak, Bochan |
-| clarity | Bereshit, Tohar, Arukhah, Emet |
-| plotweaver | Sefer, Rikmah, Machashavah, Tzaruf |
-| lucent | Zohar, Ner |
+| audiobook-builder | Tikkun, Zahav, Menuchah, Kolot, Kaporet, Shalem, Shelishi, Toledot, Achim, Nachon, Chazak, Tamim, Ometz, Amud, Shomer |
+| enlarge | Gadol, Hagdil, Petach, Bahir, Marpe, Tikvah, Chayil, Emunah |
+| movie-dubber | Hineni, Chazak, Bochan, Kumi |
+| clarity | Bereshit, Tohar, Arukhah, Emet, Barur |
+| plotweaver | Sefer, Rikmah, Machashavah, Tzaruf, Chut, Oreg, Shti |
+| lucent | Zohar, Ner, Yashar, Tov, Orah |
+| canvas | Yotzer |
+| model-forge | Charash |
+| voxprint-common | Yesod, Chesed, Gevurah, Tiferet, Netzach, Hod, Malkhut |
 
-Historical duplicate (published, kept as is): **Chazak** (audiobook-builder and movie-dubber).
+Historical duplicate (published, kept as is): **Chazak** (audiobook-builder and movie-dubber). **Menuchah** is also the codename of voxprint-common 0.1.1.
 
-Emet is truth (Tehillim 119:160). Clarity build 1004.
+Barur is clear (Iyov 33:3). Clarity build 1005.
 
 ## Assigned next codenames (reserved)
 
-| App | Codename | Meaning |
-|---|---|---|
-| canvas | Yotzer | fashioner (Yeshayahu) |
-| model-forge | Charash | craftsman, smith (Yeshayahu 44:12) |
-| audiobook-builder | Tamim | whole, complete (Bereshit 17:1, Devarim 18:13); 1.0.0 RC3 build 1001 |
-| lucent | Yashar | upright, straight (Devarim 6:18); fixes from the first VM test |
-| enlarge | Marpe | healing, remedy (Mishlei 4:22); fixes from the first GPU test |
+No codename is reserved. Yotzer, Charash, Tamim, Yashar, and Marpe have shipped and are in the used table.
 
 When a reserved codename ships, move it to the "Used codenames" table.

@@ -14,6 +14,7 @@ import pytest
 from clarity.cli import Console
 from clarity.gpu_runtime import (
     GpuRuntimeError,
+    missing_runtime_message,
     native_gap_directories,
     prepare_gpu_runtime,
     register_native_gap,
@@ -21,31 +22,90 @@ from clarity.gpu_runtime import (
     require_tensorrt_and_cuda,
     reset_gpu_runtime,
 )
+from clarity.native_gap import call_capturing_stderr
 from clarity.progress import pulse_until
 
 
-def test_gap_directories_include_tensorrt_and_nvidia_bins(tmp_path: Path) -> None:
-    root = tmp_path / "site"
-    trt = root / "tensorrt_libs"
-    trt.mkdir(parents=True)
-    (trt / "nvinfer_10.dll").write_bytes(b"x")
-    arch = root / "nvidia" / "cu13" / "bin" / "x86_64"
+def _runtime_tree(root: Path) -> dict[str, Path]:
+    """Nested cu13 layout. cuBLAS exists only under torch/lib."""
+    arch = root / "nvidia" / "cuda_runtime" / "cu13" / "bin" / "x86_64"
     arch.mkdir(parents=True)
     (arch / "cudart64_13.dll").write_bytes(b"x")
     cudnn = root / "nvidia" / "cudnn" / "bin"
     cudnn.mkdir(parents=True)
     (cudnn / "cudnn64_9.dll").write_bytes(b"x")
+    trt = root / "tensorrt_libs"
+    trt.mkdir(parents=True)
+    (trt / "nvinfer_10.dll").write_bytes(b"x")
+    torch_lib = root / "torch" / "lib"
+    torch_lib.mkdir(parents=True)
+    (torch_lib / "cublas64_13.dll").write_bytes(b"x")
+    (torch_lib / "cublasLt64_13.dll").write_bytes(b"x")
+    return {"arch": arch, "cudnn": cudnn, "trt": trt, "torch": torch_lib}
+
+
+def test_gap_directories_include_nested_cu13_and_torch_lib(tmp_path: Path) -> None:
+    root = tmp_path / "site-packages"
+    paths = _runtime_tree(root)
     found = [path.resolve() for path in native_gap_directories([root])]
-    assert trt.resolve() in found
-    assert arch.resolve() in found
-    assert (root / "nvidia" / "cu13" / "bin").resolve() in found
-    assert cudnn.resolve() in found
+    assert paths["arch"].resolve() in found
+    assert paths["cudnn"].resolve() in found
+    assert paths["trt"].resolve() in found
+    assert paths["torch"].resolve() in found
+    assert (paths["arch"].parent).resolve() not in found
+
+
+def test_missing_runtime_message_lists_only_absent_libraries(tmp_path: Path) -> None:
+    root = tmp_path / "site-packages"
+    arch = root / "nvidia" / "cu13" / "bin" / "x86_64"
+    arch.mkdir(parents=True)
+    (arch / "cudart64_13.dll").write_bytes(b"x")
+    torch_lib = root / "torch" / "lib"
+    torch_lib.mkdir(parents=True)
+    (torch_lib / "cublas64_13.dll").write_bytes(b"x")
+    (torch_lib / "cublasLt64_13.dll").write_bytes(b"x")
+    text = missing_runtime_message([root])
+    assert text == "Missing from the DLL search path: cudnn*, nvinfer_10"
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    absent = missing_runtime_message([empty])
+    assert absent == (
+        "Missing from the DLL search path: cudart64_13, cublas64_13, cublasLt64_13, cudnn*, nvinfer_10"
+    )
+
+
+def test_empty_torch_lib_is_registered(tmp_path: Path) -> None:
+    root = tmp_path / "site"
+    lib = root / "torch" / "lib"
+    lib.mkdir(parents=True)
+    assert [path.resolve() for path in native_gap_directories([root])] == [lib.resolve()]
+
+
+def test_register_prepends_the_nested_directories(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "site-packages"
+    paths = _runtime_tree(root)
+    added: list[str] = []
+
+    def add(path: str) -> object:
+        added.append(path)
+        return path
+
+    monkeypatch.setattr(os, "add_dll_directory", add, raising=False)
+    env: dict[str, str] = {"PATH": "/usr/bin"}
+    found = register_native_gap([root], platform="win32", env=env)
+    assert [Path(path).resolve() for path in added] == [path.resolve() for path in found]
+    parts = env["PATH"].split(os.pathsep)
+    assert parts[-1] == "/usr/bin"
+    listed = {Path(part).resolve() for part in parts[:-1]}
+    for folder in paths.values():
+        assert folder.resolve() in listed
 
 
 def test_register_keeps_windows_dll_handles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "site"
     trt = root / "tensorrt_libs"
     trt.mkdir(parents=True)
+    (trt / "nvinfer_10.dll").write_bytes(b"x")
     added: list[str] = []
 
     def add(path: str) -> object:
@@ -95,8 +155,11 @@ def test_prepare_registers_the_gap_when_the_helper_is_missing(monkeypatch: pytes
     reset_gpu_runtime()
 
 
-def test_session_provider_fallback_names_the_missing_dll(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_session_provider_fallback_names_the_missing_dll(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr("clarity.gpu_runtime.prepare_gpu_runtime", lambda: None)
+    monkeypatch.setattr("clarity.gpu_runtime.site_package_roots", lambda: [tmp_path])
 
     def fake(name: str) -> tuple[list[str], str]:
         if name == "CUDAExecutionProvider":
@@ -108,19 +171,35 @@ def test_session_provider_fallback_names_the_missing_dll(monkeypatch: pytest.Mon
     engine = types.ModuleType("voxprint_engine")
     monkeypatch.setitem(sys.modules, "voxprint_engine", engine)
     monkeypatch.setitem(sys.modules, "voxprint_engine.session", session)
-    with pytest.raises(GpuRuntimeError, match="nvinfer_10.dll"):
+    with pytest.raises(GpuRuntimeError, match="nvinfer_10") as caught:
         require_tensorrt_and_cuda()
+    text = str(caught.value)
+    for name in ("cudart64_13", "cublas64_13", "cublasLt64_13", "cudnn*", "nvinfer_10"):
+        assert name in text
 
 
-def test_cpu_only_session_is_refused() -> None:
+def test_cpu_only_session_is_refused(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("clarity.gpu_runtime.site_package_roots", lambda: [tmp_path])
+
     class _Session:
         @staticmethod
         def get_providers() -> list[str]:
             return ["CPUExecutionProvider"]
 
-    with pytest.raises(GpuRuntimeError, match="nvinfer_10.dll"):
+    with pytest.raises(GpuRuntimeError, match="cublas64_13") as caught:
         require_gpu_session(_Session())
+    assert "nvinfer_10" in str(caught.value)
     assert require_gpu_session(object()) == []
+
+
+def test_stderr_capture_reads_the_process_stream() -> None:
+    def write() -> str:
+        os.write(2, b"loader line\n")
+        return "ok"
+
+    result, text = call_capturing_stderr(write)
+    assert result == "ok"
+    assert "loader line" in text
 
 
 def test_json_event_flushes_phase_and_frame_fields(capsys: pytest.CaptureFixture[str]) -> None:

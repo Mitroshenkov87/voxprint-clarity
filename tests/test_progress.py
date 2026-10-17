@@ -144,5 +144,7 @@ def test_open_restore_session_refuses_a_cpu_session(monkeypatch: pytest.MonkeyPa
         return None
 
     monkeypatch.setattr("clarity.engine._load_module", load)
-    with pytest.raises(GpuRuntimeError, match="nvinfer_10.dll"):
+    monkeypatch.setattr("clarity.gpu_runtime.site_package_roots", lambda: [tmp_path])
+    with pytest.raises(GpuRuntimeError, match="nvinfer_10") as caught:
         open_restore_session(tmp_path / "model.onnx", lambda _fraction, _message: None)
+    assert "cublasLt64_13" in str(caught.value)

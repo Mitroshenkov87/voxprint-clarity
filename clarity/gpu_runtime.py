@@ -1,11 +1,15 @@
 """CUDA 13 and TensorRT on the process search path before ONNX Runtime.
 
-``voxprint_engine.trt_libs.prepare_native_runtime`` registers those
+``voxprint_engine.trt_libs.prepare_native_runtime`` registers wheel
 directories and keeps the Windows ``os.add_dll_directory`` handles. The
 pinned tag ``engine-v1.4.0`` (commit ``f0ecb87``) does not define that
-function. When it is missing, this module registers the same directories
-and also ``nvidia/*/bin/x86_64``, which is where the CUDA 13 wheels keep
-``cudart64_13.dll``.
+function. This module always registers its own directories as well.
+
+CUDA 13 wheels nest ``cudart64_13.dll`` under ``nvidia/<any>/bin/x86_64``.
+On the RTX 4090 laptop, ``cublas64_13.dll`` and ``cublasLt64_13.dll`` exist
+only in ``site-packages/torch/lib``. A one-level ``nvidia/*/bin`` walk misses
+both a deeper nest and that torch directory, and ONNX Runtime then stays on
+the CPU.
 
 Nothing here imports ``onnxruntime`` at import time. A session import loads
 that module, so the directory registration has to finish first.
@@ -13,21 +17,23 @@ that module, so the directory registration has to finish first.
 from __future__ import annotations
 
 import os
-import site
 import sys
-import sysconfig
 from collections.abc import Callable, MutableMapping, Sequence
 from pathlib import Path
 
 from clarity.errors import ClarityError
+from clarity.native_gap import (
+    build_identity_model,
+    call_capturing_stderr,
+    format_missing_runtime,
+    format_probe_failure,
+)
+from clarity.native_gap import native_gap_directories as shared_gap_directories
+from clarity.native_gap import site_package_roots as shared_site_package_roots
 
 _HANDLES: list[object] = []
 _PREPARED = False
 _GPU = ("TensorrtExecutionProvider", "CUDAExecutionProvider")
-_MISSING_DLL = (
-    "nvinfer_10.dll is missing from the DLL search path "
-    "(site-packages/tensorrt_libs and site-packages/nvidia/*/bin)"
-)
 
 
 class GpuRuntimeError(ClarityError):
@@ -42,22 +48,13 @@ def reset_gpu_runtime() -> None:
 
 def site_package_roots() -> list[Path]:
     """Directories that can hold the CUDA and TensorRT wheels."""
-    roots: list[Path] = []
-    for key in ("purelib", "platlib"):
-        value = sysconfig.get_path(key)
-        if value:
-            roots.append(Path(value))
-    try:
-        packages = site.getsitepackages()
-    except (AttributeError, OSError):
-        return roots
-    for item in packages:
-        roots.append(Path(item))
-    return roots
+    return shared_site_package_roots()
 
 
 def native_gap_directories(roots: Sequence[Path]) -> list[Path]:
-    """TensorRT library directory and every NVIDIA ``bin`` the wheels ship.
+    """CUDA 13, cuDNN, and TensorRT directories, plus ``torch/lib``.
+
+    The installer probe loads the same function from :mod:`clarity.native_gap`.
 
     Args:
         roots: Site-packages directories to scan.
@@ -65,29 +62,7 @@ def native_gap_directories(roots: Sequence[Path]) -> list[Path]:
     Returns:
         Existing directories, without duplicates.
     """
-    found: list[Path] = []
-    seen: set[Path] = set()
-    for root in roots:
-        _add_dir(found, seen, root / "tensorrt_libs")
-        nvidia = root / "nvidia"
-        if not nvidia.is_dir():
-            continue
-        try:
-            children = list(nvidia.iterdir())
-        except OSError:
-            continue
-        for child in children:
-            if not child.is_dir():
-                continue
-            bin_dir = child / "bin"
-            _add_dir(found, seen, bin_dir)
-            _add_dir(found, seen, bin_dir / "x86_64")
-            lib_dir = child / "lib"
-            if _has_cu13(lib_dir):
-                _add_dir(found, seen, lib_dir)
-            if _has_cu13(lib_dir / "x64"):
-                _add_dir(found, seen, lib_dir / "x64")
-    return found
+    return shared_gap_directories(roots)
 
 
 def register_native_gap(
@@ -124,12 +99,11 @@ def register_native_gap(
 def prepare_gpu_runtime() -> None:
     """Register CUDA 13 and TensorRT before any ``onnxruntime`` import.
 
-    Calls ``prepare_native_runtime`` when the installed engine provides it.
-    That helper does not walk ``nvidia/*/bin/x86_64``, so the gap registration
-    still runs and adds those directories. The pinned tag has no helper at
-    all, and then the gap registration is the whole search path. A second
-    call does nothing. A missing engine package is not an error: docs and
-    unit tests import Clarity without it.
+    Calls ``prepare_native_runtime`` when the installed engine provides it,
+    then always registers the directories this module finds. The engine
+    helper does not add ``torch/lib``. The pinned tag has no helper at all.
+    A second call does nothing. A missing engine package is not an error:
+    docs and unit tests import Clarity without it.
     """
     global _PREPARED
     if _PREPARED:
@@ -141,7 +115,7 @@ def prepare_gpu_runtime() -> None:
         _PREPARED = True
         return
     prepare()
-    # The engine helper scans nvidia/*/bin, not nvidia/*/bin/x86_64.
+    # The engine helper can miss torch/lib and a nest deeper than nvidia/*/bin.
     register_native_gap(site_package_roots())
     _PREPARED = True
 
@@ -160,8 +134,9 @@ def require_gpu_session(session: object) -> list[str]:
         The provider names, or an empty list when the object has none.
 
     Raises:
-        GpuRuntimeError: The session stayed on CPU. The message names
-            ``nvinfer_10.dll``.
+        GpuRuntimeError: The session stayed on CPU. The message lists which
+            of ``cudart64_13``, ``cublas64_13``, ``cublasLt64_13``, ``cudnn*``,
+            and ``nvinfer_10`` the search path does not contain.
     """
     getter = getattr(session, "get_providers", None)
     if not callable(getter):
@@ -172,7 +147,7 @@ def require_gpu_session(session: object) -> list[str]:
         return []
     if any(name in active for name in _GPU):
         return active
-    raise GpuRuntimeError(f"ONNX Runtime kept {active}. {_MISSING_DLL}.")
+    raise GpuRuntimeError(f"ONNX Runtime kept {active}. {missing_runtime_message()}.")
 
 
 def require_tensorrt_and_cuda() -> None:
@@ -198,19 +173,27 @@ def require_tensorrt_and_cuda() -> None:
         _require_with_identity_model()
         return
     missing: list[str] = []
+    logs: list[str] = []
     for name in _GPU:
-        active, reason = session_providers(name)
+
+        def open_provider(provider: str = name):
+            return session_providers(provider)
+
+        (active, reason), log = call_capturing_stderr(open_provider)
+        if log:
+            logs.append(log)
         if name not in [str(item) for item in active]:
             missing.append(str(reason or active))
     if missing:
-        raise GpuRuntimeError(f"{_MISSING_DLL}. {'; '.join(missing)}")
+        folders = native_gap_directories(site_package_roots())
+        raise GpuRuntimeError(format_probe_failure(folders, missing, "\n".join(logs)))
 
 
 def main() -> int:
     """Return 0 when both providers stay active on a real session.
 
     Returns:
-        1 when TensorRT or CUDA falls back. The message names ``nvinfer_10.dll``.
+        1 when TensorRT or CUDA falls back. The message lists the missing libraries.
     """
     try:
         require_tensorrt_and_cuda()
@@ -234,25 +217,19 @@ def _engine_prepare() -> Callable[[], object]:
     return prepare
 
 
-def _add_dir(found: list[Path], seen: set[Path], folder: Path) -> None:
-    if not folder.is_dir():
-        return
-    try:
-        resolved = folder.resolve()
-    except OSError:
-        return
-    if resolved in seen:
-        return
-    seen.add(resolved)
-    found.append(folder)
+def missing_runtime_message(roots: Sequence[Path] | None = None) -> str:
+    """Name the CUDA 13 and TensorRT libraries the search path does not have.
 
+    Args:
+        roots: Site-packages directories. Defaults to this process.
 
-def _has_cu13(folder: Path) -> bool:
-    try:
-        names = [path.name.lower() for path in folder.iterdir() if path.is_file()]
-    except OSError:
-        return False
-    return any("_13" in name or ".so.13" in name or "cu13" in name for name in names)
+    Returns:
+        A single sentence. It lists whichever of ``cudart64_13``,
+        ``cublas64_13``, ``cublasLt64_13``, ``cudnn*``, and ``nvinfer_10``
+        is absent. When every one of those is present, it says so.
+    """
+    folders = native_gap_directories(site_package_roots() if roots is None else roots)
+    return format_missing_runtime(folders)
 
 
 def _prepend(env: MutableMapping[str, str], folders: Sequence[Path], key: str) -> None:
@@ -271,35 +248,34 @@ def _require_with_identity_model() -> None:
 
     ``onnxruntime`` is imported here, after :func:`prepare_gpu_runtime`, because
     importing it earlier makes Windows load the provider DLLs before
-    ``nvinfer_10.dll`` and the CUDA 13 bins are on the search path.
+    ``torch/lib`` and the CUDA 13 bins are on the search path.
     """
     import numpy as np
-    import onnx
-    from onnx import helper
 
     import onnxruntime as ort
 
-    node = helper.make_node("Identity", ["X"], ["Y"])
-    graph = helper.make_graph(
-        [node],
-        "identity",
-        [helper.make_tensor_value_info("X", onnx.TensorProto.FLOAT, [1, 1])],
-        [helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [1, 1])],
-    )
-    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-    payload = model.SerializeToString()
+    payload = build_identity_model()
     sample = np.zeros((1, 1), dtype=np.float32)
     errors: list[str] = []
+    logs: list[str] = []
     for name in _GPU:
-        try:
-            session = ort.InferenceSession(payload, providers=[name])
-            active = [str(item) for item in session.get_providers()]
-        except (OSError, RuntimeError, ValueError) as exc:
-            errors.append(f"{name}: {exc}")
-            continue
-        if name not in active:
-            errors.append(f"{name} fell back to {active}")
-            continue
-        session.run(None, {"X": sample})
+
+        def open_session(provider: str = name) -> list[str] | str:
+            try:
+                session = ort.InferenceSession(payload, providers=[provider])
+                active = [str(item) for item in session.get_providers()]
+                if provider not in active:
+                    return f"{provider} fell back to {active}"
+                session.run(None, {"X": sample})
+            except (OSError, RuntimeError, ValueError) as exc:
+                return f"{provider}: {exc}"
+            return active
+
+        outcome, log = call_capturing_stderr(open_session)
+        if log:
+            logs.append(log)
+        if isinstance(outcome, str):
+            errors.append(outcome)
     if errors:
-        raise GpuRuntimeError(f"{_MISSING_DLL}. {'; '.join(errors)}")
+        folders = native_gap_directories(site_package_roots())
+        raise GpuRuntimeError(format_probe_failure(folders, errors, "\n".join(logs)))
