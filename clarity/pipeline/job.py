@@ -65,6 +65,7 @@ class Settings:
     overlap: int = 16
     container: Container = Container.MKV
     codec: VideoCodec = VideoCodec.AV1
+    crf: int = 20
     copy_audio: bool = True
     max_frames: int = 1000
 
@@ -88,6 +89,7 @@ class Settings:
             "batch": self.batch,
             "container": self.container.value,
             "codec": self.codec.value,
+            "crf": self.crf,
             "copy_audio": self.copy_audio,
             "overlap": self.overlap,
             "max_frames": self.max_frames,
@@ -345,6 +347,7 @@ def commands_for(
             height=height,
             fps=probe.fps,
             pix_fmt=encoder_pix_fmt(probe.pix_fmt),
+            cq=settings.crf,
         ),
         "chunks": [list(pair) for pair in plan_chunks(max(probe.frames, 1), [], settings.max_frames)],
     }

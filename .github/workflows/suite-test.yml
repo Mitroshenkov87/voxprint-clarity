@@ -32,6 +32,8 @@ jobs:
         shell: bash
         run: |
           python -m pip install --extra-index-url https://pypi.nvidia.com "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.4.0.tar.gz"
+          # The engine depends on voxprint-common 0.1.1 and replaces the UI pin.
+          python -m pip install -r requirements.txt
           python installer/stage_suite_runtime.py --python python
           python -c "import voxprint_engine, enlarge.suite_runtime"
       - name: Check the release tag

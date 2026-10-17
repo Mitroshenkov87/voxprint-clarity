@@ -113,7 +113,8 @@ entries the reader then ignores.
 
 Every field of a Clarity job: mode, upscale, anime, upscale strength, sharpen,
 white balance, levels, quality factor, sigma, tile, batch, overlap, container
-(`mkv` or `mp4`), codec (`av1` or `hevc`), `copy_audio`, and `max_frames`.
+(`mkv` or `mp4`), codec (`av1` or `hevc`), `crf` (AV1 CRF, default 20; the
+same number is the HEVC constant quality), `copy_audio`, and `max_frames`.
 `destination` is the output path the window last saved. Unknown keys are kept
 and written back.
 
