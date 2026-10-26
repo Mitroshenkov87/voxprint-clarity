@@ -1,5 +1,10 @@
 # VOXPrint AI Clarity
 
+> [!WARNING]
+> **⚠️ Deep alpha.** This software is experimental; nothing is guaranteed to work. Use at your own risk.
+>
+> **⚠️ Глубокая альфа.** Программа экспериментальная, работа не гарантируется.
+
 Lightweight non-generative restoration for an SDR video, part of the VOXPrint
 AI Media Suite. A clip comes back deblocked, denoised, lightly sharpened, and
 colour-cleaned per scene. Optional 2x is off by default.
