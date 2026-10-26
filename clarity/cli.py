@@ -44,7 +44,7 @@ from clarity.pipeline.runner import JobSpec, dry_run_restore, run_job
 from clarity.platform_gate import assess_platform
 from clarity.progress import progress_stage
 from clarity.project import ProjectFormatError, load_project, work_dir_for
-from clarity.ui.main_window import MainWindow
+from clarity.ui.shell import MainWindow
 from clarity.ui.platform import gui_qt_platform, require_windows_platform_plugin, selftest_qt_platform
 from clarity.ui.suite_dialog import RepairProgress
 from clarity.ui.theme import IDENTITY, splash_art

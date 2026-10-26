@@ -143,11 +143,13 @@ def encode_command(
     height: int,
     fps: float,
     pix_fmt: str = "yuv420p",
+    cq: int = 20,
 ) -> list[str]:
     """Raw rgb24 on stdin, plus stream-copied audio, subtitles, and chapters from the source.
 
     ``pix_fmt`` is the encoder output format (``yuv420p`` or ``p010le``), placed
-    after ``-c:v`` so ffmpeg does not leave rgb24 as yuv444p.
+    after ``-c:v`` so ffmpeg does not leave rgb24 as yuv444p. ``cq`` is the
+    AV1 CRF, or the same constant-quality number for HEVC.
     """
     suffix = "matroska" if container is Container.MKV else "mp4"
     rate = f"{fps:.6f}" if fps > 0 else "24000/1001"
@@ -179,7 +181,7 @@ def encode_command(
         "1",
         "-map_metadata",
         "1",
-        *video_args(encoder),
+        *video_args(encoder, cq),
         "-pix_fmt",
         pix_fmt,
         *audio_args(copy=copy_audio),
@@ -238,10 +240,12 @@ def encode_chunk_command(
     height: int,
     fps: float,
     pix_fmt: str = "yuv420p",
+    cq: int = 20,
 ) -> list[str]:
     """One restored chunk, video only. Audio is copied once when the chunks are joined.
 
-    ``pix_fmt`` is the encoder output format, after ``-c:v``.
+    ``pix_fmt`` is the encoder output format, after ``-c:v``. ``cq`` is the
+    AV1 CRF, or the same constant-quality number for HEVC.
     """
     rate = f"{fps:.6f}" if fps > 0 else "24000/1001"
     return [
@@ -260,7 +264,7 @@ def encode_chunk_command(
         rate,
         "-i",
         "pipe:0",
-        *video_args(encoder),
+        *video_args(encoder, cq),
         "-pix_fmt",
         pix_fmt,
         "-an",

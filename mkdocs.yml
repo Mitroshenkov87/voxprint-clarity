@@ -54,6 +54,7 @@ nav:
   - User guide: USER-GUIDE.md
   - Install: INSTALL.md
   - Command line: CLI.md
+  - Feature map: ui/FEATURE-MAP.md
   - Command reference: reference/cli.md
   - Architecture: ARCHITECTURE.md
   - Changelog: CHANGELOG.md

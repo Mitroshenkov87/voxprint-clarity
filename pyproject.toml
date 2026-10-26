@@ -15,8 +15,8 @@ dependencies = [
   "Pillow>=12.3.0,<13",
   "truststore>=0.10,<1",
   "onnx>=1.21,<2",
-  # voxprint-common==0.1.1 (Menuchah). The release wheel, not a git URL.
-  "voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl",
+  # Shared UI tag v0.2.5 "Yitro" (commit pin). The installer stays on the 0.1.1 wheel until M2.
+  "voxprint-common[ui] @ git+https://github.com/Mitroshenkov87/voxprint-common@8a94b531cb4f3526425a80a86a1e64624b5de606",
 ]
 
 [project.optional-dependencies]
@@ -28,6 +28,9 @@ voxprint-clarity-cli = "clarity.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["clarity*"]
+
+[tool.setuptools.package-data]
+"clarity.ui.presets" = ["*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

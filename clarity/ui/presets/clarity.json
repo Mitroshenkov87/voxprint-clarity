@@ -1,0 +1,157 @@
+{
+  "schema": "voxprint-presets/1",
+  "groups": [
+    {
+      "id": "cleanup",
+      "label_key": "simple.preset.cleanup",
+      "default": "light",
+      "options": [
+        {
+          "id": "light",
+          "label_key": "simple.preset.cleanup.light",
+          "values": {
+            "job.mode": "clean",
+            "job.restore_models": "drunet-deblocking-color,drunet-color",
+            "job.sigma": 15
+          }
+        },
+        {
+          "id": "medium",
+          "label_key": "simple.preset.cleanup.medium",
+          "values": {
+            "job.mode": "clean",
+            "job.restore_models": "drunet-deblocking-color,drunet-color",
+            "job.sigma": 25
+          }
+        },
+        {
+          "id": "strong",
+          "label_key": "simple.preset.cleanup.strong",
+          "values": {
+            "job.mode": "strong",
+            "job.restore_models": "scunet-color-real-psnr",
+            "job.sigma": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "fix",
+      "label_key": "simple.preset.fix",
+      "default": "colours",
+      "options": [
+        {
+          "id": "colours",
+          "label_key": "simple.preset.fix.colours",
+          "values": {"job.white_balance": true, "job.levels": true}
+        },
+        {
+          "id": "plain",
+          "label_key": "simple.preset.fix.plain",
+          "values": {"job.white_balance": false, "job.levels": false}
+        }
+      ]
+    },
+    {
+      "id": "sharpness",
+      "label_key": "simple.preset.sharpness",
+      "default": "normal",
+      "options": [
+        {
+          "id": "off",
+          "label_key": "simple.preset.sharpness.off",
+          "values": {"job.sharpen": 0}
+        },
+        {
+          "id": "normal",
+          "label_key": "simple.preset.sharpness.normal",
+          "values": {"job.sharpen": 0.35}
+        },
+        {
+          "id": "sharper",
+          "label_key": "simple.preset.sharpness.sharper",
+          "values": {"job.sharpen": 0.6}
+        }
+      ]
+    },
+    {
+      "id": "size",
+      "label_key": "simple.preset.size",
+      "default": "same",
+      "options": [
+        {
+          "id": "same",
+          "label_key": "simple.preset.size.same",
+          "values": {"job.upscale": false}
+        },
+        {
+          "id": "2x",
+          "label_key": "simple.preset.size.twice",
+          "values": {"job.upscale": true}
+        }
+      ]
+    },
+    {
+      "id": "look",
+      "label_key": "simple.preset.look",
+      "default": "normal",
+      "options": [
+        {
+          "id": "normal",
+          "label_key": "simple.preset.look.normal",
+          "values": {
+            "job.anime": false,
+            "job.upscale_model": "realesr-general-x4v3"
+          }
+        },
+        {
+          "id": "anime",
+          "label_key": "simple.preset.look.anime",
+          "values": {
+            "job.anime": true,
+            "job.upscale_model": "realesr-animevideov3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "quality",
+      "label_key": "simple.preset.quality",
+      "default": "balanced",
+      "options": [
+        {
+          "id": "smaller",
+          "label_key": "simple.preset.quality.smaller",
+          "values": {"job.crf": 32}
+        },
+        {
+          "id": "balanced",
+          "label_key": "simple.preset.quality.balanced",
+          "values": {"job.crf": 20}
+        },
+        {
+          "id": "best",
+          "label_key": "simple.preset.quality.best",
+          "values": {"job.crf": 16}
+        }
+      ]
+    },
+    {
+      "id": "file",
+      "label_key": "simple.preset.file",
+      "default": "mkv",
+      "options": [
+        {
+          "id": "mkv",
+          "label_key": "simple.preset.file.mkv",
+          "values": {"job.container": "mkv"}
+        },
+        {
+          "id": "mp4",
+          "label_key": "simple.preset.file.mp4",
+          "values": {"job.container": "mp4"}
+        }
+      ]
+    }
+  ]
+}

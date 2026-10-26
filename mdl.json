@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "app": "clarity",
+  "models": [
+    {
+      "id": "drunet-deblocking-color",
+      "version": "0",
+      "vram_tier": "any",
+      "status": "unavailable",
+      "reason": "placeholder"
+    },
+    {
+      "id": "drunet-color",
+      "version": "0",
+      "vram_tier": "any",
+      "status": "unavailable",
+      "reason": "placeholder"
+    },
+    {
+      "id": "scunet-color-real-psnr",
+      "version": "0",
+      "vram_tier": "any",
+      "status": "unavailable",
+      "reason": "placeholder"
+    },
+    {
+      "id": "realesr-general-x4v3",
+      "version": "0",
+      "vram_tier": "any",
+      "status": "unavailable",
+      "reason": "placeholder"
+    },
+    {
+      "id": "realesr-general-wdn-x4v3",
+      "version": "0",
+      "vram_tier": "any",
+      "status": "unavailable",
+      "reason": "placeholder"
+    },
+    {
+      "id": "realesr-animevideov3",
+      "version": "0",
+      "vram_tier": "any",
+      "status": "unavailable",
+      "reason": "placeholder"
+    }
+  ]
+}
