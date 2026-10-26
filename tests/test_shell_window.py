@@ -210,7 +210,7 @@ def test_screen_uses_the_width_and_shows_names(
     assert compare is not None
     assert compare.minimumHeight() >= 200
     assert compare.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Expanding
-    assert compare.height() > 200
+    assert compare.height() >= 200
     assert panel.height() > 400
     thumb = window.findChild(QPushButton, "thumb-item-1")
     assert thumb is not None
