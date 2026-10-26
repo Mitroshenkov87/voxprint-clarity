@@ -122,6 +122,8 @@ def test_window_saves_and_opens_a_project(tmp_path: Path, monkeypatch: pytest.Mo
 
 def test_restore_click_uses_the_default_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _isolate(monkeypatch, tmp_path)
+    # mdl.json lists real files now; this test is about settings, not downloads.
+    monkeypatch.setattr("clarity.ui.shell.models_ready", lambda: True)
     source = tmp_path / "clip.mkv"
     source.write_bytes(b"frame-bytes")
     captured: dict[str, Settings] = {}

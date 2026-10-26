@@ -4,45 +4,117 @@
   "models": [
     {
       "id": "drunet-deblocking-color",
-      "version": "0",
+      "version": "1",
       "vram_tier": "any",
-      "status": "unavailable",
-      "reason": "placeholder"
+      "display_name": "DRUNet deblocking (color)",
+      "licence": "MIT",
+      "on_demand": false,
+      "files": [
+        {
+          "path": "drunet_deblocking_color.pth",
+          "size": 130590513,
+          "sha256": "b26323e888230b1b5b58957add8dc9b9ea7fa2f69bdf6a0c3cca9db82167209f",
+          "mirrors": [
+            "https://github.com/cszn/KAIR/releases/download/v1.0/drunet_deblocking_color.pth",
+            "https://huggingface.co/Mitroshenkov87/voxprint-mirror-drunet-deblocking-color/resolve/dbdf93328457256ef8874adeaecc39b66cde7ec4/drunet_deblocking_color.pth"
+          ]
+        }
+      ]
     },
     {
       "id": "drunet-color",
-      "version": "0",
+      "version": "1",
       "vram_tier": "any",
-      "status": "unavailable",
-      "reason": "placeholder"
+      "display_name": "DRUNet denoise (color)",
+      "licence": "MIT",
+      "on_demand": false,
+      "files": [
+        {
+          "path": "drunet_color.pth",
+          "size": 130579305,
+          "sha256": "479abe3c5327dfd10ff54a80ec7d4098ca80752a5c9492cdff31cee430bec4b4",
+          "mirrors": [
+            "https://github.com/cszn/KAIR/releases/download/v1.0/drunet_color.pth",
+            "https://huggingface.co/Mitroshenkov87/voxprint-mirror-drunet-color/resolve/dc3f53a27340607e4685dfdb9e21178ebec15c72/drunet_color.pth"
+          ]
+        }
+      ]
     },
     {
       "id": "scunet-color-real-psnr",
-      "version": "0",
+      "version": "1",
       "vram_tier": "any",
-      "status": "unavailable",
-      "reason": "placeholder"
+      "display_name": "SCUNet real_psnr (color)",
+      "licence": "Apache-2.0",
+      "on_demand": true,
+      "files": [
+        {
+          "path": "scunet_color_real_psnr.pth",
+          "size": 71982841,
+          "sha256": "fa78899ba2caec9d235a900e91d96c689da71c42029230c2028b00f09f809c2e",
+          "mirrors": [
+            "https://github.com/cszn/KAIR/releases/download/v1.0/scunet_color_real_psnr.pth",
+            "https://huggingface.co/Mitroshenkov87/voxprint-mirror-scunet-color-real-psnr/resolve/d0cbc012ac33aa331304439a1a7196d0923cd9fd/scunet_color_real_psnr.pth"
+          ]
+        }
+      ]
     },
     {
       "id": "realesr-general-x4v3",
-      "version": "0",
+      "version": "1",
       "vram_tier": "any",
-      "status": "unavailable",
-      "reason": "placeholder"
+      "display_name": "realesr-general-x4v3",
+      "licence": "BSD-3-Clause",
+      "on_demand": true,
+      "files": [
+        {
+          "path": "realesr-general-x4v3.pth",
+          "size": 4885111,
+          "sha256": "8dc7edb9ac80ccdc30c3a5dca6616509367f05fbc184ad95b731f05bece96292",
+          "mirrors": [
+            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-x4v3.pth",
+            "https://huggingface.co/Mitroshenkov87/voxprint-mirror-realesr-general-x4v3/resolve/c77881123a7ecf61e0a31a97e7194a925b737249/realesr-general-x4v3.pth"
+          ]
+        }
+      ]
     },
     {
       "id": "realesr-general-wdn-x4v3",
-      "version": "0",
+      "version": "1",
       "vram_tier": "any",
-      "status": "unavailable",
-      "reason": "placeholder"
+      "display_name": "realesr-general-wdn-x4v3",
+      "licence": "BSD-3-Clause",
+      "on_demand": true,
+      "files": [
+        {
+          "path": "realesr-general-wdn-x4v3.pth",
+          "size": 4885111,
+          "sha256": "1641f8c4464b9f097c9fdda5589273713f67cf59f3d909e0bd688f0cee269dca",
+          "mirrors": [
+            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-wdn-x4v3.pth",
+            "https://huggingface.co/Mitroshenkov87/voxprint-mirror-realesr-general-wdn-x4v3/resolve/bcca186dc4a1f389ac115c33e7d0dfd98e742f49/realesr-general-wdn-x4v3.pth"
+          ]
+        }
+      ]
     },
     {
       "id": "realesr-animevideov3",
-      "version": "0",
+      "version": "1",
       "vram_tier": "any",
-      "status": "unavailable",
-      "reason": "placeholder"
+      "display_name": "realesr-animevideov3",
+      "licence": "BSD-3-Clause",
+      "on_demand": true,
+      "files": [
+        {
+          "path": "realesr-animevideov3.pth",
+          "size": 2504012,
+          "sha256": "b8a8376811077954d82ca3fcf476f1ac3da3e8a68a4f4d71363008000a18b75d",
+          "mirrors": [
+            "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth",
+            "https://huggingface.co/Mitroshenkov87/voxprint-mirror-realesr-animevideov3/resolve/7fe53bdda3fb91b3c38d8d15053e788f2e57b3bd/realesr-animevideov3.pth"
+          ]
+        }
+      ]
     }
   ]
 }
