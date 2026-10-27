@@ -51,6 +51,7 @@ validation:
 
 nav:
   - Home: index.md
+  - Full README: README-full.md
   - User guide: USER-GUIDE.md
   - Install: INSTALL.md
   - Command line: CLI.md
