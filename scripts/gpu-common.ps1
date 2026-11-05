@@ -140,10 +140,10 @@ function Install-ClarityGpuPython {
         [string]$ResultsDir,
         [string]$Uv
     )
-    Write-Host "installing CPython 3.14"
-    Invoke-Native { & $Uv python install 3.14 } "uv could not install CPython 3.14"
-    $pythonBase = & $Uv python find 3.14
-    if ($LASTEXITCODE -ne 0 -or -not $pythonBase) { Fail "Python 3.14 was not found after uv python install." }
+    Write-Host "installing CPython 3.15.2"
+    Invoke-Native { & $Uv python install 3.15.2 } "uv could not install CPython 3.15.2"
+    $pythonBase = & $Uv python find 3.15.2
+    if ($LASTEXITCODE -ne 0 -or -not $pythonBase) { Fail "Python 3.15.2 was not found after uv python install." }
     $venv = Join-Path $ResultsDir "venv"
     if (-not (Test-Path -LiteralPath (Join-Path $venv "Scripts\python.exe"))) {
         Invoke-Native { & $Uv venv --python $pythonBase $venv } "uv could not create the virtualenv"

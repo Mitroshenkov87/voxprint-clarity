@@ -1,5 +1,5 @@
 # One script for a fresh rented RTX 4090 (Windows Server 2025, NVIDIA driver 600+).
-# Installs uv, CPython 3.14, the GPU stack, an LGPL ffmpeg, and the public
+# Installs uv, CPython 3.15.2, the GPU stack, an LGPL ffmpeg, and the public
 # engine, then runs the benchmark and one end-to-end restore. See docs/TESTING-GPU.md.
 #requires -Version 5.1
 param(

@@ -46,7 +46,7 @@ voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archiv
 
 ## Shared dependencies
 
-The installer, every launch, and `selftest` call `ensure_runtime("clarity")` through `clarity.engine.ensure_shared_runtime`. Uninstall calls `release_runtime("clarity")`. `ensure_runtime` writes `clarity` into the component refs and installs Python 3.14, the CUDA 13 torch, ONNX Runtime GPU, and TensorRT wheels. It does not download Enlarge's default model. `ensure_default_model` installs that weight only for app id `enlarge`, and Clarity does not call it. Catalogue weights are fetched separately, under `clarity` in the shared models folder. A payload is removed when its ref list is empty.
+The installer, every launch, and `selftest` call `ensure_runtime("clarity")` through `clarity.engine.ensure_shared_runtime`. Uninstall calls `release_runtime("clarity")`. The installer downloads CPython 3.15.2 with uv. `ensure_runtime` writes `clarity` into the component refs and installs the CUDA 13 torch, ONNX Runtime GPU, and TensorRT wheels. At tag `engine-v1.4.0` that call still records a Python 3.14 interpreter. It does not download Enlarge's default model. `ensure_default_model` installs that weight only for app id `enlarge`, and Clarity does not call it. Catalogue weights are fetched separately, under `clarity` in the shared models folder. A payload is removed when its ref list is empty.
 
 The folder is `%LOCALAPPDATA%\Voxprint\shared` on Windows and `$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared` on Linux. `VOXPRINT_HOME` replaces the Voxprint directory.
 

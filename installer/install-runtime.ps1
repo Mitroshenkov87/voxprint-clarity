@@ -1,6 +1,6 @@
 # App environment for VOXPrint AI Clarity.
 # The venv holds PySide, the pinned Pillow wheel, and voxprint_engine so the
-# shortcut can start. Python 3.14 comes from uv. The CUDA 13 wheels, ONNX
+# shortcut can start. Python 3.15.2 comes from uv. The CUDA 13 wheels, ONNX
 # Runtime GPU, and TensorRT are installed for app id "clarity".
 # ensure_runtime writes that ref and does not install Enlarge's default model.
 # The engine pin is tag engine-v1.4.0 as a GitHub archive, with the gpu extra.
@@ -86,10 +86,10 @@ if (Test-Path -LiteralPath $venvPython) {
     Expand-Archive -LiteralPath $uvZip -DestinationPath $uvDir -Force
     $uv = Get-ChildItem -Path $uvDir -Filter "uv.exe" -Recurse | Select-Object -First 1
     if (-not $uv) { throw "uv.exe was not in the archive" }
-    Write-Log "installing CPython 3.14"
-    & $uv.FullName python install 3.14
-    $python = & $uv.FullName python find 3.14
-    if (-not $python) { throw "Python 3.14 was not found after uv python install" }
+    Write-Log "installing CPython 3.15.2"
+    & $uv.FullName python install 3.15.2
+    $python = & $uv.FullName python find 3.15.2
+    if (-not $python) { throw "Python 3.15.2 was not found after uv python install" }
     Write-Log "creating venv $venvRoot"
     & $uv.FullName venv --python $python --seed "$venvRoot"
 }
@@ -136,8 +136,8 @@ $prepare = Join-Path $env:TEMP "voxprint-clarity-prepare-runtime.py"
 from enlarge.suite_runtime import SuiteInstallError, ensure_runtime
 
 def _say(text):
-    if "Enlarge" in text and "3.14" in text:
-        return "Python 3.14 was not found. Clarity installs Python 3.14 with uv during setup."
+    if "Enlarge" in text and ("3.14" in text or "3.15" in text):
+        return "Python 3.15.2 was not found. Clarity installs Python 3.15.2 with uv during setup."
     if "Enlarge" in text:
         return "VOXPrint inference engine missing, run repair."
     return text

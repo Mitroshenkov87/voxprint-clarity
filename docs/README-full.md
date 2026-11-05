@@ -28,7 +28,7 @@ The version, build number, and codename in that file are
 the source of truth. A codename is a Hebrew word from the Torah or Tanakh.
 The Windows file is `voxprint-clarity-setup-<version>-win-x64.exe`
 (tag `v1.0.0` publishes `voxprint-clarity-setup-1.0.0-win-x64.exe`).
-Check `SHA256SUMS` in that release. Setup downloads Python 3.14, the CUDA 13.0
+Check `SHA256SUMS` in that release. Setup downloads Python 3.15.2, the CUDA 13.0
 PyTorch wheel, the restore libraries, `voxprint-common` 0.1.1 "Menuchah"
 from its release wheel (checked against the published `.sha256` file), and
 the public engine at tag `engine-v1.4.0`. The installer is not code-signed.

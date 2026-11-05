@@ -202,7 +202,7 @@ jobs:
                   "Pre-release. The codename is a Hebrew word from the Torah or Tanakh, "
                   "read from BUILD.json. "
                   f"The Windows file is `{windows}`, the full online installer: "
-                  "setup downloads Python 3.14, the CUDA 13.0 PyTorch wheel, the restore "
+                  "setup downloads Python 3.15.2, the CUDA 13.0 PyTorch wheel, the restore "
                   "libraries, and the public engine. It is not code-signed. "
                   f"Windows program files go in `{INSTALL_DIR}` "
                   "(`voxprint-clarity.exe` and `voxprint-clarity-cli.exe`). "

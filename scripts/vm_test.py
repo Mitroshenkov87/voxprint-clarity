@@ -942,11 +942,11 @@ def _requirements_without_common(source: Path, dest: Path) -> Path:
 def _install(run: _Run) -> None:
     started = time.perf_counter()
     uv = _ensure_uv(run.tools)
-    _checked([uv, "python", "install", "3.14"], 600, "uv could not install CPython 3.14", setup=True)
-    found = _checked([uv, "python", "find", "3.14"], 120, "Python 3.14 was not found", setup=True)
+    _checked([uv, "python", "install", "3.15.2"], 600, "uv could not install CPython 3.15.2", setup=True)
+    found = _checked([uv, "python", "find", "3.15.2"], 120, "Python 3.15.2 was not found", setup=True)
     base = (found.stdout or "").strip()
     if not base:
-        raise _VmError("Python 3.14 was not found after uv python install", EXIT_SETUP)
+        raise _VmError("Python 3.15.2 was not found after uv python install", EXIT_SETUP)
     py = _venv_python(run.results)
     if not py.is_file():
         _checked([uv, "venv", "--python", base, str(run.results / "venv")], 180, "uv could not create the virtualenv", setup=True)

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "voxprint-clarity"
 version = "1.0.0rc0"
 description = "VOXPrint AI Clarity: lightweight non-generative video restoration."
-requires-python = ">=3.14,<3.15"
+requires-python = ">=3.15.2,<3.16"
 readme = "README.md"
 license = "Apache-2.0"
 dependencies = [
@@ -35,7 +35,7 @@ pythonpath = ["."]
 addopts = "-q --tb=short"
 
 [tool.ruff]
-target-version = "py314"
+target-version = "py315"
 line-length = 120
 src = ["clarity", "main.py", "tests"]
 
@@ -49,7 +49,7 @@ convention = "google"
 "tests/**" = ["D"]
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.15"
 files = ["clarity", "main.py"]
 ignore_missing_imports = true
 follow_imports = "silent"

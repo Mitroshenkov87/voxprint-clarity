@@ -434,7 +434,7 @@ def test_runtime_junction_is_created_after_the_files_exist() -> None:
     assert "engine-v1.4.0" in windows
     assert "engine-v1.4.0" in linux
     assert "MinGit" not in windows
-    assert "python install 3.14" in linux
+    assert "python install 3.15.2" in linux
     assert "ExtractTemporaryFile('pin_runtime.py')" in iss
     assert "ExtractTemporaryFile('requirements-gpu.txt')" in iss
     assert "-PinScript" in iss

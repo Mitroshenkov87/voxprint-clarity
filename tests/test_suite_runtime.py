@@ -114,7 +114,7 @@ def test_enlarge_bundle_message_stands_alone(monkeypatch: pytest.MonkeyPatch) ->
             )
 
     monkeypatch.setattr("clarity.engine._load_module", lambda name: _Module())
-    with pytest.raises(ClarityError, match="Clarity installs Python 3.14 with uv") as caught:
+    with pytest.raises(ClarityError, match="Clarity installs Python 3.15.2 with uv") as caught:
         ensure_shared_runtime()
     assert "Enlarge" not in str(caught.value)
 
@@ -604,7 +604,7 @@ def test_engine_pin_and_pillow_stay() -> None:
     assert "engine-v1.4.0.tar.gz" in engine
     assert "switch to tag" not in engine
     assert "engine-v1.2.1" not in engine
-    assert "python install 3.14" in linux
+    assert "python install 3.15.2" in linux
     assert "Enlarge bundle" not in linux
     assert "MinGit" not in windows
     assert "Pillow==12.3.0" in linux
