@@ -109,6 +109,7 @@ Source: "..\requirements-bench.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\pyproject.toml"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\BUILD.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\assets\icons\suite\*"; DestDir: "{app}\assets\icons\suite"; Flags: ignoreversion
+Source: "..\assets\splash\clarity.jpg"; DestDir: "{app}\assets\splash"; Flags: ignoreversion
 Source: "..\clarity\*"; DestDir: "{app}\clarity"; Excludes: "__pycache__,*.pyc"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\locales\*"; DestDir: "{app}\locales"; Flags: ignoreversion
 Source: "..\branding\*"; DestDir: "{app}\branding"; Flags: ignoreversion

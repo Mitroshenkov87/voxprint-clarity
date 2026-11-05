@@ -27,13 +27,15 @@ _RUNTIME_GLOBS = (
     "libcudnn.so*",
     "*.so.13",
 )
-# Names a failed session reports. The label is what the user reads.
+# Names a failed session reports. The label is what the user reads. Each entry
+# carries the Windows DLL glob and the Linux shared-object glob; the file list
+# is lowercased before matching, so the patterns stay lowercase.
 _REQUIRED_LIBS = (
-    ("cudart64_13.dll", "cudart64_13"),
-    ("cublas64_13.dll", "cublas64_13"),
-    ("cublaslt64_13.dll", "cublasLt64_13"),
-    ("cudnn*.dll", "cudnn*"),
-    ("nvinfer_10.dll", "nvinfer_10"),
+    (("cudart64_13.dll", "libcudart.so*"), "cudart64_13"),
+    (("cublas64_13.dll", "libcublas.so*"), "cublas64_13"),
+    (("cublaslt64_13.dll", "libcublaslt.so*"), "cublasLt64_13"),
+    (("cudnn*.dll", "libcudnn.so*"), "cudnn*"),
+    (("nvinfer_10.dll", "libnvinfer.so*"), "nvinfer_10"),
 )
 # ONNX Runtime 1.31 rejects an IR version above 13. The onnx helper default
 # is IR 14, so the probe sets 10. Opset 13 defines Identity and is valid
@@ -162,8 +164,8 @@ def missing_runtime_labels(folders: Sequence[Path]) -> list[str]:
         except OSError:
             continue
     missing: list[str] = []
-    for pattern, label in _REQUIRED_LIBS:
-        if not any(fnmatch.fnmatch(name, pattern) for name in present):
+    for patterns, label in _REQUIRED_LIBS:
+        if not any(fnmatch.fnmatch(name, pattern) for pattern in patterns for name in present):
             missing.append(label)
     return missing
 

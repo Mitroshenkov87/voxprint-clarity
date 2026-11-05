@@ -78,6 +78,8 @@ def test_h264_is_refused_and_av1_is_default() -> None:
     listed = parse_encoder_list(" V....D av1_nvenc           NVIDIA\n A....D libopus            Opus\n")
     assert "av1_nvenc" in listed
     assert "libopus" in listed
+    legend = parse_encoder_list("Encoders:\n V..... = Video\n A..... = Audio\n S..... = Subtitle\n")
+    assert "=" not in legend
 
 
 def test_hdr_is_refused() -> None:
