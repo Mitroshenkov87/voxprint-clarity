@@ -212,8 +212,9 @@ def _public_text(text: str) -> str:
     """Stand-alone wording for an engine message that names another app."""
     if "Enlarge" not in text:
         return text
-    if "3.14" in text:
-        return "Python 3.14 was not found. Clarity installs Python 3.14 with uv during setup."
+    # engine-v1.4.0 still reports Python 3.14. Clarity's installer uses 3.15.2.
+    if "3.14" in text or "3.15" in text:
+        return "Python 3.15.2 was not found. Clarity installs Python 3.15.2 with uv during setup."
     return _ENGINE_MISSING
 
 

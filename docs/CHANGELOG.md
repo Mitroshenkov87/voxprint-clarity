@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Require CPython 3.15.2. `requires-python` is `>=3.15.2,<3.16`. CI, mypy,
+  Ruff, and the installers ask for 3.15.2. `voxprint-common` stays 0.1.1
+  "Menuchah". The pinned engine tag `engine-v1.4.0` still accepts only
+  Python 3.14.
 - Build 1005 is an RC again. `BUILD.json` version is `1.0.0-rc` while the
   first final release waits for the shared UI. The label is
   `1.0.0 RC build N "…"`. `version --json` reports `1.0.0-rc`.

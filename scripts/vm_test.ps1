@@ -77,10 +77,10 @@ try {
     Write-VmFailure 2 "bootstrap" $_.Exception.Message
 }
 try {
-    & $uv python install 3.14
-    if ($LASTEXITCODE -ne 0) { Write-VmFailure 2 "bootstrap" "uv could not install CPython 3.14 (exit $LASTEXITCODE)" }
-    $python = & $uv python find 3.14
-    if ($LASTEXITCODE -ne 0 -or -not $python) { Write-VmFailure 2 "bootstrap" "Python 3.14 was not found after uv python install." }
+    & $uv python install 3.15.2
+    if ($LASTEXITCODE -ne 0) { Write-VmFailure 2 "bootstrap" "uv could not install CPython 3.15.2 (exit $LASTEXITCODE)" }
+    $python = & $uv python find 3.15.2
+    if ($LASTEXITCODE -ne 0 -or -not $python) { Write-VmFailure 2 "bootstrap" "Python 3.15.2 was not found after uv python install." }
 } catch {
     Write-VmFailure 2 "bootstrap" $_.Exception.Message
 }

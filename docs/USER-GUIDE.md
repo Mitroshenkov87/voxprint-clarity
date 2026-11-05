@@ -16,7 +16,7 @@ is no CPU mode and no H.264 output.
 - An NVIDIA driver from the 600 series or newer.
 - The LGPL ffmpeg build the installer places in the shared suite folder, with
   NVDEC and NVENC. Setup downloads that build.
-- A network connection during setup. The installer downloads Python 3.14,
+- A network connection during setup. The installer downloads Python 3.15.2,
   PyTorch, the LGPL ffmpeg build, the inference engine, and Clarity's models.
 
 Older Windows, older Linux, a GPU below 8.9, a driver below 600, or no NVIDIA
@@ -35,7 +35,7 @@ Hebrew word from the Torah or Tanakh. Check the download against
 `SHA256SUMS` in that same release. The file is not code-signed, so SmartScreen
 can warn.
 
-Run the installer. During setup it installs Python 3.14 with uv and calls
+Run the installer. During setup it installs Python 3.15.2 with uv and calls
 `ensure_shared_runtime` with app id `clarity`. That installs the CUDA 13
 wheels into `%LOCALAPPDATA%\Voxprint\shared` (or `%VOXPRINT_HOME%\shared`
 when that variable is set). It does not download Enlarge's default model.
@@ -58,7 +58,7 @@ publishes `voxprint-clarity_1.0.0_linux-x64.tar.gz`. Extract it and run
 the app to
 `/opt/voxprint-ai-suite/clarity` and links `voxprint-clarity` and
 `voxprint-clarity-cli` onto `PATH`. If uv is
-missing, that script downloads it and runs `uv python install 3.14`. It then
+missing, that script downloads it and runs `uv python install 3.15.2`. It then
 calls the same `ensure_shared_runtime` into
 `$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared`. An older
 launcher or desktop file is removed. The shared data directory is not. See
@@ -148,7 +148,7 @@ Chunk media stays in a work folder beside the project
 
 | What | Where |
 |---|---|
-| Shared suite | `%LOCALAPPDATA%\Voxprint\shared` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared`. `VOXPRINT_HOME` replaces the Voxprint directory. The shared folder keeps Python 3.14, the CUDA 13 wheels, and the ref list in `manifest.json`. Clarity registers its own weights there and adds the LGPL ffmpeg binary under `shared/ffmpeg`. |
+| Shared suite | `%LOCALAPPDATA%\Voxprint\shared` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/shared` or `~/.local/share/voxprint/shared`. `VOXPRINT_HOME` replaces the Voxprint directory. The shared folder keeps Python 3.15.2, the CUDA 13 wheels, and the ref list in `manifest.json`. Clarity registers its own weights there and adds the LGPL ffmpeg binary under `shared/ffmpeg`. |
 | Shared models | `%LOCALAPPDATA%\Voxprint\models` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/models` or `~/.local/share/voxprint/models`. `voxprint_common.paths` owns the folder. The engine store owns the hashes and `.users.json`. |
 | Recent projects | `%LOCALAPPDATA%\Voxprint\Clarity\recent.json` on Windows. On Linux, `$XDG_DATA_HOME/voxprint/clarity/recent.json` or `~/.local/share/voxprint/clarity/recent.json`. |
 | Scene chunks and the journal | `<project>.vxclarity.work` beside the project (`plan.json`, `journal.jsonl`, `chunks/`). |

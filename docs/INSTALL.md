@@ -102,9 +102,9 @@ unregisters the models user.
 ## Linux
 
 ```bash
-python3.14 -m pip install -r requirements.txt -r requirements-gpu.txt
-python3.14 -m pip install -e ".[engine]"
-python3.14 -m clarity
+python3.15 -m pip install -r requirements.txt -r requirements-gpu.txt
+python3.15 -m pip install -e ".[engine]"
+python3.15 -m clarity
 ```
 
 Experimental package:
@@ -126,8 +126,8 @@ the tree to `/opt/voxprint-ai-suite/clarity`, links both programs into
 `/usr/local/share/applications`. Writing `/opt` needs root; a normal account
 is asked for `sudo` for that step only. The shared runtime still goes to the
 invoking user's `~/.local/share/voxprint`. Run it once
-for an AppImage before the first restore. When Python 3.14 or uv is missing,
-the script downloads uv and runs `uv python install 3.14`. It installs the
+for an AppImage before the first restore. When Python 3.15.2 or uv is missing,
+the script downloads uv and runs `uv python install 3.15.2`. It installs the
 engine at tag `engine-v1.4.0`
 (`voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.4.0.tar.gz`)
 with `--extra-index-url https://pypi.nvidia.com`, verifies the

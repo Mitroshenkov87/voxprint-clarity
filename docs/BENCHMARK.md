@@ -29,7 +29,7 @@ fp32. The bench loads each model in the precision declared in the catalogue.
 
 ## Install
 
-On the VM, with Python 3.14:
+On the VM, with Python 3.15.2:
 
 ```bash
 python -m pip install -r requirements.txt -r requirements-bench.txt

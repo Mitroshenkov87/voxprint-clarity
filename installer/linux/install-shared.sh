@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install Clarity into the shared suite folder.
-# Python 3.14 comes from uv. uv is downloaded when it is not already on PATH.
+# Python 3.15.2 comes from uv. uv is downloaded when it is not already on PATH.
 # The engine pin is tag engine-v1.4.0 as a GitHub archive, with the gpu extra.
 # voxprint-common 0.1.1 (Menuchah) is the release wheel. The download is checked
 # against the published .sha256 file.
@@ -87,16 +87,16 @@ if [ -z "$uv_bin" ]; then
 fi
 
 set +e
-"$uv_bin" python install 3.14
+"$uv_bin" python install 3.15.2
 install_status=$?
-python=$("$uv_bin" python find 3.14)
+python=$("$uv_bin" python find 3.15.2)
 find_status=$?
 set -e
 if [ -n "$uv_dir" ]; then
   rm -rf "$uv_dir"
 fi
 if [ "$install_status" -ne 0 ] || [ "$find_status" -ne 0 ] || [ -z "$python" ] || [ ! -x "$python" ]; then
-  echo "Python 3.14 was not found after uv python install." >&2
+  echo "Python 3.15.2 was not found after uv python install." >&2
   exit 1
 fi
 
