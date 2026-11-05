@@ -74,6 +74,28 @@ def test_missing_runtime_message_lists_only_absent_libraries(tmp_path: Path) -> 
     )
 
 
+def test_missing_runtime_message_accepts_linux_library_names(tmp_path: Path) -> None:
+    root = tmp_path / "site-packages"
+    runtime = root / "nvidia" / "cuda_runtime" / "lib"
+    runtime.mkdir(parents=True)
+    (runtime / "libcudart.so.13").write_bytes(b"x")
+    cublas = root / "nvidia" / "cublas" / "lib"
+    cublas.mkdir(parents=True)
+    (cublas / "libcublas.so.13").write_bytes(b"x")
+    (cublas / "libcublasLt.so.13").write_bytes(b"x")
+    cudnn = root / "nvidia" / "cudnn" / "lib"
+    cudnn.mkdir(parents=True)
+    (cudnn / "libcudnn.so.9").write_bytes(b"x")
+    trt = root / "tensorrt_libs"
+    trt.mkdir(parents=True)
+    (trt / "libnvinfer.so.10").write_bytes(b"x")
+    text = missing_runtime_message([root])
+    assert text == (
+        "CUDA and TensorRT libraries were on the DLL search path, "
+        "but the session did not keep a GPU provider"
+    )
+
+
 def test_empty_torch_lib_is_registered(tmp_path: Path) -> None:
     root = tmp_path / "site"
     lib = root / "torch" / "lib"
