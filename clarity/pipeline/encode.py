@@ -7,7 +7,10 @@ from typing import Never
 
 from clarity.errors import ClarityError
 
-_ENCODER_LINE = re.compile(r"^\s*[VAS][A-Za-z.]{5}\s+(\S+)")
+# Encoder names are lowercase with digits, underscores, and dashes. The
+# six-character column before the name keeps the legend lines
+# (" V..... = Video") out of the set.
+_ENCODER_LINE = re.compile(r"^\s*[VAS][A-Za-z.]{5}\s+([a-z0-9_-]+)")
 
 
 class Container(Enum):
