@@ -1,0 +1,9 @@
+# CPU-safe imports for CI. The app still refuses to start without an RTX 40
+# series GPU. Torch is in requirements-gpu.txt.
+PySide6>=6.7,<7
+numpy>=2,<3
+Pillow>=12.3.0,<13
+truststore>=0.10,<1
+onnx>=1.21,<2
+# voxprint-common==0.1.1 (Menuchah). Release wheel so install does not need git.
+voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl

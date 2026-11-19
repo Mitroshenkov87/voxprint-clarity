@@ -1,0 +1,83 @@
+# Shared by CI and the release workflow. Change the selftest here, not in
+# the callers, so a tag build cannot drift from the pull-request job.
+name: Suite test
+on:
+  workflow_call:
+    inputs:
+      check_release_tag:
+        description: Assert GITHUB_REF_NAME matches the version in BUILD.json
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Qt libraries (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libglib2.0-0 ffmpeg shellcheck
+      - name: Install test tools
+        run: python -m pip install -r requirements-dev.txt
+      - name: Install the shared engine
+        shell: bash
+        run: |
+          python -m pip install --extra-index-url https://pypi.nvidia.com "voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.4.0.tar.gz"
+          python installer/stage_suite_runtime.py --python python
+          python -c "import voxprint_engine, enlarge.suite_runtime"
+      - name: Check the release tag
+        if: inputs.check_release_tag
+        shell: bash
+        run: |
+          python -c "import json,os,re,pathlib; tag=os.environ['GITHUB_REF_NAME']; version=json.loads(pathlib.Path('BUILD.json').read_text(encoding='utf-8'))['version']; assert re.fullmatch(r'v\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?', tag), tag; assert tag.startswith('v'+version), (tag, version); print('release tag:', tag, 'version', version)"
+      - name: Lint
+        run: |
+          ruff check clarity main.py tests scripts
+          mypy
+      - name: Codename is unique in the suite registry
+        run: python -m clarity.codenames
+      - name: Unit tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+          CLARITY_REQUIRE_FFMPEG: ${{ runner.os == 'Linux' && '1' || '0' }}
+        run: python -m pytest
+      - name: Window self-test
+        env:
+          QT_QPA_PLATFORM: offscreen
+          VOXPRINT_HOME: ${{ runner.temp }}/voxprint-suite
+        run: python -m clarity --selftest --no-gpu
+      - name: shellcheck
+        if: runner.os == 'Linux'
+        run: shellcheck scripts/vm_test.sh scripts/bench.sh
+      - name: VM smoke refuses a machine with no GPU
+        shell: bash
+        run: |
+          set +e
+          python scripts/vm_test.py --smoke --json --results "$RUNNER_TEMP/vm-smoke" > "$RUNNER_TEMP/vm-smoke.json"
+          code=$?
+          set -e
+          echo "exit $code"
+          cat "$RUNNER_TEMP/vm-smoke.json"
+          test "$code" -eq 3
+          python -c "import json,os,pathlib; p=pathlib.Path(os.environ['RUNNER_TEMP'])/'vm-smoke.json'; lines=[json.loads(x) for x in p.read_text(encoding='utf-8').splitlines() if x.strip()]; assert lines[-1]['type']=='summary' and lines[-1]['exit']==3 and lines[-1]['step']=='gpu'"
+      - name: PSScriptAnalyzer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          foreach ($path in @(
+              "scripts/vm_test.ps1",
+              "scripts/test-gpu.ps1",
+              "scripts/gpu-common.ps1"
+          )) {
+              Invoke-ScriptAnalyzer -Path $path -Severity Error -EnableExit
+          }

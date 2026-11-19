@@ -1,0 +1,9 @@
+# GPU timing extras for `python -m clarity.bench` on an RTX 4090 VM.
+# Install the app first (`requirements.txt`) so numpy, Pillow, and the package import.
+-r requirements-gpu.txt
+spandrel
+# voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.4.0.tar.gz
+# The gpu extra installs onnxruntime-gpu==1.31.0. tensorrt-cu13-libs==10.14.1.48
+# is on the NVIDIA index. This line is the same GPU wheel for a bench virtualenv.
+onnxruntime-gpu==1.31.0
+onnx>=1.21,<2

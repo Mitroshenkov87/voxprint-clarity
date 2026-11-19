@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voxprint-clarity"
+version = "1.0.0rc0"
+description = "VOXPrint AI Clarity: lightweight non-generative video restoration."
+requires-python = ">=3.14,<3.15"
+readme = "README.md"
+license = "Apache-2.0"
+dependencies = [
+  "PySide6>=6.7,<7",
+  "numpy>=2,<3",
+  "Pillow>=12.3.0,<13",
+  "truststore>=0.10,<1",
+  "onnx>=1.21,<2",
+  # voxprint-common==0.1.1 (Menuchah). The release wheel, not a git URL.
+  "voxprint-common @ https://github.com/Mitroshenkov87/voxprint-common/releases/download/v0.1.1/voxprint_common-0.1.1-py3-none-any.whl",
+]
+
+[project.optional-dependencies]
+engine = ["voxprint-engine[gpu] @ https://github.com/Mitroshenkov87/voxprint-enlarge/archive/refs/tags/engine-v1.4.0.tar.gz"]
+
+[project.scripts]
+voxprint-clarity = "clarity.__main__:main"
+voxprint-clarity-cli = "clarity.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["clarity*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q --tb=short"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 120
+src = ["clarity", "main.py", "tests"]
+
+[tool.ruff.lint]
+select = ["F", "E9", "D100", "D101", "D102", "D103", "D104", "D107"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+
+[tool.mypy]
+python_version = "3.14"
+files = ["clarity", "main.py"]
+ignore_missing_imports = true
+follow_imports = "silent"
+namespace_packages = true
+explicit_package_bases = true
+show_error_codes = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+check_untyped_defs = false
+disallow_untyped_defs = false
+pretty = false
+exclude = ["tests/"]
